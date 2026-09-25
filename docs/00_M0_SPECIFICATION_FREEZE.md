@@ -134,7 +134,7 @@ The customer experience is **WhatsApp-first**, with small contextual web pages u
 
 > **When a customer has meaningful purchase intent but has not completed the online purchase, should Buildwise intervene, and what is the most helpful next action given the customer's intent, product, location, timing, and current physical retail availability?**
 
-Possible outcomes:
+Possible AI actions (`AIRecommendation.action`):
 
 ```text
 NO_ACTION
@@ -146,6 +146,8 @@ STORE_RESERVATION
 ALTERNATIVE_PRODUCT
 HUMAN_HANDOFF
 ```
+
+These are the actions the AI **proposes**. They are separate from the business outcome that actually happens (`Outcome.purchase_type`: `ONLINE | OFFLINE | ALTERNATIVE | NONE`). The mapping between them is defined in `04_DATA_MODEL.md` §16.1.
 
 ---
 
@@ -392,6 +394,16 @@ backend validates token + expiry + resource binding
 minimum required information is shown
 ```
 
+The full token lifecycle is defined in `07_SECURITY_SPEC.md` §16:
+
+- opaque token
+- server-side validation
+- resource binding
+- customer/session binding
+- 15-minute TTL for view-only access
+- single-use mutation token
+- no sensitive PII in URL parameters
+
 ## 11.2 WhatsApp fallback
 
 Primary customer channel:
@@ -410,27 +422,36 @@ Shopify is not assumed to provide a perfect native “high intent” label.
 
 For the prototype, customer-intent events are produced by controlled Buildwise instrumentation and deterministic rules.
 
-Example events:
+Prototype events (canonical `CommerceEvent.event_type`):
 
 ```text
-product_view
-product_detail_view
-cart_add
-checkout_start
-whatsapp_click
+PRODUCT_VIEW
+PRODUCT_DETAIL_VIEW
+ADD_TO_CART
+CHECKOUT_STARTED
+WHATSAPP_CLICK
 ```
 
-Example prototype state:
+Prototype intent stage (`CustomerIntent.intent_stage`):
 
 ```text
-No meaningful intent
+NO_MEANINGFUL_INTENT
         ↓
-Interested
+INTERESTED
         ↓
-High intent
+HIGH_INTENT
 ```
 
-The exact thresholds are deterministic prototype logic. Gemini must not invent the underlying behavioral facts.
+Customer intent has two separate fields:
+
+- `intent_type` is what the customer is trying to accomplish.
+- `intent_stage` is how strong the demonstrated intent is.
+
+Both are defined in `04_DATA_MODEL.md` §11.
+
+The exact thresholds are deterministic prototype logic (`04_DATA_MODEL.md` §11.2). Gemini must not invent the underlying behavioral facts, and it never sets `intent_stage`.
+
+Web intent reaches the WhatsApp conversation through a short-lived opaque token in the prefilled message `START_BUILDWISE_<INTENT_TOKEN>`. The token contains no PII (`06_INTEGRATION_CONTRACTS.md` §10.1).
 
 ## 11.4 Retail upload boundary
 
@@ -464,19 +485,57 @@ Looker is an optional MVP enhancement.
 
 It must not become a blocking dependency for the core customer → AI → retailer → outcome workflow.
 
+## 11.6 Reconciliation decisions (approved after the two M0 reviews)
+
+These decisions are approved. Each one has a single canonical home:
+
+| Decision | Canonical home |
+|---|---|
+| One canonical retail schema (11 required fields + 2 optional) | `04_DATA_MODEL.md` §9.1 |
+| `store_hours` = IANA `timezone` + `HH:MM-HH:MM` per weekday | `04_DATA_MODEL.md` §9.2 |
+| One canonical `CommerceProvider` contract | `06_INTEGRATION_CONTRACTS.md` §2 |
+| AI action (`AIRecommendation.action`) separate from business outcome (`Outcome.purchase_type`), with a documented mapping | `04_DATA_MODEL.md` §14, §16 |
+| `intent_type` (what) vs `intent_stage` (how strong; deterministic) | `04_DATA_MODEL.md` §11 |
+| Firestore collection layout covering every persisted entity | `04_DATA_MODEL.md` §21, `03_TECH_ARCHITECTURE.md` §7 |
+| Web → WhatsApp handshake `START_BUILDWISE_<INTENT_TOKEN>` (opaque, no PII, 30 min, single use) | `06_INTEGRATION_CONTRACTS.md` §10.1 |
+| Reservation creation in a Firestore transaction (`reserved_quantity`) | `03_TECH_ARCHITECTURE.md` §15 |
+| Contextual page token lifecycle (15-min view, single-use mutation) | `07_SECURITY_SPEC.md` §16 |
+| Stateless, request-scoped ADK in Cloud Run; state in Firestore | `03_TECH_ARCHITECTURE.md` §8.1 |
+| Critical API request/response contracts | `06_INTEGRATION_CONTRACTS.md` §14.1–§14.5 |
+| Firebase ID token → Cloud Run → verification → user/brand/role → authorization | `07_SECURITY_SPEC.md` §4.1 |
+| Gemini timeout, retry, webhook idempotency, rate limiting | `03_TECH_ARCHITECTURE.md` §16, `07_SECURITY_SPEC.md` §17 |
+| All 12 AI evaluation scenarios covered | `08_TEST_PLAN.md` §7 |
+| `User.store_ids` for retail roles | `04_DATA_MODEL.md` §4 |
+| `brand.settings.allowed_storefront_origins` | `04_DATA_MODEL.md` §3 |
+| `RetailInventory.reserved_quantity` | `04_DATA_MODEL.md` §10 |
+| `Outcome.reservation_id` | `04_DATA_MODEL.md` §16 |
+| `SIMULATOR` conversation channel (approved fallback) | `04_DATA_MODEL.md` §12 |
+| `GET /api/reservations` and `GET /api/reservations/:id` | `06_INTEGRATION_CONTRACTS.md` §14.4 |
+| Prototype default values (token TTLs, rate limits, 120-min reservation hold, Gemini timeouts) | `03`, `04`, `07` as referenced |
+
+## 11.7 Items deferred to the start of M1
+
+These items do not change any product or architecture boundary. They are settled at the start of M1, before the feature that needs them:
+
+- **Reservation expiry trigger.** The expiry sweep endpoint is specified (`03_TECH_ARCHITECTURE.md` §15), but the schedule mechanism is not yet chosen. The options are Cloud Scheduler, or relying only on the sweep run when the retailer console loads.
+- **User provisioning.** How the first Brand Admin and the retail users are created and linked to a brand and stores. For the MVP, a seed/admin script is acceptable.
+- **Meta webhook timing.** Verify that synchronous processing within the 20 s AI budget avoids unnecessary redeliveries. Duplicates are already safe.
+- **Shopify auth mechanism.** Verify it against the development store at the Shopify milestone (`06_INTEGRATION_CONTRACTS.md` §9).
+
 ---
 
 # 12. Shopify integration boundary
 
 Shopify is the source of truth for Buildwise's **online commerce context**.
 
-The Buildwise integration should conceptually provide:
+The Buildwise integration should conceptually provide the canonical `CommerceProvider` contract (`06_INTEGRATION_CONTRACTS.md` §2):
 
 ```text
 getProducts()
-getProduct()
+getProductVariant()
 getCustomer()
 getOrder()
+getOrders()
 getInventory()
 getLocations()
 ```
@@ -525,7 +584,7 @@ Stable identifiers such as SKU/variant identifiers should be preferred over prod
 
 Retail data provides the physical-commerce reality that Shopify does not own.
 
-Expected fields may include:
+Required fields use the canonical retail schema (`04_DATA_MODEL.md` §9.1):
 
 ```text
 store_id
@@ -535,6 +594,7 @@ address
 latitude
 longitude
 store_hours
+store_status
 sku
 quantity
 offline_price
@@ -761,7 +821,7 @@ Is reservation permitted?
 
         ↓
 
-ALLOW / BLOCK / HUMAN APPROVAL
+ALLOWED / BLOCKED / HUMAN_APPROVAL_REQUIRED
 ```
 
 ---
@@ -949,6 +1009,7 @@ Repository structure at M0:
 Buildwise/
 │
 ├── docs/
+│   ├── 00_M0_SPECIFICATION_FREEZE.md
 │   ├── 01_PRODUCT_SOURCE_OF_TRUTH.md
 │   ├── 02_MVP_SPEC.md
 │   ├── 03_TECH_ARCHITECTURE.md

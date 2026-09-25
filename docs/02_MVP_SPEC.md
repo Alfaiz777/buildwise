@@ -100,7 +100,7 @@ The source of the intent event must be explicit.
 
 # 4. Retail network ingestion
 
-Brand uploads CSV/XLSX data containing, at minimum:
+Brand uploads CSV/XLSX data (≤ 10 MB per file) using the canonical retail schema (`04_DATA_MODEL.md` §9.1). Required:
 
 ```text
 store_id
@@ -109,12 +109,14 @@ city
 address
 latitude
 longitude
+store_hours
+store_status
 sku
 quantity
 offline_price
-store_status
-store_hours
 ```
+
+`store_hours` uses the canonical structured format: an IANA `timezone` plus one `HH:MM-HH:MM` value per weekday (`04_DATA_MODEL.md` §9.2).
 
 Optional:
 
@@ -175,23 +177,34 @@ Unmapped/conflicting records must be visible to the brand.
 
 # 6. Customer intent
 
-The MVP needs a small set of meaningful intent states.
+The MVP represents customer intent with two separate fields (`04_DATA_MODEL.md` §11).
 
-Suggested states:
+`intent_stage` is how strong the demonstrated intent is. It is deterministic only:
 
 ```text
-CASUAL
-PRODUCT_EXPLORATION
+NO_MEANINGFUL_INTENT
+INTERESTED
 HIGH_INTENT
+```
+
+`intent_type` is what the customer is trying to accomplish:
+
+```text
+PRODUCT_EXPLORATION
 CART_ABANDONMENT
 PRODUCT_QUESTION
 COMPARISON
 URGENT_PURCHASE
 STORE_ORIENTED
 SUPPORT_REQUEST
+UNKNOWN
 ```
 
-The intent engine may be deterministic initially.
+(The earlier draft's `CASUAL` corresponds to `intent_stage = NO_MEANINGFUL_INTENT`, and its `HIGH_INTENT` to `intent_stage = HIGH_INTENT`.)
+
+The intent engine is deterministic for `intent_stage`. For `intent_type`, it is deterministic on web events and may be refined by Gemini from conversation content, with backend validation.
+
+Web intent is carried into WhatsApp through the `START_BUILDWISE_<INTENT_TOKEN>` handshake (`06_INTEGRATION_CONTRACTS.md` §10.1).
 
 Gemini then reasons over the resulting context rather than being responsible for every low-level event calculation.
 
@@ -225,6 +238,8 @@ Optional contextual web pages:
 ```
 
 These are task pages, not a customer portal.
+
+Access requires a short-lived opaque page token bound to the customer, conversation and resource (`07_SECURITY_SPEC.md` §16). A guessable resource ID alone is never sufficient.
 
 ---
 
@@ -306,21 +321,21 @@ Offline purchases
 
 # 11. Analytics
 
-Capture at least:
+Capture at least these events. The names are canonical `CommerceEvent.event_type` values (`04_DATA_MODEL.md` §17):
 
 ```text
-intent_event
-conversation_event
-ai_decision
-message_sent
-message_received
-store_recommendation
-reservation_created
-reservation_confirmed
-pickup_completed
-online_purchase
-offline_purchase
-human_handoff
+PRODUCT_VIEW / PRODUCT_DETAIL_VIEW / ADD_TO_CART / CHECKOUT_STARTED / WHATSAPP_CLICK   (intent events)
+CONVERSATION_STARTED
+AI_DECISION
+MESSAGE_SENT
+MESSAGE_RECEIVED
+STORE_RECOMMENDATION
+RESERVATION_CREATED
+RESERVATION_CONFIRMED
+PICKUP_COMPLETED
+ONLINE_PURCHASE
+OFFLINE_PURCHASE
+HUMAN_HANDOFF
 ```
 
 Then:
@@ -332,7 +347,7 @@ Firestore
 BigQuery
 (historical analytics)
 
-Looker
+Looker — optional for the MVP
 (brand intelligence)
 ```
 

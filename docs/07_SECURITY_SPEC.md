@@ -78,6 +78,42 @@ RETAIL_STAFF
 
 Access should follow least privilege.
 
+## 4.1 Authentication and authorization chain (brand/retail users)
+
+```text
+React (Firebase Auth SDK)
+   ↓  getIdToken() — short-lived Firebase ID token, auto-refreshed
+   ↓  Authorization: Bearer <Firebase ID token>
+Cloud Run
+   ↓
+1. Token verification
+   Firebase Admin SDK verifyIdToken():
+   signature, expiry, audience = Firebase project, issuer
+   failure → 401
+   ↓
+2. User / brand / role resolution
+   users/{uid} (Firestore) → brand_id, role, store_ids, status
+   missing or status ≠ ACTIVE → 403
+   principal = { user_id, brand_id, role, store_ids }
+   ↓
+3. Route authorization
+   principal.role allowed for this route? → else 403
+   ↓
+4. Resource authorization
+   resource.brand_id = principal.brand_id
+   RETAIL_* roles: resource.store_id ∈ principal.store_ids
+   failure → 404 (do not reveal that another tenant's resource exists)
+   ↓
+5. Handler executes → AuditEvent for state-changing actions
+```
+
+Rules:
+
+- `brand_id` is **always** taken from the principal, never from the request body, query or path alone.
+- Firestore (`users/{uid}`) is the authority for role and brand. Firebase custom claims are not used for authorization in the MVP, so role changes take effect on the next request.
+- The browser never talks to Firestore directly. Firestore security rules deny all client access (`03_TECH_ARCHITECTURE.md` §7).
+- Customers are never Firebase-authenticated. They are identified by their WhatsApp identity (webhook) or by a contextual page token (§16).
+
 Examples:
 
 ### Brand Marketing
@@ -190,7 +226,7 @@ Policy / permission engine
  ↓
 Validation
  ↓
-ALLOW / DENY / HUMAN APPROVAL
+ALLOWED / BLOCKED / HUMAN_APPROVAL_REQUIRED
  ↓
 Backend tool
  ↓
@@ -214,7 +250,9 @@ Backend checks:
 - reservation still valid?
 ```
 
-Only then is the reservation created.
+Only then is the reservation created. Creation itself runs in the Firestore transaction defined in `03_TECH_ARCHITECTURE.md` §15, so concurrent requests cannot overbook inventory.
+
+Guardrail results are recorded as `AIRecommendation.guardrail_status` (`04_DATA_MODEL.md` §14).
 
 ---
 
@@ -360,10 +398,116 @@ Customer prompt cannot bypass authorization.
 Secrets are not exposed in frontend.
 Secrets are not logged.
 Duplicate webhooks do not create duplicate actions.
+Webhooks with invalid signatures are rejected.
+Contextual page tokens are rejected when expired, reused (mutation), revoked, or bound to another resource/customer/brand.
+Intent tokens contain no PII and cannot be used on another brand's WhatsApp number.
+Concurrent reservations cannot exceed available inventory.
+Public endpoints are rate limited.
 ```
 
 ---
 
-# 16. Security principle to remember
+# 16. Contextual customer-page token lifecycle
+
+Applies to `/nearby-stores`, `/reservation/:id` and `/pickup/:id` (`02_MVP_SPEC.md` §7) and to the APIs they call (`06_INTEGRATION_CONTRACTS.md` §14.3–§14.5).
+
+## 16.1 Token properties
+
+| Property | Rule |
+|---|---|
+| Form | Opaque 256-bit cryptographically random value, base64url. Encodes nothing. |
+| Storage | Only the SHA-256 hash is stored (`pageAccessTokens/{token_hash}`, `04_DATA_MODEL.md` §18.2) |
+| Validation | Server-side only, on every request |
+| Resource binding | `resource_type` + `resource_id` (and `brand_id`) |
+| Customer/session binding | `customer_id` + `conversation_id` of the WhatsApp/simulator conversation that issued it |
+| VIEW token TTL | **15 minutes** from issue. Reusable within the TTL (page refresh). |
+| MUTATE token | **Single use**, TTL ≤ 15 minutes, restricted to one `allowed_action`. It is consumed in the same Firestore transaction as the mutation. |
+| Revocation | `revoked = true` makes the token invalid immediately |
+
+## 16.2 Lifecycle
+
+```text
+1. ISSUE
+   The agent/backend decides a page materially helps the task
+   → Cloud Run creates a VIEW token bound to
+     { brand_id, customer_id, conversation_id, resource_type, resource_id }
+   → WhatsApp message carries the link:
+     https://<app>/nearby-stores#t=<token>
+     https://<app>/reservation/<reservation_id>#t=<token>
+
+2. OPEN
+   The SPA reads the token from the URL fragment and removes it from the address bar.
+   It sends the token only in the X-Buildwise-Page-Token header.
+
+3. VALIDATE (every request)
+   hash exists AND not revoked AND now < expires_at
+   AND resource_type matches the endpoint
+   AND resource_id matches the requested resource (path ID must equal the bound ID)
+   AND resource.brand_id = token.brand_id
+   AND resource.customer_id = token.customer_id (where the resource has a customer)
+   failure → 401 TOKEN_INVALID / TOKEN_EXPIRED; no resource details revealed
+
+4. MUTATE (only if the page needs it)
+   GET /api/page/context returns a separate MUTATE token
+   (same bindings, one allowed_action, e.g. CREATE_RESERVATION)
+   → POST with the MUTATE token
+   → in ONE Firestore transaction: check used_at is null → perform mutation → set used_at
+   → reuse → 401 TOKEN_USED
+
+5. EXPIRE
+   After the TTL, the page shows "This link has expired — ask in WhatsApp for a new one."
+   The customer asks in WhatsApp, and a fresh token is issued.
+```
+
+## 16.3 URL and response rules
+
+- **No sensitive PII in URLs.** The URL may contain only the route, a non-PII resource ID and the opaque token in the **fragment** (`#t=`). The fragment is not sent to servers, proxies or logs.
+- No name, phone number, email, precise location or customer ID in query strings or paths.
+- Customer-page API responses set `Cache-Control: no-store`. Pages set `Referrer-Policy: no-referrer`.
+- Responses expose only the minimum task information (`06_INTEGRATION_CONTRACTS.md` §14.5).
+- Location sent to `GET /api/stores/nearby` is coarsened to 2 decimal places (~1 km).
+
+---
+
+# 17. Rate limiting and abuse protection (MVP)
+
+The numbers are prototype defaults.
+
+| Surface | Limit |
+|---|---|
+| `POST /api/intents` | 60 req/min per IP; 600 req/min per brand; `Origin` must be in `allowed_storefront_origins` |
+| Intent token issuance | max 5 tokens per `web_session_id` per hour |
+| Customer-page endpoints (`/api/page/context`, `/api/stores/nearby`, `POST /api/reservations`) | 30 req/min per IP |
+| Invalid page/intent tokens | after 10 invalid attempts per IP in 10 min → `429` for 10 min |
+| `POST /api/ai/decide` | 30 req/min per user |
+| AI decisions per conversation | max 10 per 5 min (Firestore-backed counter). Beyond that, no Gemini call is made and at most one fixed "please wait" reply is sent per window. |
+| Inbound message length | text truncated to 2,000 characters before it reaches Gemini |
+| Reservations | `max_quantity_per_reservation` enforced in the transaction (`04_DATA_MODEL.md` §3) |
+| Request bodies | JSON ≤ 100 KB; retail files go through Cloud Storage (≤ 10 MB) |
+| Cost bound | Cloud Run max-instances cap configured for the MVP environment |
+
+HTTP limits may be in-memory per Cloud Run instance for the MVP. Limits that protect Gemini cost and customer experience (per-conversation AI decisions) are Firestore-backed, so that they hold across instances.
+
+Webhooks are protected by signature verification and idempotency (`03_TECH_ARCHITECTURE.md` §16.3) rather than by IP rate limits.
+
+---
+
+# 18. Web → WhatsApp intent token security
+
+The full contract is `06_INTEGRATION_CONTRACTS.md` §10.1. Security requirements:
+
+- opaque random value; no PII or internal identifiers encoded
+- only the hash is stored
+- 30-minute TTL, single use
+- valid only on the issuing brand's WhatsApp number
+- binding occurs only after the customer's WhatsApp identity is resolved server-side
+- invalid tokens fail silently to the customer (no oracle) and are audited
+- the token is stripped before message content reaches Gemini or storage
+
+The token only carries anonymous web intent (product and stage) into the conversation. If it is forwarded to another person, the recipient gains no customer data.
+
+---
+
+# 19. Security principle to remember
 
 > **AI may reason broadly enough to personalize, but it may act only within narrowly authorized boundaries.**

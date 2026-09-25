@@ -350,7 +350,7 @@ The application is responsible for verified facts and execution:
 
 Buildwise measures outcomes rather than message volume.
 
-Core outcome types:
+Core outcome types (journey vocabulary):
 
 ```text
 NO_ACTION
@@ -363,6 +363,13 @@ ALTERNATIVE_PURCHASE
 HUMAN_HANDOFF
 NO_CONVERSION
 ```
+
+What the AI **proposes** and what **actually happens** are recorded separately:
+
+- AI action → `AIRecommendation.action` (`NO_ACTION`, `EDUCATE`, `COMPARE`, `ONLINE_PURCHASE`, `STORE_DISCOVERY`, `STORE_RESERVATION`, `ALTERNATIVE_PRODUCT`, `HUMAN_HANDOFF`)
+- Business outcome → `Outcome.purchase_type` (`ONLINE`, `OFFLINE`, `ALTERNATIVE`, `NONE`), recorded only from verified evidence
+
+The mapping from each journey outcome type above to its canonical field, and from AI action to purchase type, is defined in `04_DATA_MODEL.md` §16.1–§16.2.
 
 ---
 

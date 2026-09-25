@@ -163,7 +163,7 @@ Example:
 ```json
 {
   "intent": {
-    "type": "urgent_purchase",
+    "intent_type": "URGENT_PURCHASE",
     "confidence": 0.93
   },
   "intervention": {
@@ -171,8 +171,9 @@ Example:
     "reason": "Customer needs the product today."
   },
   "next_best_action": {
-    "type": "STORE_RESERVATION",
+    "action": "STORE_RESERVATION",
     "store_id": "STORE_A",
+    "variant_id": "VAR_789",
     "reason": "Eligible nearby store has verified stock and is open."
   },
   "response_strategy": {
@@ -189,9 +190,17 @@ Example:
 
 The backend validates this output before execution.
 
+Field rules:
+
+- `intent.intent_type` must be a canonical `intent_type` (`04_DATA_MODEL.md` §11.1). Gemini may propose or refine `intent_type`. It **never** sets `intent_stage`, which is computed deterministically from behavioral events.
+- `next_best_action.action` must be a canonical action (§9).
+- Output that fails validation gets one repair attempt, then the deterministic fallback (`03_TECH_ARCHITECTURE.md` §16.2).
+
 ---
 
 # 9. AI action taxonomy
+
+The canonical taxonomy is `AIRecommendation.action` (`04_DATA_MODEL.md` §14):
 
 ```text
 NO_ACTION
@@ -203,6 +212,12 @@ STORE_RESERVATION
 ALTERNATIVE_PRODUCT
 HUMAN_HANDOFF
 ```
+
+**Action ≠ outcome.** The AI action is what Buildwise *proposes*. The business outcome (`Outcome.purchase_type`: `ONLINE | OFFLINE | ALTERNATIVE | NONE`) is what *actually happened*. Deterministic code records the outcome from verified evidence, such as a Shopify order or a completed reservation. The AI never records or asserts an outcome. The mapping between the two is `04_DATA_MODEL.md` §16.1.
+
+# 9.1 Execution model
+
+Each agent run is stateless and request-scoped inside Cloud Run. Conversation state is loaded from and persisted to Firestore (`03_TECH_ARCHITECTURE.md` §8.1). The agent keeps no memory between requests other than what is persisted in Firestore.
 
 ---
 
@@ -331,7 +346,7 @@ Minimum scenarios:
 11. Store is closed.
 12. Two customers attempt the same low-stock reservation.
 
-The expected system behavior should be defined for each.
+The expected system behavior for each of these 12 scenarios is defined in `08_TEST_PLAN.md` §7. The scenario numbers match.
 
 ---
 

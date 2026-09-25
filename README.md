@@ -39,4 +39,4 @@ Digital Intent
 - Google ADK
 - Gemini on Vertex AI
 - BigQuery
-- Looker
+- Looker (optional for the MVP — the Brand Console works without it)
