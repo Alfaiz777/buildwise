@@ -29,6 +29,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Firebase CLI local state
+.firebase/
+
 # Temporary
 tmp/
 temp/

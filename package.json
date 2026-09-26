@@ -1,0 +1,25 @@
+{
+  "name": "buildwise",
+  "private": true,
+  "description": "Buildwise — AI-powered omnichannel commerce intelligence for D2C brands",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "emulators": "firebase emulators:start --project demo-buildwise --only auth,firestore",
+    "seed:user": "npm run seed:user --workspace backend --",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run test --workspaces",
+    "test:emulator": "firebase emulators:exec --project demo-buildwise --only auth,firestore \"npm run test:emulator --workspace backend\""
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.31.0"
+  }
+}

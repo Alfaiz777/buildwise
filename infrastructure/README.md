@@ -1,0 +1,117 @@
+# Buildwise — Infrastructure (M1)
+
+How the foundation runs locally and how it is deployed to Google Cloud.
+
+```text
+Browser ──► Firebase Hosting ──(/api/** rewrite)──► Cloud Run: buildwise-api ──► Firestore
+   │                                                    ▲
+   └──── Firebase Auth (sign-in, ID tokens) ────────────┘ (ID token verified on every request)
+```
+
+| Piece | Local | Deployed |
+|---|---|---|
+| Frontend | Vite dev server `:5173` | Firebase Hosting (`frontend/dist`) |
+| API | `tsx watch` on `:8080` | Cloud Run service `buildwise-api` |
+| `/api` routing | Vite proxy → `:8080` | Hosting rewrite → Cloud Run (same origin) |
+| Auth | Auth emulator `:9099` | Firebase Authentication (Email/Password) |
+| Database | Firestore emulator `:8085` | Firestore (Native mode) |
+| Credentials | none (emulators) or `gcloud auth application-default login` | Cloud Run service account (ADC). No key files. |
+| Config | `backend/.env`, `frontend/.env.local` | Cloud Run env vars, `frontend/.env.production.local` at build time |
+| Secrets | none in M1 | Secret Manager, from M2 (Shopify) and later (Meta) |
+
+---
+
+## Local development
+
+Requires Node.js 24 (`.nvmrc`) and Java 21+ (Firestore emulator).
+
+```bash
+npm install
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env.local
+
+# terminal 1: Firebase emulators (Auth + Firestore, UI at http://127.0.0.1:4000)
+npm run emulators
+
+# terminal 2: provision a demo brand admin (no self-signup exists)
+npm run seed:user -- --email admin@demo.test --password 'demo-password-1' \
+  --brand-id brand_demo --brand-name "Demo Brand" --role BRAND_ADMIN
+
+# terminal 2: API
+npm run dev:backend
+
+# terminal 3: web app → http://localhost:5173, sign in as admin@demo.test
+npm run dev:frontend
+```
+
+Tests:
+
+```bash
+npm test               # backend + frontend unit tests (no emulators needed)
+npm run test:emulator  # full auth chain + Firestore rules against the emulators
+npm run typecheck
+npm run build
+```
+
+Windows note: after an emulator run, the Firestore emulator's `java.exe` sometimes keeps port 8085 open, and the next run then fails with "port taken". Find it with `netstat -ano | findstr :8085` and stop that PID.
+
+---
+
+## One-time Google Cloud / Firebase setup
+
+Replace `PROJECT_ID`. Region `asia-south1` is used throughout. If you change it,
+also change it in `firebase.json` (hosting rewrite) and `deploy-backend.sh`.
+
+1. **Project.** Create a GCP project and add Firebase to it (Firebase console → Add project → select the GCP project). Hosting rewrites to Cloud Run require the Blaze plan.
+
+2. **APIs.**
+   ```bash
+   gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
+     artifactregistry.googleapis.com firestore.googleapis.com \
+     identitytoolkit.googleapis.com --project PROJECT_ID
+   ```
+
+3. **Firestore.** Create the database in Native mode, region `asia-south1`.
+
+4. **Firebase Authentication.**
+   - Enable the **Email/Password** provider.
+   - Authentication → Settings → User actions: **disable "Enable create (sign-up)"**. Users are provisioned by an admin (seed script), never self-registered.
+   - Authentication → Settings → Authorized domains: keep the Hosting domain(s).
+
+5. **Web app config.** Firebase console → Project settings → Your apps → add a Web app. Copy its config into `frontend/.env.production.local` (git-ignored). These values are public identifiers, not secrets.
+
+6. **Runtime service account** (least privilege):
+   ```bash
+   gcloud iam service-accounts create buildwise-api --project PROJECT_ID
+   gcloud projects add-iam-policy-binding PROJECT_ID \
+     --member "serviceAccount:buildwise-api@PROJECT_ID.iam.gserviceaccount.com" \
+     --role roles/datastore.user
+   ```
+   Verifying ID tokens needs no IAM role (it uses Google's public keys).
+   `roles/secretmanager.secretAccessor` is granted per secret when secrets arrive (M2+).
+
+7. **Artifact Registry.**
+   ```bash
+   gcloud artifacts repositories create buildwise --repository-format docker \
+     --location asia-south1 --project PROJECT_ID
+   ```
+
+## Deploy
+
+```bash
+PROJECT_ID=PROJECT_ID infrastructure/scripts/deploy-backend.sh    # Cloud Build → Cloud Run
+PROJECT_ID=PROJECT_ID infrastructure/scripts/deploy-frontend.sh   # Hosting + Firestore rules
+```
+
+Provision the first real admin. The script refuses to write to a real project
+without `--confirm-project`. It uses your ADC credentials, which need Firebase
+Auth admin and Firestore write access:
+
+```bash
+GOOGLE_CLOUD_PROJECT=PROJECT_ID npm run seed:user -- --confirm-project PROJECT_ID \
+  --email admin@brand.example --password '<strong password>' \
+  --brand-id brand_xyz --brand-name "Brand XYZ" --role BRAND_ADMIN
+```
+
+Smoke test: open the Hosting URL, sign in, and confirm the home page shows the brand and role.
+`GET https://<hosting-domain>/api/health` should return `{"status":"ok"}`.

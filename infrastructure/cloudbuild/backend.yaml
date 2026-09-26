@@ -1,0 +1,9 @@
+# Builds the Buildwise API image from the repo root (workspace lockfile lives there).
+# Invoked by infrastructure/scripts/deploy-backend.sh.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '-f', 'backend/Dockerfile', '-t', '${_IMAGE}', '.']
+images:
+  - '${_IMAGE}'
+options:
+  logging: CLOUD_LOGGING_ONLY
