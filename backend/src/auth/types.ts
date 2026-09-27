@@ -1,10 +1,4 @@
-export const ROLES = [
-  'BRAND_ADMIN',
-  'BRAND_MARKETING',
-  'BRAND_OPERATIONS',
-  'RETAIL_MANAGER',
-  'RETAIL_STAFF',
-] as const;
+export const ROLES = ['BRAND_ADMIN', 'BRAND_MARKETING', 'BRAND_OPERATIONS', 'RETAIL_MANAGER', 'RETAIL_STAFF'] as const;
 
 export type Role = (typeof ROLES)[number];
 

@@ -30,10 +30,6 @@ export function brandDoc(db: Firestore, principal: Principal): DocumentReference
   return db.collection('brands').doc(principal.brandId);
 }
 
-export function tenantCollection(
-  db: Firestore,
-  principal: Principal,
-  name: TenantCollection,
-): CollectionReference {
+export function tenantCollection(db: Firestore, principal: Principal, name: TenantCollection): CollectionReference {
   return brandDoc(db, principal).collection(name);
 }

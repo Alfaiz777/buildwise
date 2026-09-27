@@ -1,9 +1,4 @@
-import {
-  onIdTokenChanged,
-  signInWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  type Auth,
-} from 'firebase/auth';
+import { onIdTokenChanged, signInWithEmailAndPassword, signOut as firebaseSignOut, type Auth } from 'firebase/auth';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AuthContext, type AuthState, type AuthUser } from './authContext';
 

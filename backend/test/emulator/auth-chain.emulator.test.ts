@@ -17,7 +17,9 @@ const PROJECT = 'demo-buildwise';
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const FS_HOST = process.env.FIRESTORE_EMULATOR_HOST;
 if (!AUTH_HOST || !FS_HOST) {
-  throw new Error('Emulator tests need FIREBASE_AUTH_EMULATOR_HOST and FIRESTORE_EMULATOR_HOST (use npm run test:emulator)');
+  throw new Error(
+    'Emulator tests need FIREBASE_AUTH_EMULATOR_HOST and FIRESTORE_EMULATOR_HOST (use npm run test:emulator)',
+  );
 }
 
 const { auth, db } = initFirebase(PROJECT);

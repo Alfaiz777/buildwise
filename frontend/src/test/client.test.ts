@@ -7,7 +7,11 @@ const json = (status: number, body: unknown) =>
 describe('createApiClient', () => {
   it('sends the Firebase ID token as a Bearer token and no brand_id', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => json(200, { ok: true }));
-    const api = createApiClient({ baseUrl: '', getIdToken: async () => 'id-token-1', fetchImpl: fetchImpl as typeof fetch });
+    const api = createApiClient({
+      baseUrl: '',
+      getIdToken: async () => 'id-token-1',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
 
     await expect(api.get('/api/me')).resolves.toEqual({ ok: true });
 

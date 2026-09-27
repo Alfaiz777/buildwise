@@ -1,0 +1,9 @@
+node_modules
+dist
+# Other tools' git worktrees (e.g. Kilo Code) are not ours to format.
+.kilo
+coverage
+package-lock.json
+# The specification is hand-formatted Markdown; do not reflow it.
+docs
+*.md

@@ -4,6 +4,7 @@
 **/.env.*
 .git
 .firebase
+.kilo
 docs
 frontend/src
 frontend/public

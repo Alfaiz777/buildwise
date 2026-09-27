@@ -43,7 +43,10 @@ const brandId = values['brand-id'] ?? fail('--brand-id is required');
 const roleArg = values.role ?? fail('--role is required');
 if (!(ROLES as readonly string[]).includes(roleArg)) fail(`--role must be one of ${ROLES.join(', ')}`);
 const role = roleArg as Role;
-const storeIds = values['store-ids'].split(',').map((s) => s.trim()).filter(Boolean);
+const storeIds = values['store-ids']
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 if (isRetailRole(role) && storeIds.length === 0) fail('RETAIL_* roles require --store-ids');
 if (!isRetailRole(role) && storeIds.length > 0) fail('--store-ids only applies to RETAIL_* roles');
 

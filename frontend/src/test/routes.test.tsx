@@ -55,7 +55,13 @@ describe('protected route', () => {
   it('shows the backend message when the user is not provisioned', async () => {
     const api: ApiClient = {
       get: vi.fn(async () => {
-        throw new ApiError(403, 'USER_NOT_PROVISIONED', 'Your account has not been set up for Buildwise yet.', false, 'req-1');
+        throw new ApiError(
+          403,
+          'USER_NOT_PROVISIONED',
+          'Your account has not been set up for Buildwise yet.',
+          false,
+          'req-1',
+        );
       }) as ApiClient['get'],
     };
     renderAt('/', { user: { uid: 'u2', email: 'x@y.test' } }, api);

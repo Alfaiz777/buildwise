@@ -38,7 +38,13 @@ describe('auth chain step 4 — tenant boundary', () => {
 
 describe('assertTenantAccess', () => {
   const admin: Principal = { userId: 'u1', email: null, brandId: 'brand_A', role: 'BRAND_ADMIN', storeIds: [] };
-  const staff: Principal = { userId: 'u2', email: null, brandId: 'brand_A', role: 'RETAIL_STAFF', storeIds: ['store_1'] };
+  const staff: Principal = {
+    userId: 'u2',
+    email: null,
+    brandId: 'brand_A',
+    role: 'RETAIL_STAFF',
+    storeIds: ['store_1'],
+  };
 
   const status = (fn: () => void) => {
     try {

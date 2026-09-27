@@ -22,10 +22,7 @@ export function requireRole(...roles: Role[]): RequestHandler {
  * Another tenant's resource, or a store outside a retail user's store_ids,
  * yields 404 so its existence is not revealed.
  */
-export function assertTenantAccess(
-  principal: Principal,
-  resource: { brandId: string; storeId?: string },
-): void {
+export function assertTenantAccess(principal: Principal, resource: { brandId: string; storeId?: string }): void {
   if (resource.brandId !== principal.brandId) throw Errors.notFound();
   if (isRetailRole(principal.role)) {
     if (!resource.storeId || !principal.storeIds.includes(resource.storeId)) throw Errors.notFound();
