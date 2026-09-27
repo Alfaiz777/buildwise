@@ -2,7 +2,7 @@
 
 ## Status
 
-**M0 — Interfaces frozen before external implementation**
+**M0 — Interfaces frozen before external implementation.** Updated by the post-M0 architecture change (`00_M0_SPECIFICATION_FREEZE.md` §11.8): provider ports, simulator channel, platform/brand administration routes.
 
 ---
 
@@ -13,12 +13,31 @@ Buildwise should depend on stable internal interfaces rather than directly coupl
 ```text
 Buildwise domain logic
         ↓
-Internal contract
+Internal contract (port)
         ↓
-Provider
+Provider (adapter)
         ↓
 External system
 ```
+
+## 1.1 Provider ports
+
+These five ports are the **only** points where the `local` and `gcp` execution profiles differ (`03_TECH_ARCHITECTURE.md` §2.2):
+
+| Port | Local adapter | GCP adapter |
+|---|---|---|
+| `CommerceProvider` (§2) | `MockCommerceProvider` | `ShopifyCommerceProvider` |
+| `MessagingProvider` (§3) | `SimulatorMessagingProvider` | `WhatsAppMessagingProvider` (+ `SimulatorMessagingProvider` as fallback) |
+| `AgentRuntime` (§6) | `MockAgentRuntime` | `AdkGeminiAgentRuntime` |
+| `FileStorageProvider` (§6a) | `LocalFileStorageProvider` | `GCSFileStorageProvider` |
+| `EventSink` (§5) | `LocalEventSink` | `BigQueryEventSink` |
+
+Rules:
+
+- Domain and application logic depends only on the port, never on an adapter. No business rule may live in an adapter.
+- Firestore and Firebase Auth are **not** ports. They are direct SDK dependencies (emulators locally, real services in GCP).
+- Secrets are not a port: Cloud Run exposes Secret Manager values as environment variables; locally they come from git-ignored `.env` files.
+- Every port has one shared contract test suite that every adapter must pass (`08_TEST_PLAN.md` §4).
 
 ---
 
@@ -47,96 +66,141 @@ MockCommerceProvider
 ShopifyCommerceProvider
 ```
 
-The mock provider exists so the product can be developed and tested before external authentication/integration is complete.
+`MockCommerceProvider` serves a deterministic fixture dataset (products, variants, customers, orders, inventory, locations) in the same normalized shapes, including Shopify-format IDs. It is the commerce source for the local profile and for automated tests. It is **not** the judged demo path: the `gcp` profile uses `ShopifyCommerceProvider`.
 
 ---
 
 # 3. MessagingProvider
 
+One adapter per customer channel. The pipeline selects the adapter by `Conversation.channel`, and both adapters can be active at once in `gcp`.
+
 ```text
 MessagingProvider
-
-sendTextMessage()
-sendTemplateMessage()
-receiveMessage()
-getMessageStatus()
-sendInteractiveMessage()
+  channel                      WHATSAPP | SIMULATOR
+  verifyInbound(request)       signature check (WhatsApp); simulator relies on console auth
+  normalizeInbound(raw)        → InboundMessage[]           (was receiveMessage())
+  normalizeStatus(raw)         → DeliveryStatusUpdate[]     (was getMessageStatus())
+  send(OutboundMessage)        → SendResult                 (text / template / interactive;
+                                                              was sendTextMessage(),
+                                                              sendTemplateMessage(),
+                                                              sendInteractiveMessage())
 ```
 
 Implementations:
 
 ```text
-MockMessagingProvider
-WhatsAppProvider
+SimulatorMessagingProvider
+WhatsAppMessagingProvider
+```
+
+`InboundMessage` (channel-neutral):
+
+```json
+{
+  "channel": "SIMULATOR",
+  "brand_id": "...",
+  "external_customer_ref": "sim:customer_01",
+  "external_message_id": "...",
+  "received_at": "...",
+  "content": { "type": "TEXT", "text": "I need it today" }
+}
+```
+
+`content.type` is one of `TEXT`, `LOCATION` (`latitude`, `longitude`) or `INTERACTIVE_REPLY` (`option_id`).
+
+Adapters only translate and transport. Policy (consent, opt-out, customer-service window, templates) is enforced by the `ConversationPipeline` before `send()` is called (`03_TECH_ARCHITECTURE.md` §8.2).
+
+`SimulatorMessagingProvider.send()` writes the outbound message to the conversation, where the simulator UI reads it. It never contacts an external service.
+
+---
+
+# 4. Retail import and retail domain services
+
+The earlier `RetailProvider` mixed an import adapter with domain logic. It is split as follows.
+
+**Retail import (adapter concern):** parsing CSV/XLSX into the canonical retail schema (`04_DATA_MODEL.md` §9.1).
+
+```text
+RetailFileParser
+  parseStores(fileStream)      → canonical store rows + row errors
+  parseInventory(fileStream)   → canonical inventory rows + row errors
+```
+
+The file itself is read through `FileStorageProvider` (§6a). The parser is identical in both profiles. A future `POSRetailSource` would be a new adapter behind the same canonical output.
+
+**Retail domain services (not adapters; identical in every profile, over Firestore):**
+
+```text
+RetailImportService       validate → normalize → SKU mapping → Firestore (retailImports report)
+StoreService              getStore, findEligibleStores (distance, hours, status, availability)
+InventoryService          checkAvailability
+ReservationService        createReservation (transaction, 03 §15), updateReservation (transitions)
 ```
 
 ---
 
-# 4. RetailProvider
+# 5. EventSink
+
+Analytics **export** of `CommerceEvent`s. Firestore remains the operational record: events are always written to `commerceEvents` first, then emitted.
 
 ```text
-RetailProvider
-
-importStores()
-importInventory()
-getStore()
-getInventory()
-findEligibleStores()
-checkAvailability()
-createReservation()
-updateReservation()
+EventSink
+  emit(events: CommerceEvent[]) → void
 ```
 
-Implementation for MVP:
+Implementations:
 
 ```text
-SpreadsheetRetailProvider
+LocalEventSink       append-only JSON Lines files under the local data directory
+BigQueryEventSink    BigQuery streaming insert into the events table
 ```
 
-Future:
-
-```text
-POSRetailProvider
-```
+The earlier `AnalyticsProvider.queryMetrics()` is **not** part of the sink. Brand Console metrics are computed by application services from Firestore, so the console works without BigQuery or Looker. Emission failures are logged and retried, and they never fail the user-facing request.
 
 ---
 
-# 5. AnalyticsProvider
+# 6. AgentRuntime
+
+Replaces the earlier `AIProvider`.
 
 ```text
-AnalyticsProvider
-
-recordEvent()
-recordOutcome()
-queryMetrics()
+AgentRuntime
+  runtime                                   MOCK | ADK_GEMINI
+  decide(DecisionInput, ToolExecutor)      → AgentDecision
 ```
 
-MVP implementation:
+Implementations:
 
 ```text
-FirestoreEventWriter
-BigQueryEventWriter
+MockAgentRuntime          deterministic rules; local development and automated tests only
+AdkGeminiAgentRuntime     Google ADK for TypeScript + Gemini on Vertex AI
 ```
+
+- `DecisionInput` is the controlled context package (`04_DATA_MODEL.md` §20) plus the inbound message and the relevant conversation history.
+- `AgentDecision` is the structured decision contract (`05_AI_AGENT_SPEC.md` §8).
+- Both runtimes call tools **only** through the backend `ToolExecutor`, which enforces tool authorization and the AI Action Guardrail.
+- The runtime never writes to Firestore directly.
 
 ---
 
-# 6. AIProvider
+# 6a. FileStorageProvider
 
 ```text
-AIProvider
-
-understandIntent()
-buildDecision()
-generateResponse()
+FileStorageProvider
+  createUploadTarget(key, contentType, maxBytes) → UploadTarget { method, url, headers, expires_at }
+  openRead(key)                                  → readable stream
+  delete(key)                                    → void
 ```
 
-MVP implementation:
+Implementations:
 
 ```text
-GeminiAIProvider
+LocalFileStorageProvider   files under the local data directory; upload URL is a short-lived,
+                           authenticated backend endpoint (local profile only)
+GCSFileStorageProvider     Cloud Storage; upload URL is a V4 signed URL
 ```
 
-The provider should hide raw model-specific details from the rest of the application.
+The 10 MB retail file limit is enforced by `maxBytes` in both adapters and re-checked when the file is read.
 
 ---
 
@@ -155,7 +219,7 @@ Internal ReservationService input:
 }
 ```
 
-`brand_id` and `customer_id` are **always derived server-side**. They come from the resolved WhatsApp identity (agent tool path) or from a validated page mutation token (customer page path). They are never taken from client-supplied request fields.
+`brand_id` and `customer_id` are **always derived server-side**. They come from the customer resolved by the `ConversationPipeline` from its channel identity (agent tool path; WhatsApp or simulator) or from a validated page mutation token (customer page path). They are never taken from client-supplied request fields.
 
 The backend must validate before creation. Creation runs in the Firestore transaction defined in `03_TECH_ARCHITECTURE.md` §15.
 
@@ -242,7 +306,7 @@ Do not let Shopify-specific credentials leak into:
 - Gemini context
 - browser storage
 
-The exact Shopify auth/distribution mechanism must be verified against the current Shopify development setup during the Shopify milestone.
+The exact Shopify auth/distribution mechanism must be verified against the current Shopify development setup during spike S1 and phase G2 (`10_EXECUTION_PLAN.md`). Local milestones use `MockCommerceProvider`.
 
 For the hackathon MVP, one controlled development-store setup is acceptable as long as the end-to-end product behavior works.
 
@@ -262,14 +326,17 @@ Cloud Run
 
 Cloud Run:
 
-1. verifies the incoming request
+1. verifies the incoming request (`WhatsAppMessagingProvider.verifyInbound`)
 2. resolves the connected brand/WABA
-3. resolves the customer
-4. creates/updates the conversation
-5. sends relevant context to the agent
-6. records response and status
+3. normalizes the payload (`normalizeInbound`)
+4. hands each `InboundMessage` to the **`ConversationPipeline`** (`03_TECH_ARCHITECTURE.md` §8.2), which:
+   resolves the customer, creates/updates the conversation, applies consent/window policy,
+   runs the agent, applies the guardrail, executes tools, persists, and sends the reply
+5. records response and status
 
 Signature verification and idempotency follow `03_TECH_ARCHITECTURE.md` §16.3.
+
+The simulator channel (§14.2) hands its messages to the **same** `ConversationPipeline` at step 4. There is no separate simulator AI flow.
 
 ## 10.1 Web → WhatsApp intent handshake
 
@@ -290,7 +357,7 @@ WhatsApp webhook → Cloud Run
    ↓  resolve/create Customer from WhatsApp identity
    ↓  detect token, validate, consume (transaction)
    ↓  bind CustomerIntent.customer_id, set Conversation.current_intent_id
-ADK + Gemini run with the bound intent as context
+AgentRuntime runs with the bound intent as context
 ```
 
 Token rules:
@@ -324,15 +391,15 @@ If the token is missing, invalid, expired, already used or for another brand:
 - the customer is not told why (no oracle for token guessing)
 - an AuditEvent is recorded with a reason code
 
-The token string is removed from the message text before it reaches Gemini, and it is not stored in the ConversationMessage content.
+The token string is removed from the message text before it reaches the agent runtime (Gemini or mock), and it is not stored in the ConversationMessage content.
 
-The Web Conversation Simulator uses the same parsing when a simulator message contains the prefix.
+The simulator channel uses the same parsing and validation when a simulator message contains the prefix. In the simulator, "brand's WhatsApp number" means the brand the simulator is acting for.
 
 ---
 
-# 11. WhatsApp outbound contract
+# 11. Outbound message contract
 
-The application should produce an internal message request:
+The application produces a channel-neutral outbound message. The `MessagingProvider` for the conversation's channel sends it:
 
 ```json
 {
@@ -345,7 +412,7 @@ The application should produce an internal message request:
 }
 ```
 
-The WhatsApp provider converts this into the correct external API request.
+`WhatsAppMessagingProvider` converts this into the correct external API request. `SimulatorMessagingProvider` stores it for the simulator UI.
 
 ---
 
@@ -428,30 +495,67 @@ UNMAPPED
 
 # 14. Internal API boundaries
 
-Example Cloud Run endpoints:
+Cloud Run endpoints, grouped by interface:
 
 ```text
-POST /api/auth/session
-GET  /api/brands/:brandId
-POST /api/integrations/shopify/connect
-POST /api/integrations/shopify/sync
-GET  /api/products
-GET  /api/customers/:id
-POST /api/intents
-POST /api/ai/decide
-POST /api/reservations
-GET  /api/reservations
-GET  /api/reservations/:id
-PATCH /api/reservations/:id
-GET  /api/page/context
-POST /api/webhooks/shopify
-POST /api/webhooks/whatsapp
-POST /api/retail/import
-GET  /api/stores/nearby
-POST /api/analytics/events
+# Public
+GET   /api/health                                  (liveness; no auth, no data)
+
+# Any console user
+GET   /api/me
+
+# Platform Admin Console (PLATFORM_ADMIN) — §14.6
+GET   /api/platform/brands
+POST  /api/platform/brands
+PATCH /api/platform/brands/:brandId                 (status: ACTIVE | SUSPENDED)
+POST  /api/platform/brands/:brandId/admins          (provision a BRAND_ADMIN)
+GET   /api/platform/brands/:brandId/retailers       (metadata)
+GET   /api/platform/brands/:brandId/stores          (metadata)
+GET   /api/platform/integrations                    (health metadata, all brands)
+GET   /api/platform/reservations                    (operational, no customer PII)
+GET   /api/platform/outcomes/summary                (aggregate)
+GET   /api/platform/audit
+
+# Brand Console (BRAND_ADMIN / BRAND_MEMBER per 07 §4.0) — §14.7 for administration
+GET   /api/brands/:brandId
+GET   /api/brand/members                 POST /api/brand/members          (BRAND_ADMIN)
+GET   /api/brand/retailers               POST /api/brand/retailers        (BRAND_ADMIN)
+POST  /api/brand/retailers/:retailerId/users                              (BRAND_ADMIN)
+PATCH /api/brand/stores/:storeId                   (assign retailer_id; BRAND_ADMIN)
+POST  /api/integrations/shopify/connect            (BRAND_ADMIN)
+POST  /api/integrations/shopify/sync               (BRAND_ADMIN)
+GET   /api/products
+GET   /api/customers/:id
+POST  /api/retail/import                           (BRAND_ADMIN)
+POST  /api/analytics/events
+
+# Brand + Retailer Consoles
+GET   /api/reservations
+GET   /api/reservations/:id
+PATCH /api/reservations/:id                        (RETAILER_ADMIN / RETAILER_STAFF)
+
+# Customer AI Channel
+POST  /api/channels/simulator/messages             (simulator channel; §14.2)
+GET   /api/channels/simulator/conversations/:conversationId/messages
+POST  /api/webhooks/whatsapp                       (WhatsApp channel; §10)
+GET   /api/page/context                            (contextual pages)
+GET   /api/stores/nearby
+POST  /api/reservations                            (page mutation token)
+
+# Storefront + commerce events
+POST  /api/intents
+POST  /api/webhooks/shopify
+
+# Internal / profile-specific
+POST  /api/internal/reservations/expire            (expiry sweep, 03 §15; not callable by browsers)
+PUT   /api/local-files/uploads/:uploadId           (LocalFileStorageProvider upload target; local profile only, 06 §6a)
 ```
 
-Exact routes may change during implementation, but responsibilities must remain separated. The contracts in §14.1–§14.5 are the minimum the implementation must honor.
+Exact routes may change during implementation, but responsibilities must remain separated. The contracts in §14.1–§14.7 are the minimum the implementation must honor.
+
+`POST /api/ai/decide` is **retired**. The simulator is a customer-channel adapter (§14.2), not a standalone AI endpoint.
+
+The earlier example `POST /api/auth/session` is removed: console authentication uses Firebase ID tokens as Bearer tokens on every request, with no server session (`07_SECURITY_SPEC.md` §4.1).
 
 Authentication types used below:
 
@@ -518,55 +622,71 @@ Response `202`:
 
 Errors: `400 INVALID_EVENT`, `403 ORIGIN_NOT_ALLOWED`, `404 UNKNOWN_VARIANT`, `429 RATE_LIMITED`.
 
-## 14.2 POST /api/ai/decide
+## 14.2 Simulator channel
 
-Runs the same Cloud Run → ADK → Gemini → tools → guardrail path as the WhatsApp webhook. It is the entry point for the **Web Conversation Simulator**.
+The simulator is the **customer-channel adapter** used during local development, and as the approved fallback in `gcp`. It is the simulator's equivalent of the WhatsApp webhook.
 
-Auth: `FIREBASE`, role `BRAND_ADMIN`.
+It enters the **same `ConversationPipeline`** as WhatsApp: identity resolution, conversation state, consent/window policy, `AgentRuntime`, guardrail, tools, persistence and outcome recording. There is no separate simulator AI flow.
+
+### POST /api/channels/simulator/messages
+
+Auth: `FIREBASE`, role `BRAND_ADMIN`. The simulator acts for the caller's own brand, and it is enabled only when the simulator channel is configured (`03_TECH_ARCHITECTURE.md` §2.2).
 
 Request:
 
 ```json
 {
-  "channel": "SIMULATOR",
-  "simulator_customer_ref": "sim_customer_01",
-  "conversation_id": "conv_123",
-  "message": { "text": "I need it today" },
-  "location": { "latitude": 19.07, "longitude": 72.87 }
+  "simulator_customer_ref": "customer_01",
+  "client_message_id": "uuid",
+  "content": { "type": "TEXT", "text": "I need it today" }
 }
 ```
 
-- `conversation_id`: optional; omitted → new conversation
-- `simulator_customer_ref`: a simulator customer inside the caller's own brand
-- `location`: optional; simulates a WhatsApp location share
-- `message.text` may contain `START_BUILDWISE_<INTENT_TOKEN>` (§10.1)
+- `simulator_customer_ref` identifies a synthetic customer. It resolves through `channel_identities` as `SIMULATOR` / `sim:customer_01` (`04_DATA_MODEL.md` §6). The first message creates the Customer, just like a first WhatsApp message.
+- `client_message_id` is the idempotency key (the simulator's equivalent of a WhatsApp message ID). The receipt key is `SIMULATOR:{brand_id}:MESSAGE:{client_message_id}`.
+- `content.type` is one of `TEXT` (may contain `START_BUILDWISE_<INTENT_TOKEN>`, §10.1), `LOCATION` (`latitude`, `longitude`; simulates a location share) or `INTERACTIVE_REPLY` (`option_id`).
+- The conversation is resolved by the pipeline, exactly as for WhatsApp. The client never supplies `conversation_id`.
 
-Response `200`:
+Response `200`: the pipeline ran synchronously. The response contains the messages that `SimulatorMessagingProvider.send()` produced during this run, plus a decision summary for the brand admin.
 
 ```json
 {
   "conversation_id": "conv_123",
-  "recommendation": {
+  "inbound_message_id": "msg_001",
+  "outbound_messages": [
+    {
+      "message_id": "msg_002",
+      "message_type": "INTERACTIVE",
+      "text": "Store A (2.1 km) is open and has it in stock. Shall I reserve one for you?",
+      "options": [
+        { "option_id": "reserve_store_A", "label": "Reserve at Store A" },
+        { "option_id": "other_stores", "label": "See other stores" },
+        { "option_id": "buy_online", "label": "Buy online" }
+      ]
+    }
+  ],
+  "decision": {
     "recommendation_id": "rec_456",
     "action": "STORE_RESERVATION",
-    "target_store_id": "store_A",
-    "target_variant_id": "var_789",
     "guardrail_status": "ALLOWED",
-    "decision_source": "GEMINI",
-    "rationale_summary": "Customer needs it today; Store A is open with verified stock."
-  },
-  "reply": {
-    "message_type": "INTERACTIVE",
-    "text": "Store A (2.1 km) is open and has it in stock. Shall I reserve one for you?",
-    "options": ["Reserve at Store A", "See other stores", "Buy online"]
-  },
-  "executed_action": null
+    "runtime": "MOCK",
+    "decision_source": "AGENT",
+    "executed_action": null
+  }
 }
 ```
 
-`executed_action` is non-null only when a backend action actually ran (e.g. `{ "type": "RESERVATION_CREATED", "reservation_id": "..." }`).
+- `decision.runtime` is always shown in the simulator UI. A `MOCK` decision is labeled as deterministic mock AI, never as Gemini.
+- `executed_action` is non-null only when a backend action actually ran (e.g. `{ "type": "RESERVATION_CREATED", "reservation_id": "..." }`).
+- A replayed `client_message_id` returns the original result.
 
-Errors: `400 INVALID_REQUEST`, `403 FORBIDDEN`, `429 RATE_LIMITED`. When Gemini fails, the response is still `200` with `decision_source = DETERMINISTIC_FALLBACK` (`03_TECH_ARCHITECTURE.md` §16.2).
+Errors: `400 INVALID_REQUEST`, `403 FORBIDDEN`, `404 CHANNEL_DISABLED`, `429 RATE_LIMITED`. When the agent runtime fails, the response is still `200`, with `decision_source = DETERMINISTIC_FALLBACK` (`03_TECH_ARCHITECTURE.md` §16.2).
+
+### GET /api/channels/simulator/conversations/:conversationId/messages
+
+Returns the simulator conversation's messages after an optional `after` message ID. The simulator UI polls this for messages sent outside a request, for example "your order is ready" when a retailer marks a reservation `READY`.
+
+Auth: `FIREBASE`, `BRAND_ADMIN`. The conversation must be a `SIMULATOR` conversation of the caller's brand.
 
 ## 14.3 GET /api/stores/nearby
 
@@ -655,13 +775,18 @@ Response `201` (or `200` on idempotent replay):
 
 Errors: `409 OUT_OF_STOCK | STORE_INACTIVE | RESERVATIONS_DISABLED | QUANTITY_LIMIT_EXCEEDED`, `401 TOKEN_INVALID | TOKEN_EXPIRED | TOKEN_USED`.
 
-When a customer confirms a reservation in WhatsApp, the agent's `create_reservation()` tool calls the same ReservationService directly (no HTTP). It uses the resolved WhatsApp customer and `idempotency_key = recommendation_id`.
+When a customer confirms a reservation in a conversation (WhatsApp or simulator channel), the agent's `create_reservation()` tool calls the same ReservationService directly (no HTTP). It uses the customer resolved by the pipeline and `idempotency_key = recommendation_id`.
 
 ### GET /api/reservations
 
 Lists reservations for the Retailer Console and the Brand Console.
 
-Auth: `FIREBASE`. `RETAIL_MANAGER` / `RETAIL_STAFF` see only their `store_ids`. `BRAND_ADMIN` / `BRAND_OPERATIONS` see all stores of their brand.
+Auth: `FIREBASE`. Scoping per `07_SECURITY_SPEC.md` §4.0:
+
+- `BRAND_ADMIN` / `BRAND_MEMBER`: all reservations of their brand (view)
+- `RETAILER_ADMIN`: reservations of all stores of their retailer
+- `RETAILER_STAFF`: reservations of their `store_ids` only
+- `PLATFORM_ADMIN`: uses `GET /api/platform/reservations` instead (§14.6)
 
 Query: `store_id` (optional), `status` (optional), `limit` (default 50).
 
@@ -695,7 +820,7 @@ Same auth and scoping as the list. It returns one reservation in the same shape.
 
 Retailer status transition.
 
-Auth: `FIREBASE`, `RETAIL_MANAGER` / `RETAIL_STAFF` for the reservation's store.
+Auth: `FIREBASE`. `RETAILER_ADMIN` for any store of their retailer, or `RETAILER_STAFF` for a store in their `store_ids`. Brand roles can view reservations but do not perform store fulfillment transitions.
 
 Request:
 
@@ -760,6 +885,65 @@ No customer name, phone number or other customer PII is returned.
 
 Errors: `401 TOKEN_INVALID | TOKEN_EXPIRED`, `429 RATE_LIMITED`.
 
+## 14.6 Platform administration
+
+Auth: `FIREBASE`, role `PLATFORM_ADMIN`, for every route in this section. Every state-changing call writes a `PlatformAuditEvent`, plus an `AuditEvent` in the affected brand (`04_DATA_MODEL.md` §18.0). None of these routes return customer PII or conversation content (`07_SECURITY_SPEC.md` §4.2).
+
+### POST /api/platform/brands
+
+```json
+{ "name": "Brand XYZ" }
+```
+
+Response `201`: `{ "brand_id": "...", "name": "Brand XYZ", "status": "ACTIVE", "created_at": "..." }`. The server generates `brand_id`.
+
+### PATCH /api/platform/brands/:brandId
+
+```json
+{ "status": "SUSPENDED", "reason": "..." }
+```
+
+`status` is `ACTIVE` or `SUSPENDED`. Suspension takes effect on the next request of every user of that brand, including its retailer users.
+
+### POST /api/platform/brands/:brandId/admins
+
+Provisions a `BRAND_ADMIN` for the brand.
+
+```json
+{ "email": "admin@brand.example" }
+```
+
+Response `201`: `{ "user_id": "...", "email": "...", "role": "BRAND_ADMIN", "password_setup_link": "https://..." }`. The link is an Admin SDK password-reset link that the platform admin hands over; there is no email service in the MVP.
+
+Errors: `409 USER_EXISTS_IN_OTHER_BRAND`.
+
+### Read routes
+
+| Route | Returns |
+|---|---|
+| `GET /api/platform/brands` | brand registry: `brand_id, name, status, created_at` |
+| `GET /api/platform/brands/:brandId/retailers` | `retailer_id, name, status, store_count` |
+| `GET /api/platform/brands/:brandId/stores` | `store_id, store_name, city, store_status, retailer_id` |
+| `GET /api/platform/integrations` | per brand: provider, status, `last_sync_at`, `last_error` code. **No credentials.** |
+| `GET /api/platform/reservations` | `reservation_id, brand_id, store_id, status, quantity, created_at, expires_at`. **No customer fields.** |
+| `GET /api/platform/outcomes/summary` | per brand and period: outcome counts and values by `purchase_type` |
+| `GET /api/platform/audit` | `platformAuditEvents`, newest first |
+
+## 14.7 Brand administration
+
+Auth: `FIREBASE`, role `BRAND_ADMIN`, for every state-changing route in this section. `BRAND_MEMBER` may call the `GET` routes. The brand always comes from the principal.
+
+| Route | Body / result |
+|---|---|
+| `POST /api/brand/members` | `{ "email", "role": "BRAND_ADMIN" \| "BRAND_MEMBER" }` → user + `password_setup_link` |
+| `GET /api/brand/members` | brand users: `user_id, email, role, status` |
+| `POST /api/brand/retailers` | `{ "name" }` → `{ "retailer_id", "name", "status" }` |
+| `GET /api/brand/retailers` | the brand's retailers |
+| `POST /api/brand/retailers/:retailerId/users` | `{ "email", "role": "RETAILER_ADMIN" \| "RETAILER_STAFF", "store_ids"? }` → user + `password_setup_link`. `store_ids` is required for `RETAILER_STAFF`, and every store must belong to the retailer. |
+| `PATCH /api/brand/stores/:storeId` | `{ "retailer_id": "..." \| null }`: assign or unassign a store's retailer |
+
+Errors: `409 USER_EXISTS_IN_OTHER_BRAND`, `422 STORE_NOT_IN_RETAILER`, `404 NOT_FOUND` for another brand's retailer or store.
+
 ---
 
 # 15. Provider isolation rule
@@ -807,3 +991,15 @@ failure tests
 ```
 
 External integration tests should be isolated so the domain logic remains testable without live services.
+
+Each port has **one** contract test suite. The local adapter runs it in every build. The real adapter runs the same suite once it exists (phase G2, `10_EXECUTION_PLAN.md` §4), which is how the two profiles are kept behaviorally equivalent.
+
+## 17.1 Integration spike findings
+
+Findings from the isolated integration spikes (S1 Shopify, S2 Meta WhatsApp, S3 ADK + Gemini; `10_EXECUTION_PLAN.md` §5) are recorded here when available. They must not change a contract without an explicit spec update.
+
+```text
+S1 Shopify:        (pending)
+S2 Meta WhatsApp:  (pending)
+S3 ADK + Gemini:   (pending; record in 05_AI_AGENT_SPEC.md)
+```

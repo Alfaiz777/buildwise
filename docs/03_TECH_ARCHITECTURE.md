@@ -2,7 +2,9 @@
 
 ## Status
 
-**M0 — Frozen target architecture**
+**M0 — Frozen target architecture.** Updated by the post-M0 architecture change (`00_M0_SPECIFICATION_FREEZE.md` §11.8): four interfaces, provider/adapter layering, local and GCP execution profiles.
+
+The Google Cloud target architecture below is unchanged. The local profile runs the **same** logical architecture, with local adapters (§2.2).
 
 ---
 
@@ -28,15 +30,16 @@ Retailer / Shopify
 # 2. High-level architecture
 
 ```
-                         BUILDWISE
-                            │
-                ┌───────────┴───────────┐
-                ↓                       ↓
-          BRAND CONSOLE          RETAILER CONSOLE
-          React + TypeScript     React + TypeScript
-                │                       │
-                └───────────┬───────────┘
-                            ↓
+                              BUILDWISE
+                                  │
+        ┌─────────────────┬───────┴─────────┬─────────────────────┐
+        ↓                 ↓                 ↓                     ↓
+  PLATFORM ADMIN     BRAND CONSOLE    RETAILER CONSOLE    CUSTOMER AI CHANNEL
+     CONSOLE                                              WhatsApp (+ simulator)
+        │                 │                 │             + contextual pages
+        └─────────────────┴────────┬────────┴─────────────────────┘
+                     React + TypeScript (one app)
+                                   ↓
                        Firebase
                     Hosting + Auth
                             ↓
@@ -67,6 +70,68 @@ Retailer / Shopify
                      Looker (optional)
 ```
 
+The diagram shows the **GCP profile**. In the local profile, the same boxes are served by the local adapters (§2.2).
+
+## 2.1 Layering (ports and adapters)
+
+Buildwise is **one** logical architecture. Business logic is written once and does not know which profile it runs in.
+
+```text
+backend/src/
+  domain/        pure rules, no I/O: intent stage rules, reservation state machine,
+                 action → outcome mapping, guardrail policies, store eligibility
+  application/   use cases: ConversationPipeline, ReservationService, RetailImportService,
+                 IntentService, OutcomeService, TenantAdminService, PlatformAdminService
+  ports/         CommerceProvider, MessagingProvider, AgentRuntime,
+                 FileStorageProvider, EventSink (+ repository interfaces)
+  adapters/      commerce/{mock,shopify}  messaging/{simulator,whatsapp}
+                 agent/{mock,adk-gemini}  storage/{local,gcs}  events/{local,bigquery}
+                 firestore/ (repositories; same code in both profiles)
+  http/          Express routes, auth middleware, request context, error envelope
+  composition/   the only place that reads the profile and wires adapters
+```
+
+Rules:
+
+- `domain/` and `application/` import only from `domain/` and `ports/`, never from `adapters/`.
+- No business rule is duplicated between adapters. If two adapters would need the same rule, it belongs in `domain/` or `application/`.
+- The existing M1 modules (`auth/`, `routes/`, `middleware/`) become part of `http/`. They are moved incrementally, not in one big rewrite.
+
+## 2.2 Execution profiles
+
+Two profiles run the same architecture. The sequencing is in `10_EXECUTION_PLAN.md`.
+
+| Concern | `local` profile | `gcp` profile |
+|---|---|---|
+| Frontend hosting | Vite dev server | Firebase Hosting |
+| API runtime | Node.js / Docker on the developer machine | Cloud Run |
+| Authentication | Firebase Auth **Emulator** | Firebase Authentication |
+| Database | Firestore **Emulator** | Firestore |
+| Files | `LocalFileStorageProvider` | `GCSFileStorageProvider` (Cloud Storage) |
+| Commerce | `MockCommerceProvider` | `ShopifyCommerceProvider` |
+| Customer channel | `SimulatorMessagingProvider` | `WhatsAppMessagingProvider` + `SimulatorMessagingProvider` (fallback) |
+| Agent runtime | `MockAgentRuntime` | `AdkGeminiAgentRuntime` (ADK + Gemini on Vertex AI) |
+| Event export | `LocalEventSink` | `BigQueryEventSink` |
+| Secrets | git-ignored `.env` files | Secret Manager, exposed to Cloud Run as env vars |
+| BI | Brand Console views only | Brand Console views + Looker where required |
+
+Firestore and Firebase Auth are **not** replaced locally by a different database or identity system. The emulators keep the production data model and auth chain identical.
+
+Selection:
+
+```text
+BUILDWISE_PROFILE   = local | gcp          (sets the defaults above)
+COMMERCE_PROVIDER   = mock | shopify
+MESSAGING_CHANNELS  = simulator | simulator,whatsapp | whatsapp
+AGENT_RUNTIME       = mock | adk_gemini
+FILE_STORAGE        = local | gcs
+EVENT_SINK          = local | bigquery
+```
+
+Per-adapter overrides exist for isolated integration spikes (`10_EXECUTION_PLAN.md` §5). The main local milestone path uses the local adapters.
+
+**Profile guard (startup):** the `gcp` profile refuses to start with `mock` commerce, `mock` agent runtime, `local` file storage, a `local` event sink, or Firebase emulator hosts (`07_SECURITY_SPEC.md` §19). The simulator channel is allowed in `gcp` as the approved fallback.
+
 ---
 
 # 3. Frontend
@@ -75,15 +140,24 @@ Technology:
 
 **React + TypeScript + Vite**
 
+One React application serves the three consoles and the customer contextual pages. Each console is a route area selected by the signed-in user's scope:
+
+| Area | Interface | Scope |
+|---|---|---|
+| `/platform/*` | Platform Admin Console | `PLATFORM_ADMIN` |
+| `/brand/*` | Brand Console (includes the customer simulator for `BRAND_ADMIN`) | `BRAND_ADMIN`, `BRAND_MEMBER` |
+| `/retailer/*` | Retailer Console | `RETAILER_ADMIN`, `RETAILER_STAFF` |
+| `/nearby-stores`, `/reservation/:id`, `/pickup/:id` | Customer AI Channel contextual pages | page token, no login |
+
 Responsibilities:
 
-- Brand Console
-- Retailer Console
-- contextual task pages
+- the three consoles and the contextual task pages
 - authentication UI
 - connection setup
 - conversation/operation views
 - status and error states
+
+Route areas are a UX convenience. Authorization is always enforced by the backend.
 
 The customer does not receive a full Buildwise dashboard.
 
@@ -97,7 +171,7 @@ Technology:
 
 Agent:
 
-- Google ADK for TypeScript
+- `AgentRuntime` port (§8). The GCP implementation is Google ADK for TypeScript + Gemini (`AdkGeminiAgentRuntime`); the local implementation is `MockAgentRuntime`.
 
 ---
 
@@ -109,19 +183,21 @@ Hosts the web application.
 
 ## Firebase Authentication
 
-Identity for:
+Identity for console users:
 
-- brand users
-- retailer users
-- team members
+- platform administrators
+- brand users (admins and members)
+- retailer users (admins and staff)
 
-Customer identity for WhatsApp is handled through the customer/channel identity model rather than requiring a Buildwise customer portal.
+Locally, the Firebase Auth Emulator provides the same identity flow.
+
+Customer identity (WhatsApp or simulator) is handled through the customer channel-identity model (`04_DATA_MODEL.md` §6) rather than a Buildwise customer portal.
 
 ---
 
 # 6. Cloud Run
 
-Cloud Run is the central backend runtime.
+Cloud Run is the central backend runtime in the `gcp` profile. In the `local` profile, the same backend runs as a local Node.js process or container.
 
 Responsibilities:
 
@@ -159,8 +235,10 @@ customers
 products
 productVariants
 productMappings
+retailers
 stores
 retailInventory
+retailImports
 customerIntents
 conversations
 conversations/{conversation_id}/messages   (ConversationMessage)
@@ -171,7 +249,7 @@ commerceEvents
 auditEvents
 ```
 
-Top-level (looked up before the brand is known; each document carries `brand_id`):
+Top-level (looked up before the brand is known, or platform-level):
 
 ```text
 brands
@@ -179,6 +257,7 @@ users
 intentTokens
 pageAccessTokens
 webhookReceipts
+platformAuditEvents
 ```
 
 Use tenant-aware document paths and server-side authorization.
@@ -196,40 +275,39 @@ Cloud Run
       ↓
 Context builder
       ↓
-ADK
-      ↓
-Gemini
+AgentRuntime            (gcp: ADK + Gemini · local: MockAgentRuntime)
       ↓
 Tool calls where required
       ↓
-Structured decision
+Structured decision (AgentDecision, 05 §8)
       ↓
 Action guardrail
       ↓
 Backend action
 ```
 
-## 8.1 ADK execution model
+## 8.1 Agent execution model
 
-ADK runs **inside the Cloud Run request**. Each run is stateless and request-scoped.
+The agent runtime runs **inside the backend request**. Each run is stateless and request-scoped. This holds for both runtimes.
 
 ```text
-Inbound request
-(WhatsApp webhook message | POST /api/ai/decide)
+Inbound message (from ConversationPipeline, §8.2)
       ↓
 Load conversation state from Firestore
 (conversation, recent messages, current intent, prior recommendations)
       ↓
 Build controlled context package
       ↓
-Create ADK runner + in-memory session for THIS request only
+AgentRuntime.decide()
+  AdkGeminiAgentRuntime: create ADK runner + in-memory session for THIS request only
+  MockAgentRuntime:      deterministic rules
       ↓
-Gemini reasoning + tool calls (tools = backend functions, guardrail enforced)
+Tool calls via ToolExecutor (backend functions, guardrail enforced)
       ↓
 Validate structured decision
       ↓
 Persist to Firestore
-(messages, AIRecommendation, CommerceEvents, audit, any executed action)
+(messages, AIRecommendation incl. runtime, CommerceEvents, audit, any executed action)
       ↓
 Discard runner and session
 ```
@@ -239,9 +317,38 @@ Rules:
 - Firestore is the only durable conversation state. The ADK in-memory session is rebuilt from Firestore on every request and thrown away when the request ends.
 - No persistent ADK session service, background agent loop or long-lived agent process is used in the MVP.
 - Agent tools are in-process backend functions. They call the same domain services as the HTTP API. They are not HTTP calls back into Cloud Run.
-- The WhatsApp webhook and the Web Conversation Simulator (`POST /api/ai/decide`) use this same execution path.
+- Both customer channels (WhatsApp and the simulator) reach the agent only through the `ConversationPipeline` (§8.2).
 - Inbound WhatsApp messages are processed synchronously within the webhook request, under the time budget in §16.1. A Meta redelivery that arrives while the first delivery is still processing is dropped by the webhook receipt (§16.3).
 - MVP limitation: if a customer sends two messages in quick succession, each is processed in its own run against the Firestore state at run start. Strict per-conversation serialization is out of MVP scope.
+
+## 8.2 ConversationPipeline (one pipeline for every customer channel)
+
+There is exactly **one** conversation pipeline. Channel adapters only verify, normalize and transport messages.
+
+```text
+WhatsApp webhook ──► WhatsAppMessagingProvider.verifyInbound + normalizeInbound ─┐
+                                                                                  ├─► ConversationPipeline.handleInbound(InboundMessage)
+Simulator channel ─► SimulatorMessagingProvider.normalizeInbound ─────────────────┘
+(POST /api/channels/simulator/messages)
+
+ConversationPipeline.handleInbound:
+  1. idempotency (webhookReceipts, §16.3)
+  2. identity resolution: Customer by channel_identities (04 §6)
+  3. intent handshake token detection/binding (06 §10.1)
+  4. conversation state: create/update Conversation, persist inbound ConversationMessage
+  5. policy: consent / opt-out / customer-service window / human-handoff state /
+     per-conversation AI rate limit (07 §17)
+  6. AgentRuntime.decide() with ToolExecutor (§8.1)
+  7. guardrail: ALLOWED / BLOCKED / HUMAN_APPROVAL_REQUIRED
+  8. execute allowed tools/actions (e.g. ReservationService)
+  9. persist AIRecommendation (with runtime), CommerceEvents, AuditEvents; emit to EventSink
+ 10. outbound: MessagingProvider for the conversation's channel → send()
+ 11. outcome recording hooks (04 §16)
+```
+
+Messages that the backend sends outside an inbound request (e.g. "your pickup is ready" after a retailer transition) use the same policy step (5) and the same `send()` path.
+
+The simulator is **not** a separate AI flow. It differs from WhatsApp only in its adapter.
 
 ---
 
@@ -249,15 +356,15 @@ Rules:
 
 ## Shopify
 
-Source of truth for online commerce.
+Source of truth for online commerce. It is reached through `ShopifyCommerceProvider` (`gcp`); `MockCommerceProvider` stands in locally.
 
 ## WhatsApp Cloud API
 
-Customer communication channel.
+Primary customer communication channel. It is reached through `WhatsAppMessagingProvider` (`gcp`); `SimulatorMessagingProvider` is the local channel and the approved fallback.
 
 ## Retail file
 
-Source for physical store/inventory information in MVP.
+Source for physical store/inventory information in MVP, read through `FileStorageProvider`.
 
 ---
 
@@ -269,7 +376,7 @@ Operational:
 Firestore
 ```
 
-Historical/event:
+Historical/event (exported through the `EventSink` port; `LocalEventSink` writes JSON Lines locally):
 
 ```text
 BigQuery
@@ -289,7 +396,9 @@ Looker is an optional business-intelligence layer, not the primary customer/reta
 
 # 11. File storage
 
-Cloud Storage:
+Files are accessed only through the `FileStorageProvider` port (`06_INTEGRATION_CONTRACTS.md` §6a): Cloud Storage in `gcp`, a local data directory in `local`.
+
+Stored files:
 
 - retail uploads
 - product assets
@@ -297,7 +406,7 @@ Cloud Storage:
 - demo datasets
 - generated reports where needed
 
-Firestore stores metadata/references.
+Firestore stores metadata/references (e.g. `RetailImport.file_key`).
 
 ---
 
@@ -336,20 +445,22 @@ They may be introduced only when a concrete requirement justifies them.
 
 # 14. Final responsibility split
 
+This is the `gcp` profile. The local equivalents are in §2.2.
+
 ```text
 React
-→ experience
+→ experience: Platform Admin, Brand and Retailer consoles + customer contextual pages
 
 Firebase
 → identity + hosting
 
 Cloud Run
-→ backend + orchestration + policies
+→ backend + orchestration + policies + the single ConversationPipeline
 
 Firestore
 → current application state
 
-ADK
+ADK (via AgentRuntime)
 → agent orchestration
 
 Gemini
@@ -401,7 +512,7 @@ If a check fails, nothing is written. The caller receives a verified, specific r
 
 Every later status transition that changes inventory (CANCELLED, EXPIRED, COMPLETED) uses the same transaction pattern. The effects are listed in `04_DATA_MODEL.md` §15.
 
-**Expiry:** a sweep marks reservations past `expires_at` (still PENDING, CONFIRMED or READY) as `EXPIRED`, releasing each one in its own transaction. For the MVP, the sweep is an internal Cloud Run endpoint invoked on a schedule. The retailer console also triggers it when the reservation list loads.
+**Expiry:** a sweep marks reservations past `expires_at` (still PENDING, CONFIRMED or READY) as `EXPIRED`, releasing each one in its own transaction. The sweep is an internal backend endpoint, and the retailer console also triggers it when the reservation list loads. In `gcp` it is additionally invoked on a schedule. The scheduling mechanism is decided at cutover (`00_M0_SPECIFICATION_FREEZE.md` §11.7).
 
 ---
 
@@ -409,14 +520,14 @@ Every later status transition that changes inventory (CANCELLED, EXPIRED, COMPLE
 
 These rules cover the MVP. The numbers are prototype defaults and may be tuned.
 
-## 16.1 Gemini timeout
+## 16.1 Agent runtime timeout
 
 ```text
 per Gemini call timeout          10 s
-total AI decision budget         20 s per inbound message / decide request
+total AI decision budget         20 s per inbound message (any channel)
 ```
 
-If the budget is exhausted, the request stops calling Gemini and uses the deterministic fallback (§16.2).
+If the budget is exhausted, the request stops calling the runtime and uses the deterministic fallback (§16.2). The same budget is enforced around `MockAgentRuntime`, so the timeout and fallback paths are testable locally.
 
 ## 16.2 Retry and fallback
 
@@ -429,7 +540,7 @@ If the budget is exhausted, the request stops calling Gemini and uses the determ
 | Firestore transaction contention | handled by the Firestore SDK transaction retry | Reservation request fails with a retryable error |
 | 4xx validation / auth errors | never retried | Normalized error (`06_INTEGRATION_CONTRACTS.md` §16) |
 
-**Deterministic fallback:** Buildwise sends a fixed, safe holding reply. It never claims stock, price or policy. The AIRecommendation is recorded with `action = HUMAN_HANDOFF` and `decision_source = DETERMINISTIC_FALLBACK` when human handoff is enabled for the brand. Otherwise it is recorded with `action = NO_ACTION` and a reply asking the customer to try again. The fallback never executes a commerce action.
+**Deterministic fallback:** Buildwise sends a fixed, safe holding reply. It never claims stock, price or policy. The AIRecommendation keeps the `runtime` that failed and is recorded with `action = HUMAN_HANDOFF` and `decision_source = DETERMINISTIC_FALLBACK` when human handoff is enabled for the brand. Otherwise it is recorded with `action = NO_ACTION` and a reply asking the customer to try again. The fallback never executes a commerce action.
 
 ## 16.3 Webhook idempotency
 
@@ -452,6 +563,7 @@ Idempotency keys:
 | Shopify webhook | `SHOPIFY:{brand_id}:{event_type}:{X-Shopify-Webhook-Id}` |
 | WhatsApp inbound message | `WHATSAPP:{phone_number_id}:MESSAGE:{wamid}` |
 | WhatsApp status update | `WHATSAPP:{phone_number_id}:STATUS:{wamid}:{status}` |
+| Simulator inbound message | `SIMULATOR:{brand_id}:MESSAGE:{client_message_id}` |
 | Reservation request | client-supplied `idempotency_key` scoped to brand + customer (§15) |
 | Analytics event | `CommerceEvent.idempotency_key` |
 
@@ -474,4 +586,4 @@ For the MVP, HTTP rate limiting may be in-memory per instance. The per-conversat
 
 # 17. Critical API contracts
 
-The minimal request/response contracts for the critical endpoints are in `06_INTEGRATION_CONTRACTS.md` §14.1–§14.5.
+The minimal request/response contracts for the critical endpoints are in `06_INTEGRATION_CONTRACTS.md` §14.1–§14.7.

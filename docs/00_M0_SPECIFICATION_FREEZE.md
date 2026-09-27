@@ -1,6 +1,6 @@
 # Buildwise — M0 Specification Freeze
 
-**Status:** M0 revised draft for final approval before coding  
+**Status:** M0 frozen at tag `m0-spec-freeze`; approved post-M0 changes are recorded in §11.8  
 **Prototype target:** Working, judge-testable prototype by **13 October 2026**  
 **Product name:** Buildwise  
 **Primary customer channel:** WhatsApp  
@@ -36,6 +36,8 @@ The eight core specification files are:
 ```
 
 `09_LEARNING_LOG.md` is the companion learning file.
+
+`10_EXECUTION_PLAN.md` (added post-M0, §11.8) defines execution profiles, the milestone sequence and spike rules. It governs **how** Buildwise is built, never **what** it is.
 
 The PDFs and research documents remain reference material. The Markdown specification pack is the implementation source of truth.
 
@@ -97,26 +99,32 @@ The product IS:
 
 # 5. Primary users
 
+*Post-M0 (§11.8):* the user types below map to the five application roles `PLATFORM_ADMIN`, `BRAND_ADMIN`, `BRAND_MEMBER`, `RETAILER_ADMIN` and `RETAILER_STAFF` (`04_DATA_MODEL.md` §4).
+
+## Platform
+
+The Buildwise operator (`PLATFORM_ADMIN`). They onboard brands and see platform-level metadata, but have no default access to customer data.
+
 ## Brand
 
 The D2C brand is the primary buyer/operator.
 
 Typical Buildwise brand users:
 
-- Brand Admin
-- Commerce/Growth/Marketing user
-- Operations user
+- Brand Admin (`BRAND_ADMIN`)
+- Commerce/Growth/Marketing user (`BRAND_MEMBER`)
+- Operations user (`BRAND_MEMBER`)
 
 Their goal is to understand and act on customer opportunities across digital and physical commerce.
 
 ## Retailer
 
-A physical store connected to the brand.
+The retail business operating one or more of the brand's physical stores.
 
 Typical retailer users:
 
-- Store Manager
-- Store Staff
+- Store Manager (`RETAILER_ADMIN`: all stores of their retailer)
+- Store Staff (`RETAILER_STAFF`: assigned stores)
 
 Their goal is to receive actionable customer requests and fulfill them correctly.
 
@@ -265,6 +273,8 @@ If Meta/WhatsApp cannot be used reliably during prototype testing, the fallback 
 
 The simulator must use the **same Cloud Run → ADK → Gemini → tools → next-best-action backend path** as WhatsApp. It is a testing interface, not a second product direction.
 
+*Post-M0 (§11.8):* the simulator is a customer-channel adapter into the single `ConversationPipeline`. It is also the channel of the local development profile.
+
 ---
 
 # 9. Technology ownership
@@ -346,6 +356,8 @@ If two documents conflict:
 07_SECURITY_SPEC.md
         ↓
 08_TEST_PLAN.md
+        ↓
+10_EXECUTION_PLAN.md      (process only; can never override 01–08)
 ```
 
 Technical documents must not silently change the product decision.
@@ -501,15 +513,15 @@ These decisions are approved. Each one has a single canonical home:
 | Reservation creation in a Firestore transaction (`reserved_quantity`) | `03_TECH_ARCHITECTURE.md` §15 |
 | Contextual page token lifecycle (15-min view, single-use mutation) | `07_SECURITY_SPEC.md` §16 |
 | Stateless, request-scoped ADK in Cloud Run; state in Firestore | `03_TECH_ARCHITECTURE.md` §8.1 |
-| Critical API request/response contracts | `06_INTEGRATION_CONTRACTS.md` §14.1–§14.5 |
+| Critical API request/response contracts | `06_INTEGRATION_CONTRACTS.md` §14.1–§14.7 |
 | Firebase ID token → Cloud Run → verification → user/brand/role → authorization | `07_SECURITY_SPEC.md` §4.1 |
 | Gemini timeout, retry, webhook idempotency, rate limiting | `03_TECH_ARCHITECTURE.md` §16, `07_SECURITY_SPEC.md` §17 |
 | All 12 AI evaluation scenarios covered | `08_TEST_PLAN.md` §7 |
-| `User.store_ids` for retail roles | `04_DATA_MODEL.md` §4 |
+| `User.store_ids` for retail roles (superseded by §11.8: scoped roles with `retailer_id` + `store_ids`) | `04_DATA_MODEL.md` §4 |
 | `brand.settings.allowed_storefront_origins` | `04_DATA_MODEL.md` §3 |
 | `RetailInventory.reserved_quantity` | `04_DATA_MODEL.md` §10 |
 | `Outcome.reservation_id` | `04_DATA_MODEL.md` §16 |
-| `SIMULATOR` conversation channel (approved fallback) | `04_DATA_MODEL.md` §12 |
+| `SIMULATOR` conversation channel (approved fallback; also the local development channel per §11.8) | `04_DATA_MODEL.md` §12 |
 | `GET /api/reservations` and `GET /api/reservations/:id` | `06_INTEGRATION_CONTRACTS.md` §14.4 |
 | Prototype default values (token TTLs, rate limits, 120-min reservation hold, Gemini timeouts) | `03`, `04`, `07` as referenced |
 
@@ -517,10 +529,79 @@ These decisions are approved. Each one has a single canonical home:
 
 These items do not change any product or architecture boundary. They are settled at the start of M1, before the feature that needs them:
 
-- **Reservation expiry trigger.** The expiry sweep endpoint is specified (`03_TECH_ARCHITECTURE.md` §15), but the schedule mechanism is not yet chosen. The options are Cloud Scheduler, or relying only on the sweep run when the retailer console loads.
-- **User provisioning.** How the first Brand Admin and the retail users are created and linked to a brand and stores. For the MVP, a seed/admin script is acceptable.
-- **Meta webhook timing.** Verify that synchronous processing within the 20 s AI budget avoids unnecessary redeliveries. Duplicates are already safe.
-- **Shopify auth mechanism.** Verify it against the development store at the Shopify milestone (`06_INTEGRATION_CONTRACTS.md` §9).
+- **Reservation expiry trigger.** The expiry sweep endpoint is specified (`03_TECH_ARCHITECTURE.md` §15), but the schedule mechanism is not yet chosen. The options are Cloud Scheduler, or relying only on the sweep run when the retailer console loads. *Status: locally, the sweep runs on retailer-console load; the `gcp` schedule is decided at cutover (G1).*
+- **User provisioning.** How the first Brand Admin and the retail users are created and linked to a brand and stores. For the MVP, a seed/admin script is acceptable. *Status: resolved by §11.8. The seed script bootstraps only the first `PLATFORM_ADMIN`; everything else follows the provisioning chain in `07_SECURITY_SPEC.md` §4.4.*
+- **Meta webhook timing.** Verify that synchronous processing within the 20 s AI budget avoids unnecessary redeliveries. Duplicates are already safe. *Status: moved to spike S2 / phase G2.*
+- **Shopify auth mechanism.** Verify it against the development store (`06_INTEGRATION_CONTRACTS.md` §9). *Status: moved to spike S1 / phase G2.*
+
+## 11.8 Post-M0 change log
+
+M0 was frozen at tag `m0-spec-freeze`. The changes below were approved **after** the freeze, following the M0 rule in §1. Each is reflected in the canonical documents listed.
+
+### Change 1 — Four interfaces and scoped roles (approved)
+
+**What changed:**
+
+- Buildwise has exactly **four interfaces**: Platform Admin Console, Brand Console, Retailer Console, Customer AI Channel (`01` §8b).
+- The customer remains WhatsApp-first, with contextual pages only when needed and no dashboard.
+- The five application roles are `PLATFORM_ADMIN`, `BRAND_ADMIN`, `BRAND_MEMBER`, `RETAILER_ADMIN`, `RETAILER_STAFF` (`04` §4, `07` §4). They replace `BRAND_MARKETING`, `BRAND_OPERATIONS`, `RETAIL_MANAGER` and `RETAIL_STAFF`.
+- Scopes: platform / brand / retailer (store) / customer.
+- Platform scope is a distinct principal type, never `brand_id = "ALL"` (`07` §4.1–§4.2).
+- New `Retailer` entity, belonging to exactly one brand (`04` §8a). It adds `RetailStore.retailer_id`, `Reservation.retailer_id` and `User.retailer_id`.
+- `PlatformAuditEvent` added for platform actions (`04` §18.0).
+
+**Decisions:**
+
+- **D1:** `BRAND_MEMBER` is read-mostly and non-administrative (`07` §4.0). Separate marketing/operations roles are not reintroduced for the MVP.
+- **D2:** `PLATFORM_ADMIN` has **no** default access to customer PII or conversation content. Any future support access must be explicitly authorized, narrowly scoped, audited and separately specified (`07` §4.2).
+
+### Change 2 — Simulator as a channel adapter (approved)
+
+- **D3:** `POST /api/ai/decide` is retired. It is replaced by `POST /api/channels/simulator/messages` (`06` §14.2).
+- There is **one** `ConversationPipeline` for WhatsApp and the simulator (`03` §8.2). There is no separate simulator AI flow.
+- `Customer.whatsapp_identity_reference` becomes `Customer.channel_identities` (`04` §6).
+
+### Change 3 — Provider architecture and execution profiles (approved)
+
+- **Five provider ports:**
+  - `CommerceProvider` (Mock / Shopify)
+  - `MessagingProvider` (Simulator / WhatsApp)
+  - `AgentRuntime` (Mock / AdkGemini)
+  - `FileStorageProvider` (Local / GCS)
+  - `EventSink` (Local / BigQuery)
+
+  Details are in `06` §1.1–§6a.
+- **Replaced contracts:**
+  - `AIProvider` becomes `AgentRuntime`.
+  - `AnalyticsProvider` becomes `EventSink`; metrics are read from Firestore.
+  - `RetailProvider` is split into a retail file parser plus retail domain services.
+- **Direct SDK dependencies:** Firestore and Firebase Auth stay direct SDK dependencies, using the emulators locally.
+- **Profiles:** there are two, `local` and `gcp` (`03` §2.2). The `gcp` profile refuses mock and local adapters, except the simulator channel (`07` §19).
+- **AI decisions:** every AI decision carries `runtime = MOCK | ADK_GEMINI`, and `decision_source` values are now `AGENT | DETERMINISTIC_FALLBACK` (`04` §14). `MockAgentRuntime` is never presented as Gemini, and the final AI evaluation uses `AdkGeminiAgentRuntime` (`05` §9.2, `08` §7.3).
+
+### Change 4 — Execution strategy (approved)
+
+- **Local first:** the complete core product is built locally first (M2–M12), then cut over to GCP (G1), then the real integrations (G2), then the final live verification (G3). The plan is `10_EXECUTION_PLAN.md`.
+- **Not a blocker:** GCP is not a blocker for any local milestone.
+- **Spikes:** Shopify, Meta WhatsApp and ADK/Gemini spikes are small and isolated.
+- **Judged path:** the judged prototype runs the `gcp` profile with real integrations.
+
+### Change 5 — Review decisions D4–D7 (approved)
+
+- **D4:** The customer simulator is restricted to `BRAND_ADMIN`. `BRAND_MEMBER` stays read-mostly and cannot start simulator conversations or reservations. `PLATFORM_ADMIN` does not use the simulator in the MVP (`07` §4.0, `06` §14.2).
+- **D5:** Brand roles can **view** reservations but cannot change their operational status. Only `RETAILER_ADMIN` / `RETAILER_STAFF` fulfill and transition reservations (`07` §4.0, `06` §14.4).
+- **D6:** `decision_source = AGENT | DETERMINISTIC_FALLBACK`, never `GEMINI`. The runtime is tracked separately as `runtime = MOCK | ADK_GEMINI`, and a `MOCK` decision is never represented as a Gemini decision (`04` §14, `05` §9.2).
+- **D7:** The unused `POST /api/auth/session` route is removed (`06` §14).
+
+### Supporting additions
+
+- `RetailImport` entity for the ingestion report (`04` §10.1). This closes a pre-existing gap.
+- `Brand.status` values `ACTIVE | SUSPENDED`; `Retailer.status` values `ACTIVE | INACTIVE`.
+- The unused example route `POST /api/auth/session` is removed, because console auth is Bearer-token only.
+- The final contradiction audit removed the agent tool `record_outcome()`. It contradicted the approved rule that the AI never records outcomes (`04` §16, `05` §9). The audit also renamed `prepare_whatsapp_response()` to the channel-neutral `prepare_customer_response()` (`05` §6).
+- The routes `GET /api/health` (already implemented in M1), `POST /api/internal/reservations/expire` and `PUT /api/local-files/uploads/:uploadId` were added to the route list. The last two were previously referenced but unnamed (`06` §14).
+
+**Unchanged:** the product thesis, core customer journey, AI role, WhatsApp-first customer experience, Brand and Retailer Console purpose, Google Cloud target architecture, and every other M0 decision in §11.1–§11.6 not named above.
 
 ---
 
@@ -1018,7 +1099,8 @@ Buildwise/
 │   ├── 06_INTEGRATION_CONTRACTS.md
 │   ├── 07_SECURITY_SPEC.md
 │   ├── 08_TEST_PLAN.md
-│   └── 09_LEARNING_LOG.md
+│   ├── 09_LEARNING_LOG.md
+│   └── 10_EXECUTION_PLAN.md   (post-M0)
 │
 ├── frontend/
 ├── backend/

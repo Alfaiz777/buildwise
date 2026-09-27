@@ -2,12 +2,14 @@
 
 ## Status
 
-**M0 — Initial canonical schema**
+**M0 — Initial canonical schema**, updated by the post-M0 architecture change (`00_M0_SPECIFICATION_FREEZE.md` §11.8)
 
 The schema may evolve during implementation, but entity responsibilities and tenant boundaries are frozen.
 
 This document is the **canonical home** for:
 
+- user roles and scopes (§4)
+- the retailer model (§8a)
 - the retail ingestion schema (§9.1)
 - customer intent type and stage (§11)
 - the AI action taxonomy (§14)
@@ -32,6 +34,10 @@ must exist on every tenant-owned entity.
 
 No brand can access another brand's operational data.
 
+Buildwise itself (the platform) is **not** a tenant. Platform-level records (the brand registry, platform users, the platform audit) live outside any brand. Platform scope is never represented by a special `brand_id` value (see §4 and `07_SECURITY_SPEC.md` §4.2).
+
+A **Retailer** belongs to exactly one brand (§8a). Retailer scope is a subset of brand scope, so the brand remains the tenant boundary.
+
 ---
 
 # 2. Core entities
@@ -44,8 +50,10 @@ Customer
 Product
 ProductVariant
 ProductMapping
+Retailer
 RetailStore
 RetailInventory
+RetailImport
 CustomerIntent
 IntentToken
 Conversation
@@ -55,6 +63,7 @@ Reservation
 PageAccessToken
 Outcome
 AuditEvent
+PlatformAuditEvent
 CommerceEvent
 WebhookReceipt
 ```
@@ -74,6 +83,15 @@ Brand
 - updated_at
 - settings
 ```
+
+`status`:
+
+```text
+ACTIVE
+SUSPENDED    (set by PLATFORM_ADMIN; all brand and retailer users are refused)
+```
+
+Brands are created by a `PLATFORM_ADMIN` (`07_SECURITY_SPEC.md` §4.4).
 
 Settings may include:
 
@@ -103,28 +121,43 @@ max_quantity_per_reservation (prototype default: 2)
 ```text
 User
 - user_id            (= Firebase Auth uid)
-- brand_id
 - role
-- store_ids          (required for RETAIL_* roles; empty for BRAND_* roles)
+- brand_id           (null for PLATFORM_ADMIN; required for every other role)
+- retailer_id        (required for RETAILER_* roles; null otherwise)
+- store_ids          (see the table below)
 - email
-- status
+- status             (ACTIVE | DISABLED)
 - created_at
 - updated_at
 ```
 
-Roles:
+Roles (the five application roles):
 
 ```text
+PLATFORM_ADMIN
 BRAND_ADMIN
-BRAND_MARKETING
-BRAND_OPERATIONS
-RETAIL_MANAGER
-RETAIL_STAFF
+BRAND_MEMBER
+RETAILER_ADMIN
+RETAILER_STAFF
 ```
 
-For the MVP, one user belongs to exactly one brand.
+Role → scope and required fields:
 
-Retail users may access only the stores listed in `store_ids`. The authorization chain is defined in `07_SECURITY_SPEC.md` §4.1.
+| Role | Scope | `brand_id` | `retailer_id` | `store_ids` |
+|---|---|---|---|---|
+| `PLATFORM_ADMIN` | Platform | **must be null** | null | empty |
+| `BRAND_ADMIN` | Brand | required | null | empty |
+| `BRAND_MEMBER` | Brand (read-mostly) | required | null | empty |
+| `RETAILER_ADMIN` | Retailer (all of the retailer's stores) | required | required | empty (all stores of the retailer) |
+| `RETAILER_STAFF` | Retailer, assigned stores only | required | required | **required, non-empty**; each store must belong to `retailer_id` |
+
+A document that violates this table is rejected during principal resolution (`07_SECURITY_SPEC.md` §4.1).
+
+For the MVP, one user belongs to at most one brand, and a retailer user belongs to exactly one retailer.
+
+The customer is **not** a User and has no role. Customers are identified through their channel identity (§6) or a contextual page token (`07_SECURITY_SPEC.md` §4.3).
+
+Permissions per role are defined in `07_SECURITY_SPEC.md` §4.
 
 ---
 
@@ -166,7 +199,7 @@ Customer
 - customer_id
 - brand_id
 - shopify_customer_id
-- whatsapp_identity_reference
+- channel_identities       (list of { channel, external_ref })
 - lifecycle_stage
 - relevant_preferences
 - consent_state
@@ -176,7 +209,18 @@ Customer
 - updated_at
 ```
 
-Only relevant customer data should be retained/used.
+`channel_identities` replaces the earlier `whatsapp_identity_reference`, so both customer channels resolve identity through the same pipeline step:
+
+| channel | external_ref |
+|---|---|
+| `WHATSAPP` | the customer's WhatsApp ID (from the webhook) |
+| `SIMULATOR` | `sim:{simulator_customer_ref}` (synthetic; never a real person's identifier) |
+
+A (`channel`, `external_ref`) pair identifies at most one Customer per brand.
+
+Only relevant customer data should be retained/used. Customer records and conversation content are **customer PII** for the purposes of platform-scope restrictions (`07_SECURITY_SPEC.md` §4.2).
+
+`shopify_*` identifiers are populated by the active `CommerceProvider`. `MockCommerceProvider` supplies fixture IDs in the same format, so the model is identical in both profiles.
 
 ---
 
@@ -231,12 +275,37 @@ ProductMapping
 
 ---
 
+# 8a. Retailer
+
+A retailer is the retail business that operates one or more of a brand's physical stores (for example a franchisee, distributor or store operator). It is the scope for `RETAILER_ADMIN` and `RETAILER_STAFF`.
+
+```text
+Retailer
+- retailer_id
+- brand_id
+- name
+- status          (ACTIVE | INACTIVE)
+- created_at
+- updated_at
+```
+
+Rules:
+
+- A retailer belongs to **exactly one brand**. A real-world business that sells for several brands is represented by a separate Retailer record under each brand in the MVP. Retailer identity is not shared across brands.
+- Retailers are created and managed by `BRAND_ADMIN`.
+- A store belongs to at most one retailer (`RetailStore.retailer_id`).
+- A store with no retailer is visible only to brand scope until a `BRAND_ADMIN` assigns it.
+- An `INACTIVE` retailer's users are refused during principal resolution.
+
+---
+
 # 9. RetailStore
 
 ```text
 RetailStore
 - store_id
 - brand_id
+- retailer_id             (null until assigned; see §8a)
 - store_name
 - city
 - address
@@ -283,14 +352,17 @@ Optional fields:
 ```text
 pickup_available
 reservation_available
+retailer_id              (must reference an existing Retailer of the same brand)
 ```
+
+The 11 required fields are unchanged. `retailer_id` is optional. Stores can also be assigned to a retailer later by a `BRAND_ADMIN`.
 
 Normalization:
 
 ```text
 store_id, store_name, city, address,
 latitude, longitude, store_hours, store_status,
-pickup_available, reservation_available
+pickup_available, reservation_available, retailer_id
         → RetailStore
 
 store_id, sku, quantity, offline_price
@@ -382,6 +454,27 @@ IN_STOCK
 LOW_STOCK
 OUT_OF_STOCK
 UNKNOWN
+```
+
+## 10.1 RetailImport
+
+Persists each retail file ingestion and its report (`06_INTEGRATION_CONTRACTS.md` §4, §12).
+
+```text
+RetailImport
+- import_id
+- brand_id
+- file_key              (FileStorageProvider key; never a public URL)
+- uploaded_by           (user_id)
+- status                (UPLOADED | PROCESSING | COMPLETED | FAILED)
+- rows_processed
+- rows_valid
+- rows_invalid
+- mappings_created
+- mappings_failed
+- row_errors_reference  (FileStorageProvider key of the row-level error report)
+- created_at
+- completed_at
 ```
 
 ---
@@ -480,7 +573,7 @@ Conversation
 - current_intent_id
 - started_at
 - updated_at
-- last_inbound_at        (used for the WhatsApp customer-service window)
+- last_inbound_at        (used for the customer-service window policy; applied to every channel)
 - human_handoff
 ```
 
@@ -527,10 +620,16 @@ AIRecommendation
 - confidence
 - rationale_summary
 - evidence_references
-- decision_source        (GEMINI | DETERMINISTIC_FALLBACK)
+- runtime                (MOCK | ADK_GEMINI)
+- decision_source        (AGENT | DETERMINISTIC_FALLBACK)
 - proposed_at
 - guardrail_status
 ```
+
+`runtime` records which `AgentRuntime` produced the decision. It is mandatory on every recommendation.
+
+- `MOCK` decisions come from the deterministic `MockAgentRuntime`. They are never presented or reported as Gemini intelligence (`05_AI_AGENT_SPEC.md` §9.2).
+- `decision_source = AGENT` means the runtime produced the decision. `DETERMINISTIC_FALLBACK` means the runtime failed and the fixed fallback was used (`03_TECH_ARCHITECTURE.md` §16.2).
 
 `action` is the **canonical AI action taxonomy**:
 
@@ -574,6 +673,7 @@ An `AIRecommendation` records what the AI **proposed**. It never records what th
 Reservation
 - reservation_id
 - brand_id
+- retailer_id            (copied from the store at creation; null if the store has no retailer)
 - customer_id
 - store_id
 - variant_id
@@ -758,6 +858,25 @@ The audit trail should answer:
 
 > What happened, who/what initiated it, what was proposed, what was allowed, and what actually executed?
 
+## 18.0 PlatformAuditEvent
+
+Platform-scope actions (`PLATFORM_ADMIN`) are recorded outside any brand:
+
+```text
+PlatformAuditEvent
+- audit_id
+- actor_id               (PLATFORM_ADMIN user_id)
+- action                 (e.g. BRAND_CREATED, BRAND_SUSPENDED, BRAND_ADMIN_PROVISIONED)
+- target_brand_id        (when the action concerns a brand)
+- target_type
+- target_id
+- result
+- reason_code
+- timestamp
+```
+
+When a platform action concerns a brand, an `AuditEvent` with `actor_type = PLATFORM_ADMIN` is **also** written to that brand's `auditEvents`, so the brand can see what the platform did.
+
 ---
 
 # 18.1 IntentToken
@@ -806,7 +925,7 @@ Persists webhook idempotency (`03_TECH_ARCHITECTURE.md` §16.3).
 WebhookReceipt
 - receipt_id            (deterministic idempotency key; document ID)
 - brand_id              (when resolved)
-- provider              (SHOPIFY | WHATSAPP)
+- provider              (SHOPIFY | WHATSAPP | SIMULATOR)
 - event_type
 - external_event_id
 - status                (PROCESSING | PROCESSED | FAILED)
@@ -871,7 +990,7 @@ The backend creates a temporary decision context:
 }
 ```
 
-Only the minimum required context should be sent to Gemini.
+Only the minimum required context should be sent to the agent runtime (Gemini in `gcp`; the same package is built for `MockAgentRuntime` locally).
 
 ---
 
@@ -886,8 +1005,10 @@ brands/{brand_id}/customers/{customer_id}
 brands/{brand_id}/products/{product_id}
 brands/{brand_id}/productVariants/{variant_id}
 brands/{brand_id}/productMappings/{mapping_id}
+brands/{brand_id}/retailers/{retailer_id}
 brands/{brand_id}/stores/{store_id}
 brands/{brand_id}/retailInventory/{inventory_id}
+brands/{brand_id}/retailImports/{import_id}
 brands/{brand_id}/customerIntents/{intent_id}
 brands/{brand_id}/conversations/{conversation_id}
 brands/{brand_id}/conversations/{conversation_id}/messages/{message_id}
@@ -898,14 +1019,17 @@ brands/{brand_id}/commerceEvents/{event_id}
 brands/{brand_id}/auditEvents/{audit_id}
 ```
 
-Top-level collections. They must be looked up before the brand is known, and each document still carries `brand_id`:
+Top-level collections. They must be looked up before the brand is known, or they are platform-level:
 
 ```text
-users/{user_id}                 (Firebase uid → brand_id, role, store_ids)
+users/{user_id}                 (Firebase uid → role, brand_id, retailer_id, store_ids)
 intentTokens/{token_hash}
 pageAccessTokens/{token_hash}
 webhookReceipts/{receipt_id}
+platformAuditEvents/{audit_id}  (platform-level; no brand owner)
 ```
+
+Documents in `intentTokens`, `pageAccessTokens` and `webhookReceipts` carry `brand_id`. `users` carries `brand_id` except for `PLATFORM_ADMIN`.
 
 Entity → collection:
 
@@ -918,8 +1042,10 @@ Entity → collection:
 | Product | `products` |
 | ProductVariant | `productVariants` |
 | ProductMapping | `productMappings` |
+| Retailer | `retailers` |
 | RetailStore | `stores` |
 | RetailInventory | `retailInventory` |
+| RetailImport | `retailImports` |
 | CustomerIntent | `customerIntents` |
 | IntentToken | `intentTokens` |
 | Conversation | `conversations` |
@@ -930,4 +1056,5 @@ Entity → collection:
 | Outcome | `outcomes` |
 | CommerceEvent | `commerceEvents` |
 | AuditEvent | `auditEvents` |
+| PlatformAuditEvent | `platformAuditEvents` |
 | WebhookReceipt | `webhookReceipts` |

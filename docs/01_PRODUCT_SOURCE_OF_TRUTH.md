@@ -2,7 +2,7 @@
 
 ## Status
 
-**M0 — Frozen product definition**
+**M0 — Frozen product definition.** Updated by the post-M0 architecture change (`00_M0_SPECIFICATION_FREEZE.md` §11.8): Platform Admin persona and the four interfaces. The thesis, core journey, AI role and customer experience are unchanged.
 
 ---
 
@@ -86,6 +86,21 @@ D2C brands that:
 
 # 7. Personas
 
+## Platform
+
+### Platform Admin
+
+The Buildwise operator who runs the platform on behalf of its brands.
+
+Needs:
+
+- onboard brands and their first Brand Admin
+- suspend or reactivate brands
+- see platform health, integration health and platform-level activity
+- an audit trail of platform actions
+
+The Platform Admin does **not** need, and does not get by default, customer profiles or customer conversations.
+
 ## Brand
 
 ### Brand Admin
@@ -93,14 +108,16 @@ D2C brands that:
 Needs:
 
 - connection setup
-- permissions
-- store network
+- permissions and brand members
+- retailers, store network and retailer users
 - integration health
 - high-level outcomes
 
-### Growth/Commerce/Marketing
+### Brand Member (Growth/Commerce/Marketing, Operations)
 
-Needs:
+Read-mostly, non-administrative brand users. The Growth/Commerce/Marketing and Operations needs below are served by one `BRAND_MEMBER` role in the MVP.
+
+Growth/Commerce/Marketing needs:
 
 - customer intent
 - AI-assisted opportunities
@@ -108,9 +125,7 @@ Needs:
 - intervention outcomes
 - online vs offline conversion
 
-### Operations
-
-Needs:
+Operations needs:
 
 - retail availability
 - reservations
@@ -119,7 +134,11 @@ Needs:
 
 ## Retailer
 
-### Store Manager
+A retailer is the retail business (e.g. franchisee, distributor or store operator) that runs one or more of a brand's stores.
+
+### Retailer Admin (Store Manager)
+
+Sees and operates all stores of their retailer.
 
 Needs:
 
@@ -129,7 +148,9 @@ Needs:
 - customer ETA
 - fulfillment state
 
-### Store Staff
+### Retailer Staff (Store Staff)
+
+Sees and operates only their assigned stores.
 
 Needs:
 
@@ -167,6 +188,38 @@ They should not feel:
 
 ---
 
+# 8a. Platform Admin experience
+
+Buildwise Platform Admin Console:
+
+```text
+Brands
+Brand onboarding (first Brand Admin)
+Retailers & Stores (metadata)
+Integration Health
+Reservations & Outcomes (aggregate / operational)
+Platform Audit Log
+```
+
+The Platform Admin Console manages the platform. It is **not** a window into brands' customers.
+
+---
+
+# 8b. The four interfaces
+
+Buildwise has exactly four interfaces:
+
+| # | Interface | Users | Form |
+|---|---|---|---|
+| 1 | Platform Admin Console | Platform Admin | web console |
+| 2 | Brand Console | Brand Admin, Brand Member | web console |
+| 3 | Retailer Console | Retailer Admin, Retailer Staff | web console |
+| 4 | Customer AI Channel | Customer | WhatsApp-first; simulator during local development; contextual web pages only when needed |
+
+The customer never gets a Buildwise dashboard or a login.
+
+---
+
 # 9. Brand experience
 
 Buildwise Brand Console:
@@ -195,7 +248,7 @@ The brand console should explain:
 
 # 10. Retailer experience
 
-Buildwise Retail Console:
+Buildwise Retailer Console:
 
 ```text
 Reservations
@@ -405,3 +458,5 @@ Shopify context
 ```
 
 and understand why Buildwise exists.
+
+The judged prototype runs on Google Cloud with real Shopify, real Meta WhatsApp and Gemini. The product is built locally first against local adapters, with the same business logic (`10_EXECUTION_PLAN.md`). Local mocks are development tools, not the product.

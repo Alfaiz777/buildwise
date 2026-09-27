@@ -2,7 +2,7 @@
 
 ## Status
 
-**M0 — Frozen AI responsibilities**
+**M0 — Frozen AI responsibilities.** Updated by the post-M0 architecture change (`00_M0_SPECIFICATION_FREEZE.md` §11.8): the `AgentRuntime` port, the `AgentDecision` contract and `MockAgentRuntime` rules. The AI's role is unchanged.
 
 ---
 
@@ -124,13 +124,16 @@ get_store_hours()
 get_customer_history()
 create_reservation()
 cancel_reservation()
-prepare_whatsapp_response()
+prepare_customer_response()
 request_human_handoff()
 record_customer_intent()
-record_outcome()
 ```
 
 Tool responses must contain verified application data.
+
+- `prepare_customer_response()` is channel-neutral (formerly `prepare_whatsapp_response()`). The pipeline sends the result through the conversation's `MessagingProvider`, and channel policy is applied by the pipeline.
+- `record_customer_intent()` may only propose or refine `intent_type`. It never sets `intent_stage` (§8).
+- There is **no** `record_outcome()` agent tool. Outcomes are recorded only by deterministic backend code from verified evidence (`04_DATA_MODEL.md` §16; §9 below). An earlier draft listed this tool, which contradicted that rule, so it was removed (`00_M0_SPECIFICATION_FREEZE.md` §11.8).
 
 ---
 
@@ -154,14 +157,17 @@ Only then does the tool execute.
 
 ---
 
-# 8. Structured AI output
+# 8. Structured AI output — the `AgentDecision` contract
 
 The AI should return structured output, not only free text.
+
+`AgentDecision` is the **single decision contract** returned by every `AgentRuntime` (`06_INTEGRATION_CONTRACTS.md` §6). `MockAgentRuntime` and `AdkGeminiAgentRuntime` return exactly the same shape and are validated by the same code.
 
 Example:
 
 ```json
 {
+  "runtime": "ADK_GEMINI",
   "intent": {
     "intent_type": "URGENT_PURCHASE",
     "confidence": 0.93
@@ -184,13 +190,29 @@ Example:
   "required_tools": [
     "check_store_inventory",
     "get_store_hours"
-  ]
+  ],
+  "tool_calls": [
+    { "tool": "find_nearby_stores", "status": "EXECUTED", "result_reference": "..." },
+    { "tool": "check_store_inventory", "status": "EXECUTED", "result_reference": "..." }
+  ],
+  "reply": {
+    "message_type": "INTERACTIVE",
+    "text": "Store A (2.1 km) is open and has it in stock. Shall I reserve one for you?",
+    "options": [
+      { "option_id": "reserve_store_A", "label": "Reserve at Store A" },
+      { "option_id": "buy_online", "label": "Buy online" }
+    ]
+  }
 }
 ```
 
 The backend validates this output before execution.
 
 Field rules:
+
+- `runtime` is `MOCK` or `ADK_GEMINI` and is set by the runtime implementation, never by model output. It is persisted on the `AIRecommendation` (`04_DATA_MODEL.md` §14).
+- `tool_calls` lists the tools executed through the backend `ToolExecutor` during this run, with references to their verified results. Any factual claim in `reply` (stock, hours, price, distance) must be backed by one of these results.
+- `reply` is the proposed customer message. The pipeline may still block or replace it after the guardrail and channel-policy checks.
 
 - `intent.intent_type` must be a canonical `intent_type` (`04_DATA_MODEL.md` §11.1). Gemini may propose or refine `intent_type`. It **never** sets `intent_stage`, which is computed deterministically from behavioral events.
 - `next_best_action.action` must be a canonical action (§9).
@@ -217,7 +239,25 @@ HUMAN_HANDOFF
 
 # 9.1 Execution model
 
-Each agent run is stateless and request-scoped inside Cloud Run. Conversation state is loaded from and persisted to Firestore (`03_TECH_ARCHITECTURE.md` §8.1). The agent keeps no memory between requests other than what is persisted in Firestore.
+Each agent run is stateless and request-scoped inside the backend. Conversation state is loaded from and persisted to Firestore (`03_TECH_ARCHITECTURE.md` §8.1). The agent keeps no memory between requests other than what is persisted in Firestore.
+
+The agent is reached only through the `ConversationPipeline` (`03_TECH_ARCHITECTURE.md` §8.2), whether the message came from WhatsApp or the simulator channel. There is no standalone decide endpoint.
+
+# 9.2 Agent runtimes
+
+| Runtime | Profile | Purpose |
+|---|---|---|
+| `AdkGeminiAgentRuntime` | `gcp` | The real Buildwise AI: Google ADK for TypeScript + Gemini on Vertex AI. The judged prototype uses only this runtime. |
+| `MockAgentRuntime` | `local` | Deterministic stand-in for pipeline tests, contract tests, deterministic development and local workflow verification **only** |
+
+`MockAgentRuntime` rules:
+
+- It returns the same `AgentDecision` contract (§8), with `runtime = MOCK`.
+- It decides with deterministic, documented rules: keyword/intent patterns plus verified tool results. For example, "today" triggers `find_nearby_stores`, then `STORE_RESERVATION` if an eligible store has stock.
+- It calls tools **only** through the same `ToolExecutor`, so the guardrail, tools, persistence and outcome recording are exercised exactly as in production. It is not a separate AI flow.
+- It must never be presented as Gemini intelligence. Every console or simulator view of a mock decision shows its runtime ("Mock AI — deterministic").
+- The `gcp` profile refuses to start with `MockAgentRuntime` (`07_SECURITY_SPEC.md` §19).
+- Mock results are never used as evidence of AI quality. The final AI evaluation (§16, `08_TEST_PLAN.md` §7) runs on `AdkGeminiAgentRuntime`.
 
 ---
 
@@ -281,9 +321,9 @@ The response should be based on verified context.
 
 ---
 
-# 13. WhatsApp behavior
+# 13. WhatsApp behavior (all customer channels)
 
-The AI generates the conversational layer.
+The AI generates the conversational layer. These rules apply to every customer channel. The simulator channel follows the same policy as WhatsApp (`03_TECH_ARCHITECTURE.md` §8.2).
 
 The backend controls:
 
@@ -347,6 +387,10 @@ Minimum scenarios:
 12. Two customers attempt the same low-stock reservation.
 
 The expected system behavior for each of these 12 scenarios is defined in `08_TEST_PLAN.md` §7. The scenario numbers match.
+
+The **final** AI evaluation runs on `AdkGeminiAgentRuntime`. Running the scenarios on `MockAgentRuntime` during local milestones verifies the pipeline, tools and guardrail only. It says nothing about AI quality.
+
+Findings from the ADK + Gemini TypeScript spike (S3, `10_EXECUTION_PLAN.md` §5) are recorded here when available.
 
 ---
 

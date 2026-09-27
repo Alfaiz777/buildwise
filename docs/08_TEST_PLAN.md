@@ -2,7 +2,14 @@
 
 ## Status
 
-**M0 — Frozen verification strategy**
+**M0 — Frozen verification strategy.** Updated by the post-M0 architecture change (`00_M0_SPECIFICATION_FREEZE.md` §11.8): provider contract tests, execution-profile tests, scope tests, and local vs live verification stages.
+
+Verification happens in two stages (`10_EXECUTION_PLAN.md`):
+
+| Stage | When | Profile | Proves |
+|---|---|---|---|
+| Local verification | M2–M12 | `local` | Domain logic, pipeline, security and journey on emulators + local adapters |
+| Live verification | G2–G3 | `gcp` | Real adapters honor the same contracts; real AI quality; production behavior |
 
 ---
 
@@ -66,17 +73,37 @@ Test deterministic logic:
 
 # 4. Contract tests
 
-Verify internal providers:
+Verify the five provider ports (`06_INTEGRATION_CONTRACTS.md` §1.1):
 
 ```text
-CommerceProvider
-MessagingProvider
-RetailProvider
-AnalyticsProvider
-AIProvider
+CommerceProvider      MockCommerceProvider        | ShopifyCommerceProvider
+MessagingProvider     SimulatorMessagingProvider  | WhatsAppMessagingProvider
+AgentRuntime          MockAgentRuntime            | AdkGeminiAgentRuntime
+FileStorageProvider   LocalFileStorageProvider    | GCSFileStorageProvider
+EventSink             LocalEventSink              | BigQueryEventSink
 ```
 
-The domain logic should behave consistently with mock and real adapters.
+Each port has **one** shared contract suite:
+
+- the local adapter runs it in every build
+- the real adapter runs the same suite in phase G2
+
+The domain logic must behave identically with either adapter.
+
+`AgentRuntime` contract tests check the **shape** of `AgentDecision` (`05_AI_AGENT_SPEC.md` §8): a `runtime` tag, canonical actions, tool calls only through `ToolExecutor`, and no direct writes. AI quality is tested separately in §7.
+
+The retail file parser (`06_INTEGRATION_CONTRACTS.md` §4) is tested with the retail ingestion tests (§6).
+
+## 4.1 Execution-profile tests
+
+```text
+gcp profile refuses MockCommerceProvider / MockAgentRuntime / LocalFileStorageProvider / LocalEventSink
+gcp profile refuses Firebase emulator hosts
+gcp profile allows SimulatorMessagingProvider (fallback channel)
+local profile wires every local adapter by default
+domain/ and application/ modules do not import adapters/  (static import check)
+every AIRecommendation carries runtime; MOCK decisions are labeled in the UI
+```
 
 ---
 
@@ -150,7 +177,7 @@ Create a fixed evaluation set. It covers **all 12 scenarios** in `05_AI_AGENT_SP
 
 ## 7.1 Fixture
 
-Every scenario runs against the same seeded tenant, through the same backend path as WhatsApp (Web Conversation Simulator / `POST /api/ai/decide`):
+Every scenario runs against the same seeded tenant, through the `ConversationPipeline`, entering via the simulator channel (`POST /api/channels/simulator/messages`), which is the same pipeline as WhatsApp:
 
 ```text
 Brand B1 (reservations enabled, human handoff enabled)
@@ -186,11 +213,21 @@ Scenario-specific overrides are listed below.
 
 ## 7.3 Pass rules
 
+Two runs of the same 12 scenarios, with different purposes:
+
+| Run | Runtime | Purpose | Pass rule |
+|---|---|---|---|
+| Local pipeline run (M7 onward; scenarios 6 and 12 from M8; all 12 in M12) | `MockAgentRuntime` | Verifies pipeline, tools, guardrail, persistence and outcome recording. **Not** an AI-quality result. | Deterministic: each scenario runs once and must pass 1/1 |
+| **Final AI evaluation** (G3) | `AdkGeminiAgentRuntime` | Verifies Buildwise AI behavior | The rules below |
+
+Final AI evaluation rules:
+
 - Each scenario runs **5 times** (Gemini is non-deterministic).
 - Scenarios **8, 9, 10, 11, 12** (safety, inventory truth and concurrency) must pass **5/5**.
 - Scenarios **1–7** must pass at least **4/5** on `action`. Every run must meet the "never" conditions: never invent stock, never recommend an ineligible store, never execute an unvalidated action.
 - Scenario 12's no-overbooking property is also tested deterministically in §8 without Gemini.
 - Assertions are made on the structured output (`action`, `guardrail_status`, tool calls, persisted records), not on exact reply wording.
+- Every recorded decision in the final evaluation must carry `runtime = ADK_GEMINI`.
 
 ---
 
@@ -230,9 +267,13 @@ retail re-upload → quantity overwritten, reserved_quantity preserved
 invalid status transition → 409
 ```
 
+The Firestore emulator does not reproduce production contention exactly. The concurrency test therefore runs **again against real Firestore** in phase G3 (`10_EXECUTION_PLAN.md` §4).
+
 ---
 
-# 9. WhatsApp tests
+# 9. Customer channel tests (WhatsApp and simulator)
+
+The pipeline tests run through the simulator channel in `local`, and through both channels in `gcp`. Both channels must produce the same pipeline behavior.
 
 Verify:
 
@@ -246,6 +287,10 @@ Verify:
 - duplicate webhook ignored
 - invalid webhook rejected
 - communication/opt-out state honored
+- simulator and WhatsApp messages reach the same `ConversationPipeline` (no separate simulator flow)
+- simulator messages obey the same consent/window policy as WhatsApp
+- duplicate simulator `client_message_id` returns the original result without re-running the agent
+- simulator channel refused for non-`BRAND_ADMIN` roles, and when the channel is disabled
 
 ---
 
@@ -272,11 +317,31 @@ page token: expired / reused MUTATE / revoked / wrong resource / wrong customer
 page token not present in server request logs (fragment + header only)
 intent token: expired / reused / wrong brand number / contains no PII
 rate limits return 429 on public endpoints
+PLATFORM_ADMIN refused (403) on every tenant route
+PLATFORM_ADMIN responses contain no Customer fields or conversation content
+platform actions write PlatformAuditEvent (+ brand AuditEvent)
+users/{uid} with brand_id "ALL"/wildcard or PLATFORM_ADMIN with a brand_id → 403 USER_MISCONFIGURED
+BRAND_MEMBER refused on member / retailer / retailer-user / integration / settings mutations
+RETAILER_ADMIN of retailer R1 cannot see stores or reservations of retailer R2 (same brand) → 404
+RETAILER_STAFF cannot access a store of their own retailer outside store_ids → 404
+retailer user refused when their retailer is INACTIVE; all brand users refused when the brand is SUSPENDED
+RETAILER_STAFF provisioning rejected when a store does not belong to the retailer
 ```
+
+The full role × capability matrix (`07_SECURITY_SPEC.md` §4.0) is covered by table-driven authorization tests.
 
 ---
 
 # 11. UX tests
+
+### Platform Admin
+
+Can a platform operator:
+
+- see all brands and their status
+- create a brand and hand over its first Brand Admin access
+- see integration health without seeing credentials
+- find a platform action in the audit log
 
 ### Brand
 
@@ -310,9 +375,18 @@ Can a customer:
 
 # 12. End-to-end happy path
 
-The final test:
+The same journey is verified twice:
+
+| Run | Profile | Commerce | Channel | Agent |
+|---|---|---|---|---|
+| M12 local E2E | `local` | `MockCommerceProvider` | simulator | `MockAgentRuntime` |
+| G3 live E2E (final) | `gcp` | Shopify | WhatsApp | ADK + Gemini |
+
+The final test (live form):
 
 ```text
+Platform Admin creates brand + Brand Admin
+ ↓
 Brand
  ↓
 Shopify connected
@@ -344,7 +418,9 @@ Outcome recorded
 Brand sees outcome
 ```
 
-This path must work in the deployed environment.
+In the local run, "Shopify connected" becomes the mock commerce sync, "WhatsApp" becomes the simulator channel, and "Gemini" becomes `MockAgentRuntime` (labeled as mock). Every other step is the same code.
+
+The final judged path must work in the deployed `gcp` environment with the real integrations.
 
 ---
 
@@ -372,16 +448,19 @@ Webhook redelivered while the first delivery is still processing
 
 The system should fail gracefully and tell the user what to do next.
 
-When Gemini fails, the expected result is the deterministic fallback (`03_TECH_ARCHITECTURE.md` §16.2): a safe reply, `decision_source = DETERMINISTIC_FALLBACK`, no commerce action executed, and no claims about stock, price or policy.
+The agent-runtime failure paths (timeout, invalid structure) are also exercised locally, by making `MockAgentRuntime` time out or return invalid output in tests.
+
+When the agent runtime (Gemini) fails, the expected result is the deterministic fallback (`03_TECH_ARCHITECTURE.md` §16.2): a safe reply, `decision_source = DETERMINISTIC_FALLBACK`, no commerce action executed, and no claims about stock, price or policy.
 
 ---
 
 # 14. Production smoke test
 
-After deployment, verify:
+After the `gcp` deployment (phases G1–G3), verify:
 
 ```text
 login
+platform admin console
 brand dashboard
 retailer dashboard
 Shopify connection/state

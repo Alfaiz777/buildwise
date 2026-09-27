@@ -2,7 +2,7 @@
 
 ## Status
 
-**M0 — Security boundaries are mandatory from the first implementation**
+**M0 — Security boundaries are mandatory from the first implementation.** Updated by the post-M0 architecture change (`00_M0_SPECIFICATION_FREEZE.md` §11.8): five roles, four interfaces, platform scope, execution profiles.
 
 ---
 
@@ -62,23 +62,62 @@ Tenant boundary applies to:
 - integrations
 - audit logs
 
+Retailers are sub-scopes **inside** a brand tenant (`04_DATA_MODEL.md` §8a). The platform is **outside** every tenant, and platform scope does not grant tenant data access (§4.2).
+
 ---
 
-# 4. RBAC
+# 4. Roles, scopes and permissions
 
-Roles:
+Buildwise has **four interfaces**:
+
+| Interface | Who | Authentication |
+|---|---|---|
+| Platform Admin Console | `PLATFORM_ADMIN` | Firebase Auth |
+| Brand Console | `BRAND_ADMIN`, `BRAND_MEMBER` | Firebase Auth |
+| Retailer Console | `RETAILER_ADMIN`, `RETAILER_STAFF` | Firebase Auth |
+| Customer AI Channel (WhatsApp; simulator; contextual pages) | Customer | Channel identity or page token, **never** Firebase Auth |
+
+The five application roles and their scopes:
 
 ```text
-BRAND_ADMIN
-BRAND_MARKETING
-BRAND_OPERATIONS
-RETAIL_MANAGER
-RETAIL_STAFF
+PLATFORM_ADMIN   → platform scope
+BRAND_ADMIN      → brand scope (administrative)
+BRAND_MEMBER     → brand scope (read-mostly, non-administrative)
+RETAILER_ADMIN   → retailer scope: all stores of their retailer
+RETAILER_STAFF   → retailer scope: assigned stores only
 ```
 
-Access should follow least privilege.
+The customer is **not** a console role. A customer may access only their own conversation, context and resources (§4.3).
 
-## 4.1 Authentication and authorization chain (brand/retail users)
+Platform scope is a distinct principal type. It is **never** implemented as a brand principal with a wildcard or `"ALL"` brand ID.
+
+Access follows least privilege.
+
+## 4.0 Permission matrix (MVP)
+
+| Capability | PLATFORM_ADMIN | BRAND_ADMIN | BRAND_MEMBER | RETAILER_ADMIN | RETAILER_STAFF |
+|---|---|---|---|---|---|
+| Create / suspend brands; provision a brand's first `BRAND_ADMIN` | ✓ | | | | |
+| Platform audit log, platform health | ✓ | | | | |
+| Brands, retailers, stores (metadata) | all brands | own brand | own brand (view) | own retailer's stores (view) | assigned stores (view) |
+| Integration health (metadata only) | all brands | own brand | own brand (view) | | |
+| Connect / change Shopify & WhatsApp credentials | | ✓ | | | |
+| Brand settings, security/configuration | | ✓ | | | |
+| Manage brand members | | ✓ | | | |
+| Manage retailers, store → retailer assignment, retailer users | | ✓ | | | |
+| Retail file upload, SKU mapping resolution | | ✓ | | | |
+| Customer intent, AI conversations, recommendations | | ✓ | ✓ (view) | | |
+| Outcomes, analytics / insights | aggregate only | ✓ | ✓ (view) | | |
+| Retail availability / inventory | aggregate / operational | ✓ | ✓ (view) | own retailer's stores | assigned stores |
+| Reservations | operational level, no customer PII | ✓ (view) | ✓ (view) | view + status transitions, own retailer's stores | view + status transitions, assigned stores |
+| Customer simulator (`POST /api/channels/simulator/messages`) | | ✓ | | | |
+| Customer profiles, full conversation history | **✗** (§4.2) | ✓ | ✓ (view) | ✗ (reservation context only) | ✗ (reservation context only) |
+
+`BRAND_MEMBER` cannot manage members, create/suspend brands, manage retailer users, change integration credentials, change security/configuration or perform platform administration.
+
+The customer simulator is restricted to `BRAND_ADMIN` because it creates conversations and can trigger reservations. That is a write action, and `BRAND_MEMBER` is read-mostly.
+
+## 4.1 Authentication and authorization chain (console users)
 
 ```text
 React (Firebase Auth SDK)
@@ -91,61 +130,94 @@ Cloud Run
    signature, expiry, audience = Firebase project, issuer
    failure → 401
    ↓
-2. User / brand / role resolution
-   users/{uid} (Firestore) → brand_id, role, store_ids, status
+2. Scoped principal resolution
+   users/{uid} (Firestore) → role, brand_id, retailer_id, store_ids, status
    missing or status ≠ ACTIVE → 403
-   principal = { user_id, brand_id, role, store_ids }
+   document violates the role table (04 §4) → 403 USER_MISCONFIGURED
+   by role:
+     PLATFORM_ADMIN  → brand_id must be null
+                       principal = { scope: PLATFORM, user_id }
+     BRAND_*         → brand exists and ACTIVE, else 403
+                       principal = { scope: BRAND, user_id, role, brand_id }
+     RETAILER_*      → brand ACTIVE, retailer exists in that brand and ACTIVE, else 403
+                       principal = { scope: RETAILER, user_id, role, brand_id,
+                                     retailer_id, store_ids | ALL_RETAILER_STORES }
    ↓
 3. Route authorization
-   principal.role allowed for this route? → else 403
+   principal scope and role allowed for this route (§4.0)? → else 403
    ↓
-4. Resource authorization
-   resource.brand_id = principal.brand_id
-   RETAIL_* roles: resource.store_id ∈ principal.store_ids
+4. Resource authorization (tenant resources: brand_id, retailer_id?, store_id?)
+   PLATFORM scope      → refused on tenant routes (403); uses /api/platform/* only (§4.2)
+   BRAND scope         → resource.brand_id = principal.brand_id
+   RETAILER scope      → resource.brand_id = principal.brand_id
+                         AND resource.retailer_id = principal.retailer_id
+                         AND (RETAILER_STAFF) resource.store_id ∈ principal.store_ids
    failure → 404 (do not reveal that another tenant's resource exists)
    ↓
-5. Handler executes → AuditEvent for state-changing actions
+5. Handler executes → AuditEvent (tenant) or PlatformAuditEvent (platform)
+   for state-changing actions
 ```
 
 Rules:
 
-- `brand_id` is **always** taken from the principal, never from the request body, query or path alone.
-- Firestore (`users/{uid}`) is the authority for role and brand. Firebase custom claims are not used for authorization in the MVP, so role changes take effect on the next request.
+- `brand_id` and `retailer_id` are **always** taken from the principal, never from the request body, query or path alone.
+- Firestore (`users/{uid}`) is the authority for role and scope. Firebase custom claims are not used for authorization in the MVP, so role changes take effect on the next request.
 - The browser never talks to Firestore directly. Firestore security rules deny all client access (`03_TECH_ARCHITECTURE.md` §7).
-- Customers are never Firebase-authenticated. They are identified by their WhatsApp identity (webhook) or by a contextual page token (§16).
+- Customers are never Firebase-authenticated (§4.3).
+- Tenant data-access helpers accept only brand- or retailer-scope principals. Platform code reaches brand data only through explicit, audited platform services (§4.2).
 
-Examples:
+## 4.2 Platform scope
 
-### Brand Marketing
+`PLATFORM_ADMIN` operates the Buildwise platform. It does **not** operate inside a brand.
 
-Can view:
+Can see:
 
-- customer intent
-- relevant conversations
-- recommendations
-- outcomes
+- platform-level metadata and platform health
+- the brand registry (name, status, created date)
+- retailers and stores (metadata)
+- integration health metadata (connected / error / last sync). **Never** credentials.
+- reservations and outcomes at aggregate or operational level: IDs, brand, store, status, timestamps, counts, values. **No** customer name, phone number, channel identity, location or conversation content.
+- the platform audit log
 
-Does not automatically receive:
+Must not see, by default:
 
-- unrestricted store administration
-- sensitive retailer details
+- full customer profiles (`Customer` records)
+- unnecessary customer PII (channel identities, location, preferences)
+- conversation content or full conversation history
 
-### Retail Staff
+Any future support/debug access to customer data must be explicitly authorized, narrowly scoped (one brand, one purpose, time-limited), audited, and documented in a separate specification. **No such access exists in the MVP**, and no broad platform-wide customer-data access may be built.
 
-Can view:
+Platform actions go through `/api/platform/*` routes. These routes name the target brand explicitly and always write a `PlatformAuditEvent`, plus an `AuditEvent` in the affected brand (`04_DATA_MODEL.md` §18.0).
 
-- assigned store
-- reservation context
-- product
-- quantity
-- ETA
-- operational status
+## 4.3 Customer principal
 
-Does not receive:
+The customer is resolved, never logged in:
 
-- customer's entire history
-- brand-wide analytics
-- unrelated customers
+| Entry | Resolution |
+|---|---|
+| WhatsApp webhook | verified signature → brand from phone number ID → `Customer` by `channel_identities` (`WHATSAPP`) |
+| Simulator channel | Firebase-authenticated `BRAND_ADMIN` acting in their own brand → `Customer` by `channel_identities` (`SIMULATOR`) |
+| Contextual page | page token bound to brand + customer + conversation + resource (§16) |
+
+A customer principal can access only its own conversation, context and bound resources. It never reaches console routes.
+
+## 4.4 Provisioning chain
+
+```text
+seed script (bootstrap only) → first PLATFORM_ADMIN
+PLATFORM_ADMIN               → creates Brand + its first BRAND_ADMIN
+BRAND_ADMIN                  → creates BRAND_MEMBERs, Retailers, RETAILER_ADMIN/STAFF users,
+                               assigns stores to retailers
+```
+
+There is no self-signup. Firebase Auth client sign-up is disabled in GCP.
+
+New users receive their first sign-in through an Admin SDK–generated password-reset link, which the provisioning admin hands over. The MVP has no email service (`02_MVP_SPEC.md` §3).
+
+Retail-facing roles:
+
+- **`RETAILER_ADMIN` / `RETAILER_STAFF`** see operational context only: store, reservation context, product, quantity, ETA, status.
+- They never see a customer's history, brand-wide analytics or unrelated customers.
 
 ---
 
@@ -197,7 +269,7 @@ Never:
 - commit secrets to GitHub
 - expose secrets to React
 - put secrets into prompts
-- send secrets to Gemini
+- send secrets to Gemini or any agent runtime
 
 ---
 
@@ -309,6 +381,8 @@ conversation state
 
 Messaging behavior must comply with the applicable WhatsApp Business Platform policies and the brand's configured communication rules.
 
+Consent, opt-out and the customer-service window are enforced in the `ConversationPipeline`, not inside a channel adapter. The simulator channel is therefore subject to the same policy as WhatsApp (`03_TECH_ARCHITECTURE.md` §8.2).
+
 ---
 
 # 11. Logging
@@ -403,6 +477,14 @@ Contextual page tokens are rejected when expired, reused (mutation), revoked, or
 Intent tokens contain no PII and cannot be used on another brand's WhatsApp number.
 Concurrent reservations cannot exceed available inventory.
 Public endpoints are rate limited.
+PLATFORM_ADMIN is refused on every tenant route and cannot read Customer records or conversation content.
+Every platform action writes a PlatformAuditEvent (and a brand AuditEvent when it concerns a brand).
+A users/{uid} document with brand_id = "ALL" (or any wildcard) is rejected, not treated as platform scope.
+BRAND_MEMBER cannot manage members, retailers, retailer users, integrations or settings.
+RETAILER_ADMIN cannot access another retailer's stores in the same brand.
+RETAILER_STAFF cannot access stores outside store_ids, even within their retailer.
+Users of a SUSPENDED brand or INACTIVE retailer are refused.
+The gcp profile refuses to start with mock/local adapters (§19).
 ```
 
 ---
@@ -419,7 +501,7 @@ Applies to `/nearby-stores`, `/reservation/:id` and `/pickup/:id` (`02_MVP_SPEC.
 | Storage | Only the SHA-256 hash is stored (`pageAccessTokens/{token_hash}`, `04_DATA_MODEL.md` §18.2) |
 | Validation | Server-side only, on every request |
 | Resource binding | `resource_type` + `resource_id` (and `brand_id`) |
-| Customer/session binding | `customer_id` + `conversation_id` of the WhatsApp/simulator conversation that issued it |
+| Customer/session binding | `customer_id` + `conversation_id` of the conversation (WhatsApp or simulator channel) that issued it |
 | VIEW token TTL | **15 minutes** from issue. Reusable within the TTL (page refresh). |
 | MUTATE token | **Single use**, TTL ≤ 15 minutes, restricted to one `allowed_action`. It is consumed in the same Firestore transaction as the mutation. |
 | Revocation | `revoked = true` makes the token invalid immediately |
@@ -479,9 +561,9 @@ The numbers are prototype defaults.
 | Intent token issuance | max 5 tokens per `web_session_id` per hour |
 | Customer-page endpoints (`/api/page/context`, `/api/stores/nearby`, `POST /api/reservations`) | 30 req/min per IP |
 | Invalid page/intent tokens | after 10 invalid attempts per IP in 10 min → `429` for 10 min |
-| `POST /api/ai/decide` | 30 req/min per user |
-| AI decisions per conversation | max 10 per 5 min (Firestore-backed counter). Beyond that, no Gemini call is made and at most one fixed "please wait" reply is sent per window. |
-| Inbound message length | text truncated to 2,000 characters before it reaches Gemini |
+| `POST /api/channels/simulator/messages` | 30 req/min per user |
+| AI decisions per conversation | max 10 per 5 min (Firestore-backed counter). Beyond that, no agent runtime call is made and at most one fixed "please wait" reply is sent per window. |
+| Inbound message length | text truncated to 2,000 characters before it reaches the agent runtime |
 | Reservations | `max_quantity_per_reservation` enforced in the transaction (`04_DATA_MODEL.md` §3) |
 | Request bodies | JSON ≤ 100 KB; retail files go through Cloud Storage (≤ 10 MB) |
 | Cost bound | Cloud Run max-instances cap configured for the MVP environment |
@@ -500,14 +582,26 @@ The full contract is `06_INTEGRATION_CONTRACTS.md` §10.1. Security requirements
 - only the hash is stored
 - 30-minute TTL, single use
 - valid only on the issuing brand's WhatsApp number
-- binding occurs only after the customer's WhatsApp identity is resolved server-side
+- binding occurs only after the customer's channel identity (WhatsApp, or simulator in local) is resolved server-side
 - invalid tokens fail silently to the customer (no oracle) and are audited
-- the token is stripped before message content reaches Gemini or storage
+- the token is stripped before message content reaches the agent runtime or storage
 
 The token only carries anonymous web intent (product and stage) into the conversation. If it is forwarded to another person, the recipient gains no customer data.
 
 ---
 
-# 19. Security principle to remember
+# 19. Execution-profile security
+
+Execution profiles are defined in `03_TECH_ARCHITECTURE.md` §2.2.
+
+- **The `gcp` profile refuses to start** if any of these is selected: `MockCommerceProvider`, `MockAgentRuntime`, `LocalFileStorageProvider`, `LocalEventSink`, or Firebase emulator hosts. `SimulatorMessagingProvider` is allowed in `gcp` as the approved fallback channel, restricted to `BRAND_ADMIN`.
+- **Mock AI is never presented as Gemini.** Every AI decision carries `runtime` (`04_DATA_MODEL.md` §14), and any console view of a decision shows it.
+- **Local data is synthetic.** The local profile uses fixture brands, products and simulator customers. Real customer PII must not be loaded into local emulators.
+- **Local secrets** live only in git-ignored `.env` files. In `gcp`, secrets come from Secret Manager and never from committed files.
+- **`PLATFORM_ADMIN` accounts** are bootstrapped only by the seed script. In `gcp` they should use multi-factor sign-in, where Identity Platform is enabled.
+
+---
+
+# 20. Security principle to remember
 
 > **AI may reason broadly enough to personalize, but it may act only within narrowly authorized boundaries.**

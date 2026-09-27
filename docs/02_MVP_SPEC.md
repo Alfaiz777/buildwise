@@ -2,7 +2,7 @@
 
 ## Status
 
-**M0 — Frozen MVP scope**
+**M0 — Frozen MVP scope.** Updated by the post-M0 architecture change (`00_M0_SPECIFICATION_FREEZE.md` §11.8): four interfaces, minimal platform administration, retailer administration, execution profiles. The vertical slice and customer journey are unchanged.
 
 ---
 
@@ -54,11 +54,29 @@ Brand intelligence
 
 # 3. MVP modules
 
+The MVP has **four interfaces**: Platform Admin Console, Brand Console, Retailer Console and Customer AI Channel (`01_PRODUCT_SOURCE_OF_TRUTH.md` §8b). Roles and permissions are in `07_SECURITY_SPEC.md` §4.
+
+## 0. Platform administration (minimal)
+
+Required:
+
+- list brands and their status
+- create a brand
+- suspend / reactivate a brand
+- provision a brand's first `BRAND_ADMIN` (password-setup link handed over manually; the MVP has no email service)
+- view integration health metadata across brands (no credentials)
+- view reservations/outcomes at aggregate or operational level (no customer PII)
+- view the platform audit log
+
+Not included: customer profiles or conversation content (`07_SECURITY_SPEC.md` §4.2), billing, platform analytics beyond the items above.
+
 ## A. Brand onboarding
 
 Required:
 
-- create/login brand account
+- brand account created by a platform admin; Brand Admin signs in (no self-signup)
+- Brand Admin manages brand members (`BRAND_ADMIN`, `BRAND_MEMBER`)
+- Brand Admin creates retailers, assigns stores to retailers and provisions retailer users (`RETAILER_ADMIN`, `RETAILER_STAFF`)
 - connect Shopify
 - show connection status
 - initial sync status
@@ -229,6 +247,12 @@ Customer may receive:
 
 The MVP does not include a customer dashboard.
 
+The **Customer AI Channel** is:
+
+- WhatsApp-first in the final (`gcp`) system
+- the customer simulator during local development, and as the approved fallback
+- contextual web pages only when a task needs them
+
 Optional contextual web pages:
 
 ```text
@@ -248,24 +272,24 @@ Access requires a short-lived opaque page token bound to the customer, conversat
 Required:
 
 ```text
-Incoming message
+Incoming message (WhatsApp webhook | simulator channel)
 ↓
-Cloud Run webhook
+ConversationPipeline (one pipeline for both channels)
 ↓
 Customer resolution
 ↓
 Buildwise context
 ↓
-ADK
-↓
-Gemini
+AgentRuntime (gcp: ADK + Gemini · local: MockAgentRuntime)
 ↓
 Next-best action
 ↓
 Guardrail
 ↓
-WhatsApp response/action
+Response/action on the same channel
 ```
+
+The simulator is a customer-channel adapter into the same pipeline (`03_TECH_ARCHITECTURE.md` §8.2). It is not a separate AI flow. Its entry point is `POST /api/channels/simulator/messages` (`06_INTEGRATION_CONTRACTS.md` §14.2).
 
 For the prototype, use one controlled WhatsApp Business setup if production multi-merchant onboarding is not available in time.
 
@@ -355,11 +379,19 @@ Looker — optional for the MVP
 
 # 12. MVP acceptance criteria
 
-The MVP is accepted when all of these work:
+The MVP is accepted when all of these work, first in the `local` profile (M12) and finally in the `gcp` profile with the real integrations (G3; see §14).
+
+### 0. Platform administration
+
+- [ ] Platform Admin can create a brand and provision its first Brand Admin
+- [ ] Platform Admin can suspend a brand, and its users are then refused
+- [ ] Platform Admin cannot see customer profiles or conversation content
+- [ ] Platform actions appear in the platform audit log
 
 ### A. Brand setup
 
 - [ ] Brand can authenticate
+- [ ] Brand Admin can add members, retailers and retailer users; Brand Member cannot
 - [ ] Shopify connection can be verified
 - [ ] Relevant Shopify data can appear in Buildwise
 - [ ] Retail data can be uploaded
@@ -369,13 +401,13 @@ The MVP is accepted when all of these work:
 
 - [ ] Intent can be represented
 - [ ] Customer/product/retail context can be assembled
-- [ ] Gemini can select a structured next-best action
+- [ ] The agent runtime selects a structured next-best action (Gemini in the final system; mock locally, labeled as mock)
 - [ ] Response is personalized
 - [ ] AI can hand off to human
 
 ### C. Customer
 
-- [ ] WhatsApp incoming message is received
+- [ ] Customer message is received (simulator locally; WhatsApp in the final system) through the same pipeline
 - [ ] Context is retrieved
 - [ ] AI reply is generated
 - [ ] Store availability can be returned
@@ -383,7 +415,7 @@ The MVP is accepted when all of these work:
 
 ### D. Retailer
 
-- [ ] Reservation appears
+- [ ] Reservation appears, scoped to the retailer (Retailer Admin: all its stores; Retailer Staff: assigned stores)
 - [ ] Inventory is visible
 - [ ] Status can transition
 - [ ] Completion can be recorded
@@ -409,3 +441,23 @@ Do not allow implementation to expand into:
 - autonomous messaging campaign optimizer
 - complex forecasting
 - multi-agent swarm
+- customer dashboard or customer login
+- platform-wide customer-data access for platform administrators
+
+---
+
+# 14. Execution profiles
+
+The MVP is built **locally first**, then cut over to Google Cloud (`10_EXECUTION_PLAN.md`).
+
+| | `local` profile (M2–M12) | `gcp` profile (G1–G3, judged) |
+|---|---|---|
+| Commerce | `MockCommerceProvider` | Shopify |
+| Customer channel | simulator | WhatsApp (+ simulator fallback) |
+| AI | `MockAgentRuntime` (deterministic, labeled mock) | ADK + Gemini |
+| Data / auth | Firestore + Auth emulators | Firestore + Firebase Auth |
+| Files / events | local storage / local event sink | Cloud Storage / BigQuery |
+
+The business logic is identical in both profiles. Only adapters change (`03_TECH_ARCHITECTURE.md` §2.2).
+
+The **judged prototype** runs the `gcp` profile with real Shopify, real Meta WhatsApp and Gemini. Mock adapters exist for development and automated tests. They are never the judge/demo path.
