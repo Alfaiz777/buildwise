@@ -145,8 +145,8 @@ One React application serves the three consoles and the customer contextual page
 | Area | Interface | Scope |
 |---|---|---|
 | `/platform/*` | Platform Admin Console | `PLATFORM_ADMIN` |
-| `/brand/*` | Brand Console (includes the customer simulator for `BRAND_ADMIN`) | `BRAND_ADMIN`, `BRAND_MEMBER` |
-| `/retailer/*` | Retailer Console | `RETAILER_ADMIN`, `RETAILER_STAFF` |
+| `/brand/*` | Brand Console (includes the customer simulator) | `BRAND_ADMIN` |
+| `/retailer/*` | Retailer Console (one store) | `RETAIL_ADMIN` |
 | `/nearby-stores`, `/reservation/:id`, `/pickup/:id` | Customer AI Channel contextual pages | page token, no login |
 
 Responsibilities:
@@ -157,7 +157,7 @@ Responsibilities:
 - conversation/operation views
 - status and error states
 
-Route areas are a UX convenience. Authorization is always enforced by the backend.
+Route areas are a UX convenience. Authorization is always enforced by the backend, whose API areas mirror them: `/api/platform/*` (platform scope), `/api/brand/*` and `/api/brands/:brandId` (brand scope), `/api/retail/*` (retail scope, own store only). The per-interface contract is `11_INTERFACE_CONTRACT.md`.
 
 The customer does not receive a full Buildwise dashboard.
 
@@ -185,9 +185,9 @@ Hosts the web application.
 
 Identity for console users:
 
-- platform administrators
-- brand users (admins and members)
-- retailer users (admins and staff)
+- platform administrators (`PLATFORM_ADMIN`)
+- brand administrators (`BRAND_ADMIN`)
+- retail administrators (`RETAIL_ADMIN`)
 
 Locally, the Firebase Auth Emulator provides the same identity flow.
 
@@ -586,4 +586,4 @@ For the MVP, HTTP rate limiting may be in-memory per instance. The per-conversat
 
 # 17. Critical API contracts
 
-The minimal request/response contracts for the critical endpoints are in `06_INTEGRATION_CONTRACTS.md` §14.1–§14.7.
+The minimal request/response contracts for the critical endpoints are in `06_INTEGRATION_CONTRACTS.md` §14.1–§14.9.

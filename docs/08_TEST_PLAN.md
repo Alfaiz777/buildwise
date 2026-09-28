@@ -311,7 +311,7 @@ duplicate webhook
 invalid webhook signature
 Firebase ID token: missing / expired / wrong project → 401
 unknown or disabled user → 403
-retail user accessing another store → 404
+retail user accessing another store (including a store of the same brand) → 404
 client-supplied brand_id ignored
 page token: expired / reused MUTATE / revoked / wrong resource / wrong customer
 page token not present in server request logs (fragment + header only)
@@ -321,11 +321,21 @@ PLATFORM_ADMIN refused (403) on every tenant route
 PLATFORM_ADMIN responses contain no Customer fields or conversation content
 platform actions write PlatformAuditEvent (+ brand AuditEvent)
 users/{uid} with brand_id "ALL"/wildcard or PLATFORM_ADMIN with a brand_id → 403 USER_MISCONFIGURED
-BRAND_MEMBER refused on member / retailer / retailer-user / integration / settings mutations
-RETAILER_ADMIN of retailer R1 cannot see stores or reservations of retailer R2 (same brand) → 404
-RETAILER_STAFF cannot access a store of their own retailer outside store_ids → 404
-retailer user refused when their retailer is INACTIVE; all brand users refused when the brand is SUSPENDED
-RETAILER_STAFF provisioning rejected when a store does not belong to the retailer
+only PLATFORM_ADMIN, BRAND_ADMIN, RETAIL_ADMIN accepted; any other role value (incl. CUSTOMER) → 403 USER_MISCONFIGURED
+Brand A / Retailer A → Store A (RETAIL_ADMIN_A) and Store B (RETAIL_ADMIN_B): one retailer has several stores; RETAIL_ADMIN_A can access only Store A, RETAIL_ADMIN_B only Store B (the other → 404)
+RETAIL_ADMIN cannot access an unassigned store, another retailer's store or another brand's store → 404
+GET /api/me for RETAIL returns store_id and a single store, never a stores list
+RETAIL_ADMIN users/{uid} without store_id, not the store's recorded admin, or naming another retailer than the store's → 403 USER_MISCONFIGURED (a hand-edited user document grants nothing)
+a store cannot be attached to a second retailer → 409 STORE_ALREADY_ASSIGNED
+a store operated by its RETAIL_ADMIN cannot be detached → 409 STORE_HAS_ADMIN
+Retail Admin provisioning is store-based: for a store without a retailer → 409 STORE_HAS_NO_RETAILER; scope comes from the store record, never from the request; it returns the local password-setup link
+Brand Console: a store without a Retail Admin shows the provisioning action; a store with one shows the admin and no action
+no store-staff role and no multi-store user model exist
+RETAIL_ADMIN refused on every brand-administration and platform route → 403
+second BRAND_ADMIN for a brand → 409 BRAND_ADMIN_ALREADY_PROVISIONED; BRAND_ADMIN has no route to add one (404)
+second RETAIL_ADMIN for a store → 409 RETAIL_ADMIN_ALREADY_PROVISIONED (no user, no setup link)
+a BRAND_ADMIN / RETAIL_ADMIN document that is not the brand's / store's admin of record → 403
+RETAIL_ADMIN refused when its retailer is INACTIVE; BRAND_ADMIN and RETAIL_ADMIN refused when the brand is SUSPENDED
 ```
 
 The full role × capability matrix (`07_SECURITY_SPEC.md` §4.0) is covered by table-driven authorization tests.
@@ -339,7 +349,7 @@ The full role × capability matrix (`07_SECURITY_SPEC.md` §4.0) is covered by t
 Can a platform operator:
 
 - see all brands and their status
-- create a brand and hand over its first Brand Admin access
+- create a brand and hand over its single Brand Admin's access
 - see integration health without seeing credentials
 - find a platform action in the audit log
 

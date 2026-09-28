@@ -36,7 +36,7 @@ No brand can access another brand's operational data.
 
 Buildwise itself (the platform) is **not** a tenant. Platform-level records (the brand registry, platform users, the platform audit) live outside any brand. Platform scope is never represented by a special `brand_id` value (see §4 and `07_SECURITY_SPEC.md` §4.2).
 
-A **Retailer** belongs to exactly one brand (§8a). Retailer scope is a subset of brand scope, so the brand remains the tenant boundary.
+A **Retailer** belongs to exactly one brand (§8a). Retail scope (a `RETAIL_ADMIN`'s retailer) is a subset of brand scope, so the brand remains the tenant boundary.
 
 ---
 
@@ -82,16 +82,17 @@ Brand
 - created_at
 - updated_at
 - settings
+- brand_admin_user_id   (the brand's single BRAND_ADMIN; null until provisioned)
 ```
 
 `status`:
 
 ```text
 ACTIVE
-SUSPENDED    (set by PLATFORM_ADMIN; all brand and retailer users are refused)
+SUSPENDED    (set by PLATFORM_ADMIN; its BRAND_ADMIN and RETAIL_ADMINs are refused)
 ```
 
-Brands are created by a `PLATFORM_ADMIN` (`07_SECURITY_SPEC.md` §4.4).
+Brands are created by a `PLATFORM_ADMIN`, who also provisions the brand's **one** `BRAND_ADMIN` (`07_SECURITY_SPEC.md` §4.4). `brand_admin_user_id` is claimed in a Firestore transaction at provisioning, so a brand can never get a second Brand Admin.
 
 Settings may include:
 
@@ -122,40 +123,44 @@ max_quantity_per_reservation (prototype default: 2)
 User
 - user_id            (= Firebase Auth uid)
 - role
-- brand_id           (null for PLATFORM_ADMIN; required for every other role)
-- retailer_id        (required for RETAILER_* roles; null otherwise)
-- store_ids          (see the table below)
+- brand_id           (null for PLATFORM_ADMIN; required for BRAND_ADMIN and RETAIL_ADMIN)
+- retailer_id        (required for RETAIL_ADMIN; null otherwise)
+- store_id           (required for RETAIL_ADMIN: its one store; null otherwise)
 - email
 - status             (ACTIVE | DISABLED)
 - created_at
 - updated_at
 ```
 
-Roles (the five application roles):
+The MVP has exactly **three internal roles**, one per console:
 
 ```text
 PLATFORM_ADMIN
 BRAND_ADMIN
-BRAND_MEMBER
-RETAILER_ADMIN
-RETAILER_STAFF
+RETAIL_ADMIN
 ```
 
 Role → scope and required fields:
 
-| Role | Scope | `brand_id` | `retailer_id` | `store_ids` |
-|---|---|---|---|---|
-| `PLATFORM_ADMIN` | Platform | **must be null** | null | empty |
-| `BRAND_ADMIN` | Brand | required | null | empty |
-| `BRAND_MEMBER` | Brand (read-mostly) | required | null | empty |
-| `RETAILER_ADMIN` | Retailer (all of the retailer's stores) | required | required | empty (all stores of the retailer) |
-| `RETAILER_STAFF` | Retailer, assigned stores only | required | required | **required, non-empty**; each store must belong to `retailer_id` |
+| Role | Scope | `brand_id` | `retailer_id` | `store_id` | Access |
+|---|---|---|---|---|---|
+| `PLATFORM_ADMIN` | Platform | **must be null** | null | null | Platform Admin Console |
+| `BRAND_ADMIN` | Brand | required | null | null | Brand Console: full administration of its one brand |
+| `RETAIL_ADMIN` | Retail (store-level) | required | required | required | Retailer Console: exactly its one store |
 
-A document that violates this table is rejected during principal resolution (`07_SECURITY_SPEC.md` §4.1).
+A document that violates this table, or carries any other role value, is rejected during principal resolution (`07_SECURITY_SPEC.md` §4.1).
 
-For the MVP, one user belongs to at most one brand, and a retailer user belongs to exactly one retailer.
+MVP user model — **exactly one operator per scope**:
 
-The customer is **not** a User and has no role. Customers are identified through their channel identity (§6) or a contextual page token (`07_SECURITY_SPEC.md` §4.3).
+- one `PLATFORM_ADMIN` for the prototype (bootstrapped by the seed script)
+- exactly one `BRAND_ADMIN` per brand, recorded as `Brand.brand_admin_user_id`, provisioned only by `PLATFORM_ADMIN`
+- at most one `RETAIL_ADMIN` per store, recorded as `RetailStore.retail_admin_user_id`, provisioned by the brand's `BRAND_ADMIN` for that specific store (the store must belong to a retailer)
+
+Retail ownership (§8a): a retailer may own many stores; each store belongs to exactly one retailer and has at most one `RETAIL_ADMIN`; each `RETAIL_ADMIN` operates exactly one store. There is no multi-store Retail Admin and no store-staff role.
+
+A `BRAND_ADMIN` is accepted only if it is the admin recorded on its brand; a `RETAIL_ADMIN` only if it is the admin recorded on the store named by `users.store_id`, and `RetailStore.retailer_id = users.retailer_id` (`07_SECURITY_SPEC.md` §4.1). A missing or mismatched `store_id` is a misconfigured user. `retailer_id` and `store_id` are written by provisioning from the store record, never chosen by a client. Replacing an admin, or having several admins per scope, is not part of the MVP.
+
+The customer is **not** a User and has no internal role. Customers are identified through their channel identity (§6) or a contextual page token (`07_SECURITY_SPEC.md` §4.3), and are represented by a customer principal, never by `users/{uid}`.
 
 Permissions per role are defined in `07_SECURITY_SPEC.md` §4.
 
@@ -277,14 +282,22 @@ ProductMapping
 
 # 8a. Retailer
 
-A retailer is the retail business that operates one or more of a brand's physical stores (for example a franchisee, distributor or store operator). It is the scope for `RETAILER_ADMIN` and `RETAILER_STAFF`.
+A retailer is the retail business or partner that operates one or more of a brand's physical stores (for example a retail chain, franchisee or store operator). A store is one physical location. A `RETAIL_ADMIN` operates exactly one store:
+
+```text
+Brand                         (Dot & Key)
+ └── Retailer                 (Nykaa)
+      ├── Store A ── RETAIL_ADMIN_A     (Mumbai Store)
+      ├── Store B ── RETAIL_ADMIN_B     (Delhi Store)
+      └── Store C ── RETAIL_ADMIN_C     (Ahmedabad Store)
+```
 
 ```text
 Retailer
 - retailer_id
 - brand_id
 - name
-- status          (ACTIVE | INACTIVE)
+- status                 (ACTIVE | INACTIVE)
 - created_at
 - updated_at
 ```
@@ -293,8 +306,10 @@ Rules:
 
 - A retailer belongs to **exactly one brand**. A real-world business that sells for several brands is represented by a separate Retailer record under each brand in the MVP. Retailer identity is not shared across brands.
 - Retailers are created and managed by `BRAND_ADMIN`.
-- A store belongs to at most one retailer (`RetailStore.retailer_id`).
-- A store with no retailer is visible only to brand scope until a `BRAND_ADMIN` assigns it.
+- **One retailer, many stores:** a retailer may own any number of stores; a store belongs to at most one retailer (`RetailStore.retailer_id`). Attaching a store that already has a retailer → `409 STORE_ALREADY_ASSIGNED`; detaching a store that has a `RETAIL_ADMIN` → `409 STORE_HAS_ADMIN`.
+- **One Retail Admin per store:** the `BRAND_ADMIN` provisions a store's single `RETAIL_ADMIN` from that store (claimed transactionally in `RetailStore.retail_admin_user_id`; a second one → `409 RETAIL_ADMIN_ALREADY_PROVISIONED`; a store without a retailer → `409 STORE_HAS_NO_RETAILER`).
+- A store with no retailer is visible only to brand scope until it is associated with one.
+- The store ↔ retailer association is established by retail ingestion (M4): the optional `retailer_id` column of the retail file (§9.1). Until then the Brand Console has **no** store UI and no manual store-ID entry; a backend-only association operation exists for tests and as the ingestion building block (`06_INTEGRATION_CONTRACTS.md` §14.7).
 - An `INACTIVE` retailer's users are refused during principal resolution.
 
 ---
@@ -305,7 +320,8 @@ Rules:
 RetailStore
 - store_id
 - brand_id
-- retailer_id             (null until assigned; see §8a)
+- retailer_id             (its one retailer; null until associated; see §8a)
+- retail_admin_user_id    (the store's single RETAIL_ADMIN; null until provisioned; see §4)
 - store_name
 - city
 - address
@@ -355,7 +371,7 @@ reservation_available
 retailer_id              (must reference an existing Retailer of the same brand)
 ```
 
-The 11 required fields are unchanged. `retailer_id` is optional. Stores can also be assigned to a retailer later by a `BRAND_ADMIN`.
+The 11 required fields are unchanged. `retailer_id` is optional. When present it establishes the store's retailer (§8a): the same `retailer_id` may appear on many stores (one retailer, many stores), and a store that already belongs to a different retailer is reported as a conflict, not silently moved. Ingestion never sets `retail_admin_user_id`; each imported store can later receive its Retail Admin.
 
 Normalization:
 
@@ -1022,7 +1038,7 @@ brands/{brand_id}/auditEvents/{audit_id}
 Top-level collections. They must be looked up before the brand is known, or they are platform-level:
 
 ```text
-users/{user_id}                 (Firebase uid → role, brand_id, retailer_id, store_ids)
+users/{user_id}                 (Firebase uid → role, brand_id, retailer_id, store_id)
 intentTokens/{token_hash}
 pageAccessTokens/{token_hash}
 webhookReceipts/{receipt_id}

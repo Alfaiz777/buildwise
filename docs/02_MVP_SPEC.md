@@ -63,7 +63,7 @@ Required:
 - list brands and their status
 - create a brand
 - suspend / reactivate a brand
-- provision a brand's first `BRAND_ADMIN` (password-setup link handed over manually; the MVP has no email service)
+- provision the brand's single `BRAND_ADMIN` — only the Platform Admin can (password-setup link handed over manually; the MVP has no email service)
 - view integration health metadata across brands (no credentials)
 - view reservations/outcomes at aggregate or operational level (no customer PII)
 - view the platform audit log
@@ -75,8 +75,11 @@ Not included: customer profiles or conversation content (`07_SECURITY_SPEC.md` �
 Required:
 
 - brand account created by a platform admin; Brand Admin signs in (no self-signup)
-- Brand Admin manages brand members (`BRAND_ADMIN`, `BRAND_MEMBER`)
-- Brand Admin creates retailers, assigns stores to retailers and provisions retailer users (`RETAILER_ADMIN`, `RETAILER_STAFF`)
+- exactly one Brand Admin per brand (`BRAND_ADMIN` is the only brand role); the Brand Admin cannot add another
+- Brand Admin creates retailers and sees each retailer's stores; a retailer may own many stores
+- Brand Admin provisions one Retail Admin per store, from that store (`RETAIL_ADMIN` is the only retail role); a store that already has its Retail Admin shows it and offers no second provisioning; the local prototype displays the password-setup link
+- a Retail Admin operates only its one store, never another store of the same retailer
+- stores and their retailer come with retail data ingestion (§4, milestone M4), not with manual store entry
 - connect Shopify
 - show connection status
 - initial sync status
@@ -383,7 +386,7 @@ The MVP is accepted when all of these work, first in the `local` profile (M12) a
 
 ### 0. Platform administration
 
-- [ ] Platform Admin can create a brand and provision its first Brand Admin
+- [ ] Platform Admin can create a brand and provision its single Brand Admin; a second one is refused
 - [ ] Platform Admin can suspend a brand, and its users are then refused
 - [ ] Platform Admin cannot see customer profiles or conversation content
 - [ ] Platform actions appear in the platform audit log
@@ -391,7 +394,7 @@ The MVP is accepted when all of these work, first in the `local` profile (M12) a
 ### A. Brand setup
 
 - [ ] Brand can authenticate
-- [ ] Brand Admin can add members, retailers and retailer users; Brand Member cannot
+- [ ] Brand Admin can create retailers and provision each retailer's single Retail Admin; it cannot add a Brand Admin; a Retail Admin can do neither
 - [ ] Shopify connection can be verified
 - [ ] Relevant Shopify data can appear in Buildwise
 - [ ] Retail data can be uploaded
@@ -415,7 +418,7 @@ The MVP is accepted when all of these work, first in the `local` profile (M12) a
 
 ### D. Retailer
 
-- [ ] Reservation appears, scoped to the retailer (Retailer Admin: all its stores; Retailer Staff: assigned stores)
+- [ ] Reservation appears to the Retail Admin of that store (and to no other store's Retail Admin)
 - [ ] Inventory is visible
 - [ ] Status can transition
 - [ ] Completion can be recorded

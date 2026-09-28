@@ -35,3 +35,5 @@ Thumbs.db
 # Temporary
 tmp/
 temp/
+# Local profile data (LocalFileStorageProvider, LocalEventSink)
+.data/

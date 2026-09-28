@@ -24,7 +24,8 @@ export function requestContext(logger: Logger): RequestHandler {
         status: res.statusCode,
         latency_ms: Number(process.hrtime.bigint() - startedAt) / 1e6,
         user_id: res.locals.principal?.userId,
-        brand_id: res.locals.principal?.brandId,
+        scope: res.locals.principal?.scope,
+        brand_id: res.locals.principal && 'brandId' in res.locals.principal ? res.locals.principal.brandId : undefined,
       });
     });
     next();

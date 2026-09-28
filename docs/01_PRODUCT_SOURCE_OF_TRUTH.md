@@ -88,13 +88,13 @@ D2C brands that:
 
 ## Platform
 
-### Platform Admin
+### Platform Admin (`PLATFORM_ADMIN`)
 
 The Buildwise operator who runs the platform on behalf of its brands.
 
 Needs:
 
-- onboard brands and their first Brand Admin
+- onboard brands and each brand's single Brand Admin
 - suspend or reactivate brands
 - see platform health, integration health and platform-level activity
 - an audit trail of platform actions
@@ -103,21 +103,19 @@ The Platform Admin does **not** need, and does not get by default, customer prof
 
 ## Brand
 
-### Brand Admin
+### Brand Admin (`BRAND_ADMIN`)
 
-Needs:
+The only internal brand role in the MVP: full administration of exactly one brand. Each brand has exactly one Brand Admin, provisioned by the Platform Admin. The Brand Admin also covers the growth/commerce/marketing and operations needs below; separate brand roles can be added after the core prototype works.
+
+Administration needs:
 
 - connection setup
-- permissions and brand members
-- retailers, store network and retailer users
+- brand administrators
+- retailers and each retailer's single Retail Admin (the store network arrives with retail data ingestion)
 - integration health
 - high-level outcomes
 
-### Brand Member (Growth/Commerce/Marketing, Operations)
-
-Read-mostly, non-administrative brand users. The Growth/Commerce/Marketing and Operations needs below are served by one `BRAND_MEMBER` role in the MVP.
-
-Growth/Commerce/Marketing needs:
+Growth/commerce/marketing needs:
 
 - customer intent
 - AI-assisted opportunities
@@ -134,11 +132,11 @@ Operations needs:
 
 ## Retailer
 
-A retailer is the retail business (e.g. franchisee, distributor or store operator) that runs one or more of a brand's stores.
+A retailer is the retail business or partner (e.g. a retail chain, franchisee or store operator) that runs one or more of a brand's physical stores. Example: the brand Dot & Key sells through the retailer Nykaa, which runs a Mumbai, a Delhi and an Ahmedabad store.
 
-### Retailer Admin (Store Manager)
+### Retail Admin (`RETAIL_ADMIN`)
 
-Sees and operates all stores of their retailer.
+The only internal retail role in the MVP: the operator of exactly one physical store. Each store belongs to one retailer and has at most one Retail Admin, provisioned by the Brand Admin for that specific store. A Retail Admin never accesses another store, even another store of the same retailer. There is no multi-store Retail Admin and no store-staff role in the MVP.
 
 Needs:
 
@@ -147,16 +145,7 @@ Needs:
 - quantity
 - customer ETA
 - fulfillment state
-
-### Retailer Staff (Store Staff)
-
-Sees and operates only their assigned stores.
-
-Needs:
-
-- simple operational action
-- reservation details
-- pickup status
+- simple operational actions and pickup status
 
 ## Customer
 
@@ -194,7 +183,7 @@ Buildwise Platform Admin Console:
 
 ```text
 Brands
-Brand onboarding (first Brand Admin)
+Brand onboarding (the brand's single Brand Admin)
 Retailers & Stores (metadata)
 Integration Health
 Reservations & Outcomes (aggregate / operational)
@@ -212,11 +201,13 @@ Buildwise has exactly four interfaces:
 | # | Interface | Users | Form |
 |---|---|---|---|
 | 1 | Platform Admin Console | Platform Admin | web console |
-| 2 | Brand Console | Brand Admin, Brand Member | web console |
-| 3 | Retailer Console | Retailer Admin, Retailer Staff | web console |
+| 2 | Brand Console | Brand Admin | web console |
+| 3 | Retailer Console | Retail Admin | web console |
 | 4 | Customer AI Channel | Customer | WhatsApp-first; simulator during local development; contextual web pages only when needed |
 
 The customer never gets a Buildwise dashboard or a login.
+
+Buildwise therefore has four actors: `PLATFORM_ADMIN`, `BRAND_ADMIN` and `RETAIL_ADMIN` (the three internal roles, one per console) and the customer, who is identified by their WhatsApp channel identity and is not an internal role.
 
 ---
 

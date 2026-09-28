@@ -508,7 +508,7 @@ GET   /api/me
 GET   /api/platform/brands
 POST  /api/platform/brands
 PATCH /api/platform/brands/:brandId                 (status: ACTIVE | SUSPENDED)
-POST  /api/platform/brands/:brandId/admins          (provision a BRAND_ADMIN)
+POST  /api/platform/brands/:brandId/admins          (provision the brand's single BRAND_ADMIN)
 GET   /api/platform/brands/:brandId/retailers       (metadata)
 GET   /api/platform/brands/:brandId/stores          (metadata)
 GET   /api/platform/integrations                    (health metadata, all brands)
@@ -516,12 +516,13 @@ GET   /api/platform/reservations                    (operational, no customer PI
 GET   /api/platform/outcomes/summary                (aggregate)
 GET   /api/platform/audit
 
-# Brand Console (BRAND_ADMIN / BRAND_MEMBER per 07 §4.0) — §14.7 for administration
+# Brand Console (BRAND_ADMIN) — §14.7 for administration
 GET   /api/brands/:brandId
-GET   /api/brand/members                 POST /api/brand/members          (BRAND_ADMIN)
-GET   /api/brand/retailers               POST /api/brand/retailers        (BRAND_ADMIN)
-POST  /api/brand/retailers/:retailerId/users                              (BRAND_ADMIN)
-PATCH /api/brand/stores/:storeId                   (assign retailer_id; BRAND_ADMIN)
+GET   /api/brand/users                             (read-only: the brand's BRAND_ADMIN and RETAIL_ADMINs)
+GET   /api/brand/retailers               POST /api/brand/retailers
+GET   /api/brand/stores                           (stores with their retailer and Retail Admin)
+POST  /api/brand/stores/:storeId/admins           (provision the store's single RETAIL_ADMIN)
+PATCH /api/brand/stores/:storeId                   (associate store → retailer; backend-only until M4, no UI)
 POST  /api/integrations/shopify/connect            (BRAND_ADMIN)
 POST  /api/integrations/shopify/sync               (BRAND_ADMIN)
 GET   /api/products
@@ -529,10 +530,13 @@ GET   /api/customers/:id
 POST  /api/retail/import                           (BRAND_ADMIN)
 POST  /api/analytics/events
 
-# Brand + Retailer Consoles
+# Retailer Console (RETAIL_ADMIN, own store only) — §14.9
+GET   /api/retail/stores/:storeId                  (own store; any other store → 404)
+
+# Brand + Retailer Consoles (BRAND_ADMIN view, RETAIL_ADMIN operate its own store)
 GET   /api/reservations
 GET   /api/reservations/:id
-PATCH /api/reservations/:id                        (RETAILER_ADMIN / RETAILER_STAFF)
+PATCH /api/reservations/:id                        (RETAIL_ADMIN)
 
 # Customer AI Channel
 POST  /api/channels/simulator/messages             (simulator channel; §14.2)
@@ -551,7 +555,7 @@ POST  /api/internal/reservations/expire            (expiry sweep, 03 §15; not c
 PUT   /api/local-files/uploads/:uploadId           (LocalFileStorageProvider upload target; local profile only, 06 §6a)
 ```
 
-Exact routes may change during implementation, but responsibilities must remain separated. The contracts in §14.1–§14.7 are the minimum the implementation must honor.
+Exact routes may change during implementation, but responsibilities must remain separated. The contracts in §14.1–§14.9 are the minimum the implementation must honor.
 
 `POST /api/ai/decide` is **retired**. The simulator is a customer-channel adapter (§14.2), not a standalone AI endpoint.
 
@@ -783,12 +787,11 @@ Lists reservations for the Retailer Console and the Brand Console.
 
 Auth: `FIREBASE`. Scoping per `07_SECURITY_SPEC.md` §4.0:
 
-- `BRAND_ADMIN` / `BRAND_MEMBER`: all reservations of their brand (view)
-- `RETAILER_ADMIN`: reservations of all stores of their retailer
-- `RETAILER_STAFF`: reservations of their `store_ids` only
+- `BRAND_ADMIN`: all reservations of its brand (view)
+- `RETAIL_ADMIN`: reservations of its own store only
 - `PLATFORM_ADMIN`: uses `GET /api/platform/reservations` instead (§14.6)
 
-Query: `store_id` (optional), `status` (optional), `limit` (default 50).
+Query: `store_id` (optional; for `RETAIL_ADMIN` any value other than its own store returns nothing), `status` (optional), `limit` (default 50).
 
 Response `200`:
 
@@ -820,7 +823,7 @@ Same auth and scoping as the list. It returns one reservation in the same shape.
 
 Retailer status transition.
 
-Auth: `FIREBASE`. `RETAILER_ADMIN` for any store of their retailer, or `RETAILER_STAFF` for a store in their `store_ids`. Brand roles can view reservations but do not perform store fulfillment transitions.
+Auth: `FIREBASE`. `RETAIL_ADMIN`, for its own store only (another store's reservation → 404). `BRAND_ADMIN` can view reservations but does not perform store fulfillment transitions.
 
 Request:
 
@@ -903,11 +906,11 @@ Response `201`: `{ "brand_id": "...", "name": "Brand XYZ", "status": "ACTIVE", "
 { "status": "SUSPENDED", "reason": "..." }
 ```
 
-`status` is `ACTIVE` or `SUSPENDED`. Suspension takes effect on the next request of every user of that brand, including its retailer users.
+`status` is `ACTIVE` or `SUSPENDED`. Suspension takes effect on the next request of every `BRAND_ADMIN` and `RETAIL_ADMIN` of that brand.
 
 ### POST /api/platform/brands/:brandId/admins
 
-Provisions a `BRAND_ADMIN` for the brand.
+Provisions the brand's **single** `BRAND_ADMIN`. This is the only way a `BRAND_ADMIN` is created.
 
 ```json
 { "email": "admin@brand.example" }
@@ -915,15 +918,15 @@ Provisions a `BRAND_ADMIN` for the brand.
 
 Response `201`: `{ "user_id": "...", "email": "...", "role": "BRAND_ADMIN", "password_setup_link": "https://..." }`. The link is an Admin SDK password-reset link that the platform admin hands over; there is no email service in the MVP.
 
-Errors: `409 USER_EXISTS_IN_OTHER_BRAND`.
+Errors: `409 BRAND_ADMIN_ALREADY_PROVISIONED` (the brand already has its Brand Admin), `409 USER_EXISTS_IN_OTHER_BRAND`.
 
 ### Read routes
 
 | Route | Returns |
 |---|---|
-| `GET /api/platform/brands` | brand registry: `brand_id, name, status, created_at` |
+| `GET /api/platform/brands` | brand registry: `brand_id, name, status, created_at, brand_admin_user_id` |
 | `GET /api/platform/brands/:brandId/retailers` | `retailer_id, name, status, store_count` |
-| `GET /api/platform/brands/:brandId/stores` | `store_id, store_name, city, store_status, retailer_id` |
+| `GET /api/platform/brands/:brandId/stores` | `store_id, store_name, city, store_status, retailer_id, retail_admin_user_id` |
 | `GET /api/platform/integrations` | per brand: provider, status, `last_sync_at`, `last_error` code. **No credentials.** |
 | `GET /api/platform/reservations` | `reservation_id, brand_id, store_id, status, quantity, created_at, expires_at`. **No customer fields.** |
 | `GET /api/platform/outcomes/summary` | per brand and period: outcome counts and values by `purchase_type` |
@@ -931,18 +934,53 @@ Errors: `409 USER_EXISTS_IN_OTHER_BRAND`.
 
 ## 14.7 Brand administration
 
-Auth: `FIREBASE`, role `BRAND_ADMIN`, for every state-changing route in this section. `BRAND_MEMBER` may call the `GET` routes. The brand always comes from the principal.
+Auth: `FIREBASE`, role `BRAND_ADMIN` (the only brand role), for every route in this section. Every change is audited in the brand's `auditEvents`. The brand always comes from the principal.
 
 | Route | Body / result |
 |---|---|
-| `POST /api/brand/members` | `{ "email", "role": "BRAND_ADMIN" \| "BRAND_MEMBER" }` → user + `password_setup_link` |
-| `GET /api/brand/members` | brand users: `user_id, email, role, status` |
+| `GET /api/brand/users` | read-only: the brand's console users (its `BRAND_ADMIN` and its retailers' `RETAIL_ADMIN`s): `user_id, email, role, retailer_id, store_id, status` |
 | `POST /api/brand/retailers` | `{ "name" }` → `{ "retailer_id", "name", "status" }` |
-| `GET /api/brand/retailers` | the brand's retailers |
-| `POST /api/brand/retailers/:retailerId/users` | `{ "email", "role": "RETAILER_ADMIN" \| "RETAILER_STAFF", "store_ids"? }` → user + `password_setup_link`. `store_ids` is required for `RETAILER_STAFF`, and every store must belong to the retailer. |
-| `PATCH /api/brand/stores/:storeId` | `{ "retailer_id": "..." \| null }`: assign or unassign a store's retailer |
+| `GET /api/brand/retailers` | the brand's retailers: `retailer_id, name, status` |
+| `GET /api/brand/stores` | the brand's stores: `store_id, store_name, city, store_status, retailer_id, retail_admin_user_id` (null = not provisioned) |
+| `POST /api/brand/stores/:storeId/admins` | `{ "email" }` → the store's **single** `RETAIL_ADMIN` + `password_setup_link`. Its `brand_id`, `retailer_id` and `store_id` come from the store record; any scope in the request is ignored. A second one → `409 RETAIL_ADMIN_ALREADY_PROVISIONED` (no user and no link created); a store without a retailer → `409 STORE_HAS_NO_RETAILER`. There is no retailer-wide provisioning route. |
+| `PATCH /api/brand/stores/:storeId` | `{ "retailer_id": "..." \| null }`: associate a store with a retailer (a retailer may own many stores), or remove the association. Errors: `409 STORE_ALREADY_ASSIGNED`, `409 STORE_HAS_ADMIN` (detaching a store operated by its Retail Admin). **Backend-only until M4**: there is no Brand Console UI, because stores and their retailer come from retail ingestion; kept for tests and as the ingestion building block. Response: the store in the `GET /api/brand/stores` shape. |
 
-Errors: `409 USER_EXISTS_IN_OTHER_BRAND`, `422 STORE_NOT_IN_RETAILER`, `404 NOT_FOUND` for another brand's retailer or store.
+There is **no** route for a `BRAND_ADMIN` to create another `BRAND_ADMIN`: only `PLATFORM_ADMIN` provisions a brand's single Brand Admin (§14.6).
+
+Errors: `409 RETAIL_ADMIN_ALREADY_PROVISIONED`, `409 STORE_HAS_NO_RETAILER`, `409 STORE_ALREADY_ASSIGNED`, `409 STORE_HAS_ADMIN`, `409 USER_EXISTS_IN_OTHER_BRAND`, `409 USER_ALREADY_PROVISIONED`, `404 NOT_FOUND` for another brand's retailer or store.
+
+## 14.8 GET /api/me
+
+Returns the verified console principal. Each scope returns only its own fields; obsolete roles are never returned (a user document carrying one is refused with 403). Customers never call this route.
+
+```json
+{ "scope": "PLATFORM", "role": "PLATFORM_ADMIN", "user": { "user_id": "...", "email": "..." } }
+```
+
+```json
+{ "scope": "BRAND", "role": "BRAND_ADMIN", "user": { "...": "..." },
+  "brand_id": "brd_...", "brand_name": "..." }
+```
+
+```json
+{ "scope": "RETAIL", "role": "RETAIL_ADMIN", "user": { "...": "..." },
+  "brand_id": "brd_...", "brand_name": "...", "retailer_id": "rtl_...", "retailer_name": "...",
+  "store_id": "st_...",
+  "store": { "store_id": "st_...", "store_name": "...", "city": "...", "address": "...",
+             "store_status": "ACTIVE", "store_hours": { "timezone": "Asia/Kolkata", "monday": "10:00-21:00" } } }
+```
+
+A `RETAIL_ADMIN` has exactly one store, so the response carries `store_id` and a single `store`, never a list of stores.
+
+## 14.9 Retailer Console
+
+Auth: `FIREBASE`, role `RETAIL_ADMIN`, for every route in this section. Scope is store-level: brand, retailer and store all come from the principal (`07_SECURITY_SPEC.md` §4.1).
+
+| Route | Result |
+|---|---|
+| `GET /api/retail/stores/:storeId` | the principal's own store: `store_id, store_name, city, address, store_status, store_hours`. Any other store (same brand, another retailer, unassigned, another brand, or missing) → `404 NOT_FOUND`. |
+
+Other scopes calling `/api/retail/*` → `403 FORBIDDEN`. Inventory and reservations for the store are added in later milestones under the same store-level rule.
 
 ---
 

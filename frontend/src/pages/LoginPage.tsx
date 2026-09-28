@@ -42,7 +42,7 @@ export function LoginPage() {
   return (
     <main className="card">
       <h1>Buildwise</h1>
-      <p className="muted">Sign in to the Brand / Retail console.</p>
+      <p className="muted">Sign in to the Platform, Brand or Retailer console.</p>
       <form onSubmit={onSubmit}>
         <label>
           Email

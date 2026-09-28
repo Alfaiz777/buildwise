@@ -1,18 +1,17 @@
 import { Router } from 'express';
-import { assertTenantAccess, getPrincipal, requireRole } from '../auth/authorize.js';
-import { BRAND_ROLES } from '../auth/types.js';
+import { assertTenantAccess, getTenantPrincipal, requireScope } from '../auth/authorize.js';
 import { Errors } from '../lib/errors.js';
-import type { BrandRepository } from '../repositories/types.js';
+import type { BrandRepository } from '../ports/repositories.js';
 
 /**
  * GET /api/brands/:brandId — basic brand profile (docs/06_INTEGRATION_CONTRACTS.md §14).
- * Brand roles only. The path ID is checked against the principal and then
+ * Brand scope only. The path ID is checked against the principal and then
  * ignored: the read always uses principal.brandId.
  */
 export function brandsRouter(brands: BrandRepository): Router {
   const router = Router();
-  router.get('/brands/:brandId', requireRole(...BRAND_ROLES), async (req, res) => {
-    const principal = getPrincipal(res);
+  router.get('/brands/:brandId', requireScope('BRAND'), async (req, res) => {
+    const principal = getTenantPrincipal(res);
     const requested = req.params.brandId;
     if (typeof requested !== 'string') throw Errors.notFound();
     assertTenantAccess(principal, { brandId: requested });

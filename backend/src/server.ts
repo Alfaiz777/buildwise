@@ -1,28 +1,21 @@
 import { createApp } from './app.js';
-import { FirebaseTokenVerifier } from './auth/tokenVerifier.js';
+import { buildContainer, describeProviders } from './composition/container.js';
 import { loadConfig } from './config/env.js';
-import { initFirebase } from './firebase/admin.js';
 import { createLogger } from './lib/logger.js';
-import { FirestoreBrandRepository, FirestoreUserRepository } from './repositories/firestore.js';
 
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
-const { auth, db } = initFirebase(config.projectId);
-
-const app = createApp({
-  config,
-  logger,
-  verifier: new FirebaseTokenVerifier(auth),
-  users: new FirestoreUserRepository(db),
-  brands: new FirestoreBrandRepository(db),
-});
+const container = buildContainer(config, logger);
+const app = createApp(container.appDeps);
 
 const server = app.listen(config.port, () => {
   logger.info('server.started', {
     port: config.port,
     node_env: config.nodeEnv,
+    profile: config.profile,
     project_id: config.projectId,
     using_emulators: config.usingEmulators,
+    adapters: describeProviders(container.providers),
   });
 });
 

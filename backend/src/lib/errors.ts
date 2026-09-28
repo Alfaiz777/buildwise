@@ -28,6 +28,10 @@ export const Errors = {
   userMisconfigured: () =>
     new AppError(403, 'USER_MISCONFIGURED', 'Your account is not configured correctly. Contact your administrator.'),
   brandInactive: () => new AppError(403, 'BRAND_INACTIVE', 'Your brand account is not active.'),
+  retailerInactive: () => new AppError(403, 'RETAILER_INACTIVE', 'Your retailer account is not active.'),
   forbidden: () => new AppError(403, 'FORBIDDEN', 'You do not have permission to do this.'),
   notFound: () => new AppError(404, 'NOT_FOUND', 'Not found.'),
+  invalidRequest: (message = 'The request is not valid.') => new AppError(400, 'INVALID_REQUEST', message),
+  conflict: (code: string, message: string) => new AppError(409, code, message),
+  unprocessable: (code: string, message: string) => new AppError(422, code, message),
 };

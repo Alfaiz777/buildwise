@@ -21,6 +21,23 @@ describe('createApiClient', () => {
     expect(url).not.toContain('brand');
   });
 
+  it('sends JSON bodies for POST and PATCH with the same auth header', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => json(201, { id: 'x' }));
+    const api = createApiClient({ baseUrl: '', getIdToken: async () => 't', fetchImpl: fetchImpl as typeof fetch });
+
+    await expect(api.post('/api/brand/retailers', { name: 'R' })).resolves.toEqual({ id: 'x' });
+    await api.patch('/api/brand/stores/s1', { retailer_id: null });
+
+    const [, postInit] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(postInit.method).toBe('POST');
+    expect(postInit.body).toBe('{"name":"R"}');
+    expect((postInit.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect((postInit.headers as Record<string, string>).Authorization).toBe('Bearer t');
+    const [, patchInit] = fetchImpl.mock.calls[1] as [string, RequestInit];
+    expect(patchInit.method).toBe('PATCH');
+    expect(patchInit.body).toBe('{"retailer_id":null}');
+  });
+
   it('prefixes a configured base URL', async () => {
     const fetchImpl = vi.fn(async (_url: string) => json(200, {}));
     const api = createApiClient({

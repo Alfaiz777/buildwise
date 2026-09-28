@@ -1,6 +1,8 @@
-# Buildwise — Infrastructure (M1)
+# Buildwise — Infrastructure
 
-How the foundation runs locally and how it is deployed to Google Cloud.
+How Buildwise runs in the `local` profile and how it is deployed in the `gcp` profile
+(docs/03_TECH_ARCHITECTURE.md §2.2). The main build path is local-first; GCP cutover is
+phase G1 (docs/10_EXECUTION_PLAN.md).
 
 ```text
 Browser ──► Firebase Hosting ──(/api/** rewrite)──► Cloud Run: buildwise-api ──► Firestore
@@ -16,33 +18,42 @@ Browser ──► Firebase Hosting ──(/api/** rewrite)──► Cloud Run: b
 | Auth | Auth emulator `:9099` | Firebase Authentication (Email/Password) |
 | Database | Firestore emulator `:8085` | Firestore (Native mode) |
 | Credentials | none (emulators) or `gcloud auth application-default login` | Cloud Run service account (ADC). No key files. |
-| Config | `backend/.env`, `frontend/.env.local` | Cloud Run env vars, `frontend/.env.production.local` at build time |
-| Secrets | none in M1 | Secret Manager, from M2 (Shopify) and later (Meta) |
+| Profile | `BUILDWISE_PROFILE=local` (default) | `BUILDWISE_PROFILE=gcp`, `VITE_BUILDWISE_PROFILE=gcp` |
+| Adapters | mock commerce, simulator channel, mock agent, local files (`backend/.data`), local event sink | Shopify, WhatsApp (+ simulator fallback), ADK + Gemini, Cloud Storage, BigQuery (phase G2) |
+| Config | none required (optional `backend/.env`) | Cloud Run env vars, `frontend/.env.production.local` at build time |
+| Secrets | none | Secret Manager (phase G1/G2) |
+
+The gcp profile refuses to start with any mock/local adapter or the emulators.
 
 ---
 
 ## Local development
 
-Requires Node.js 24 (`.nvmrc`) and Java 21+ (Firestore emulator).
+Requires Node.js 24 (`.nvmrc`) and Java 21+ (Firestore emulator). No `.env` files are required.
 
 ```bash
 npm install
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env.local
 
 # terminal 1: Firebase emulators (Auth + Firestore, UI at http://127.0.0.1:4000)
 npm run emulators
 
-# terminal 2: provision a demo brand admin (no self-signup exists)
-npm run seed:user -- --email admin@demo.test --password 'demo-password-1' \
-  --brand-id brand_demo --brand-name "Demo Brand" --role BRAND_ADMIN
+# terminal 2: synthetic demo users for the three internal roles (emulators only; password buildwise-demo-1)
+npm run seed:demo
 
-# terminal 2: API
+# terminal 2: API (local profile)
 npm run dev:backend
 
-# terminal 3: web app → http://localhost:5173, sign in as admin@demo.test
+# terminal 3: web app → http://localhost:5173
 npm run dev:frontend
 ```
+
+To start from an empty emulator with only a platform admin (the real bootstrap flow):
+
+```bash
+npm run seed:platform-admin -- --email ops@buildwise.test --password 'change-me-123'
+```
+
+Then sign in as that user, create a brand and provision its Brand Admin in the Platform Admin console.
 
 Tests:
 
@@ -103,15 +114,18 @@ PROJECT_ID=PROJECT_ID infrastructure/scripts/deploy-backend.sh    # Cloud Build 
 PROJECT_ID=PROJECT_ID infrastructure/scripts/deploy-frontend.sh   # Hosting + Firestore rules
 ```
 
-Provision the first real admin. The script refuses to write to a real project
-without `--confirm-project`. It uses your ADC credentials, which need Firebase
-Auth admin and Firestore write access:
+Bootstrap the first PLATFORM_ADMIN (the only user created by a script, docs/07 §4.4).
+The script refuses to write to a real project without `--confirm-project`. It uses
+your ADC credentials, which need Firebase Auth admin and Firestore write access:
 
 ```bash
-GOOGLE_CLOUD_PROJECT=PROJECT_ID npm run seed:user -- --confirm-project PROJECT_ID \
-  --email admin@brand.example --password '<strong password>' \
-  --brand-id brand_xyz --brand-name "Brand XYZ" --role BRAND_ADMIN
+BUILDWISE_PROFILE=gcp GOOGLE_CLOUD_PROJECT=PROJECT_ID npm run seed:platform-admin -- \
+  --confirm-project PROJECT_ID --email ops@buildwise.example --password '<strong password>'
 ```
 
-Smoke test: open the Hosting URL, sign in, and confirm the home page shows the brand and role.
+Everything else is provisioned in the product: the Platform Admin creates each brand and its
+single Brand Admin; the Brand Admin creates retailers and provisions one Retail Admin per store, who
+operates only that store (a retailer may own many stores; stores come from retail ingestion).
+
+Smoke test: open the Hosting URL, sign in as the platform admin, and confirm the Platform Admin console loads.
 `GET https://<hosting-domain>/api/health` should return `{"status":"ok"}`.

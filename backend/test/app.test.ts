@@ -1,10 +1,9 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createApp } from '../src/app.js';
 import { createLogger } from '../src/lib/logger.js';
-import { bearer, buildTestApp, FakeVerifier, MemoryBrands, MemoryUsers } from './helpers.js';
+import { bearer, buildTestWorld } from './helpers.js';
 
-const app = buildTestApp();
+const { app } = buildTestWorld();
 
 describe('app foundation', () => {
   it('GET /api/health is public and needs no Firebase', async () => {
@@ -63,18 +62,14 @@ describe('app foundation', () => {
     expect(res.body.error.code).toBe('INVALID_JSON');
   });
 
-  it('access log records the full path and never the token or query string', async () => {
+  it('access log records the full path and scope, never the token or query string', async () => {
     const lines: string[] = [];
-    const loggedApp = createApp({
-      config: { corsAllowedOrigins: [] },
-      logger: createLogger('info', (line) => lines.push(line)),
-      verifier: new FakeVerifier({}),
-      users: new MemoryUsers([]),
-      brands: new MemoryBrands([]),
-    });
+    const { app: loggedApp } = buildTestWorld({ logger: createLogger('info', (line) => lines.push(line)) });
     await request(loggedApp).get('/api/me?secret=abc').set('Authorization', 'Bearer super-secret-token');
-    const access = lines.map((l) => JSON.parse(l)).find((l) => l.message === 'http.request');
-    expect(access).toMatchObject({ severity: 'INFO', path: '/api/me', status: 401 });
+    await request(loggedApp).get('/api/me').set('Authorization', bearer('radmin_A'));
+    const access = lines.map((l) => JSON.parse(l)).filter((l) => l.message === 'http.request');
+    expect(access[0]).toMatchObject({ severity: 'INFO', path: '/api/me', status: 401 });
+    expect(access[1]).toMatchObject({ path: '/api/me', status: 200, scope: 'RETAIL', brand_id: 'brand_A' });
     expect(lines.join('\n')).not.toContain('super-secret-token');
     expect(lines.join('\n')).not.toContain('secret=abc');
   });
@@ -85,7 +80,7 @@ describe('app foundation', () => {
   });
 
   it('allows only configured CORS origins', async () => {
-    const corsApp = buildTestApp({ corsAllowedOrigins: ['https://app.buildwise.test'] });
+    const { app: corsApp } = buildTestWorld({ corsAllowedOrigins: ['https://app.buildwise.test'] });
     const ok = await request(corsApp).get('/api/health').set('Origin', 'https://app.buildwise.test');
     expect(ok.headers['access-control-allow-origin']).toBe('https://app.buildwise.test');
     const bad = await request(corsApp).get('/api/health').set('Origin', 'https://evil.example');

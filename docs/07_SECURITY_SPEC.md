@@ -2,7 +2,7 @@
 
 ## Status
 
-**M0 — Security boundaries are mandatory from the first implementation.** Updated by the post-M0 architecture change (`00_M0_SPECIFICATION_FREEZE.md` §11.8): five roles, four interfaces, platform scope, execution profiles.
+**M0 — Security boundaries are mandatory from the first implementation.** Updated by the post-M0 architecture change (`00_M0_SPECIFICATION_FREEZE.md` §11.8): three internal roles, four interfaces, platform scope, execution profiles.
 
 ---
 
@@ -73,49 +73,46 @@ Buildwise has **four interfaces**:
 | Interface | Who | Authentication |
 |---|---|---|
 | Platform Admin Console | `PLATFORM_ADMIN` | Firebase Auth |
-| Brand Console | `BRAND_ADMIN`, `BRAND_MEMBER` | Firebase Auth |
-| Retailer Console | `RETAILER_ADMIN`, `RETAILER_STAFF` | Firebase Auth |
+| Brand Console | `BRAND_ADMIN` | Firebase Auth |
+| Retailer Console | `RETAIL_ADMIN` | Firebase Auth |
 | Customer AI Channel (WhatsApp; simulator; contextual pages) | Customer | Channel identity or page token, **never** Firebase Auth |
 
-The five application roles and their scopes:
+The MVP has exactly **three internal roles**, one per console, and no others:
 
 ```text
-PLATFORM_ADMIN   → platform scope
-BRAND_ADMIN      → brand scope (administrative)
-BRAND_MEMBER     → brand scope (read-mostly, non-administrative)
-RETAILER_ADMIN   → retailer scope: all stores of their retailer
-RETAILER_STAFF   → retailer scope: assigned stores only
+PLATFORM_ADMIN   → platform scope (no brand)
+BRAND_ADMIN      → brand scope: full administration of exactly one brand
+RETAIL_ADMIN     → retail scope: exactly one store (brand_id + retailer_id + store_id)
 ```
 
-The customer is **not** a console role. A customer may access only their own conversation, context and resources (§4.3).
+The customer is **not** an internal role and never logs in to a console. A customer is a channel principal (§4.3) and may access only their own conversation, context and resources.
 
 Platform scope is a distinct principal type. It is **never** implemented as a brand principal with a wildcard or `"ALL"` brand ID.
 
-Access follows least privilege.
+The MVP has **exactly one operator per scope**: one `PLATFORM_ADMIN`, one `BRAND_ADMIN` per brand, at most one `RETAIL_ADMIN` per store (`04_DATA_MODEL.md` §4). A retailer may own many stores, but a `RETAIL_ADMIN` operates exactly one store (`04_DATA_MODEL.md` §8a), so retail scope is **store-level**: another store of the same retailer is out of scope. There are no read-only brand roles, no store-staff roles and no multi-store access in the MVP. The role model can be extended after the core prototype works; any extension needs a spec change.
 
 ## 4.0 Permission matrix (MVP)
 
-| Capability | PLATFORM_ADMIN | BRAND_ADMIN | BRAND_MEMBER | RETAILER_ADMIN | RETAILER_STAFF |
-|---|---|---|---|---|---|
-| Create / suspend brands; provision a brand's first `BRAND_ADMIN` | ✓ | | | | |
-| Platform audit log, platform health | ✓ | | | | |
-| Brands, retailers, stores (metadata) | all brands | own brand | own brand (view) | own retailer's stores (view) | assigned stores (view) |
-| Integration health (metadata only) | all brands | own brand | own brand (view) | | |
-| Connect / change Shopify & WhatsApp credentials | | ✓ | | | |
-| Brand settings, security/configuration | | ✓ | | | |
-| Manage brand members | | ✓ | | | |
-| Manage retailers, store → retailer assignment, retailer users | | ✓ | | | |
-| Retail file upload, SKU mapping resolution | | ✓ | | | |
-| Customer intent, AI conversations, recommendations | | ✓ | ✓ (view) | | |
-| Outcomes, analytics / insights | aggregate only | ✓ | ✓ (view) | | |
-| Retail availability / inventory | aggregate / operational | ✓ | ✓ (view) | own retailer's stores | assigned stores |
-| Reservations | operational level, no customer PII | ✓ (view) | ✓ (view) | view + status transitions, own retailer's stores | view + status transitions, assigned stores |
-| Customer simulator (`POST /api/channels/simulator/messages`) | | ✓ | | | |
-| Customer profiles, full conversation history | **✗** (§4.2) | ✓ | ✓ (view) | ✗ (reservation context only) | ✗ (reservation context only) |
+| Capability | PLATFORM_ADMIN | BRAND_ADMIN | RETAIL_ADMIN |
+|---|---|---|---|
+| Create / suspend brands; provision each brand's single `BRAND_ADMIN` | ✓ | | |
+| Platform audit log, platform health | ✓ | | |
+| Brands, retailers, stores (metadata) | all brands | own brand | own store |
+| Integration health (metadata only) | all brands | own brand | |
+| Connect / change Shopify & WhatsApp credentials | | ✓ | |
+| Brand settings, security/configuration | | ✓ | |
+| Provision another `BRAND_ADMIN` | ✗ (only one per brand) | ✗ | |
+| Create retailers; provision each store's single `RETAIL_ADMIN` | | ✓ | |
+| Store → retailer association (a retailer may own many stores) | | via retail ingestion (M4); backend-only until then | |
+| Retail file upload, SKU mapping resolution | | ✓ | |
+| Customer intent, AI conversations, recommendations | | ✓ | |
+| Outcomes, analytics / insights | aggregate only | ✓ | |
+| Retail availability / inventory | aggregate / operational | ✓ | own store |
+| Reservations | operational level, no customer PII | view | view + status transitions, own store |
+| Customer simulator (`POST /api/channels/simulator/messages`) | | ✓ | |
+| Customer profiles, full conversation history | **✗** (§4.2) | ✓ | ✗ (reservation context only) |
 
-`BRAND_MEMBER` cannot manage members, create/suspend brands, manage retailer users, change integration credentials, change security/configuration or perform platform administration.
-
-The customer simulator is restricted to `BRAND_ADMIN` because it creates conversations and can trigger reservations. That is a write action, and `BRAND_MEMBER` is read-mostly.
+The customer simulator is available to `BRAND_ADMIN` only: it creates conversations and can trigger reservations inside the brand. `PLATFORM_ADMIN` does not use it, and `RETAIL_ADMIN` has no customer-conversation access.
 
 ## 4.1 Authentication and authorization chain (console users)
 
@@ -131,27 +128,35 @@ Cloud Run
    failure → 401
    ↓
 2. Scoped principal resolution
-   users/{uid} (Firestore) → role, brand_id, retailer_id, store_ids, status
+   users/{uid} (Firestore) → role, brand_id, retailer_id, store_id, status
    missing or status ≠ ACTIVE → 403
-   document violates the role table (04 §4) → 403 USER_MISCONFIGURED
+   role not one of the three internal roles, or document violates
+   the role table (04 §4) → 403 USER_MISCONFIGURED
    by role:
-     PLATFORM_ADMIN  → brand_id must be null
-                       principal = { scope: PLATFORM, user_id }
-     BRAND_*         → brand exists and ACTIVE, else 403
+     PLATFORM_ADMIN  → brand_id, retailer_id and store_id must be null
+                       principal = { scope: PLATFORM, user_id, role }
+     BRAND_ADMIN     → retailer_id and store_id must be null
+                       brand exists and ACTIVE, else 403
+                       AND uid = brand.brand_admin_user_id (admin of record), else 403
                        principal = { scope: BRAND, user_id, role, brand_id }
-     RETAILER_*      → brand ACTIVE, retailer exists in that brand and ACTIVE, else 403
-                       principal = { scope: RETAILER, user_id, role, brand_id,
-                                     retailer_id, store_ids | ALL_RETAILER_STORES }
+     RETAIL_ADMIN    → brand_id, retailer_id and store_id all required
+                       brand ACTIVE, retailer exists in that brand and ACTIVE, else 403
+                       AND store exists with uid = store.retail_admin_user_id (admin of record)
+                       AND store.retailer_id = retailer_id,
+                       else 403 USER_MISCONFIGURED
+                       principal = { scope: RETAIL, user_id, role, brand_id, retailer_id, store_id }
    ↓
 3. Route authorization
-   principal scope and role allowed for this route (§4.0)? → else 403
+   principal scope allowed for this route (§4.0)? → else 403
+   (one role per scope, so the scope is the whole route check)
    ↓
 4. Resource authorization (tenant resources: brand_id, retailer_id?, store_id?)
    PLATFORM scope      → refused on tenant routes (403); uses /api/platform/* only (§4.2)
    BRAND scope         → resource.brand_id = principal.brand_id
-   RETAILER scope      → resource.brand_id = principal.brand_id
+   RETAIL scope        → resource.brand_id = principal.brand_id
                          AND resource.retailer_id = principal.retailer_id
-                         AND (RETAILER_STAFF) resource.store_id ∈ principal.store_ids
+                         AND resource.store_id = principal.store_id
+                         (own store only; resources without a store are refused)
    failure → 404 (do not reveal that another tenant's resource exists)
    ↓
 5. Handler executes → AuditEvent (tenant) or PlatformAuditEvent (platform)
@@ -160,11 +165,11 @@ Cloud Run
 
 Rules:
 
-- `brand_id` and `retailer_id` are **always** taken from the principal, never from the request body, query or path alone.
+- `brand_id`, `retailer_id` and `store_id` are **always** taken from the principal, never from the request body, query or path alone. A path `storeId` is only a lookup key; it is authorized against the principal's own store.
 - Firestore (`users/{uid}`) is the authority for role and scope. Firebase custom claims are not used for authorization in the MVP, so role changes take effect on the next request.
 - The browser never talks to Firestore directly. Firestore security rules deny all client access (`03_TECH_ARCHITECTURE.md` §7).
 - Customers are never Firebase-authenticated (§4.3).
-- Tenant data-access helpers accept only brand- or retailer-scope principals. Platform code reaches brand data only through explicit, audited platform services (§4.2).
+- Tenant data-access helpers accept only brand- or retail-scope principals. Platform code reaches brand data only through explicit, audited platform services (§4.2).
 
 ## 4.2 Platform scope
 
@@ -205,19 +210,24 @@ A customer principal can access only its own conversation, context and bound res
 
 ```text
 seed script (bootstrap only) → first PLATFORM_ADMIN
-PLATFORM_ADMIN               → creates Brand + its first BRAND_ADMIN
-BRAND_ADMIN                  → creates BRAND_MEMBERs, Retailers, RETAILER_ADMIN/STAFF users,
-                               assigns stores to retailers
+PLATFORM_ADMIN               → creates Brand + provisions its single BRAND_ADMIN
+                               (a second one → 409 BRAND_ADMIN_ALREADY_PROVISIONED)
+BRAND_ADMIN                  → creates Retailers + provisions each STORE's single RETAIL_ADMIN,
+                               bound to that store's brand_id + retailer_id + store_id
+                               (a second one → 409 RETAIL_ADMIN_ALREADY_PROVISIONED;
+                                store without a retailer → 409 STORE_HAS_NO_RETAILER)
+BRAND_ADMIN cannot provision another BRAND_ADMIN (no such route or service).
+Store → retailer association (one retailer, many stores): retail ingestion (M4).
 ```
 
 There is no self-signup. Firebase Auth client sign-up is disabled in GCP.
 
 New users receive their first sign-in through an Admin SDK–generated password-reset link, which the provisioning admin hands over. The MVP has no email service (`02_MVP_SPEC.md` §3).
 
-Retail-facing roles:
+The retail-facing role:
 
-- **`RETAILER_ADMIN` / `RETAILER_STAFF`** see operational context only: store, reservation context, product, quantity, ETA, status.
-- They never see a customer's history, brand-wide analytics or unrelated customers.
+- **`RETAIL_ADMIN`** sees operational context of its one store only: store, reservation context, product, quantity, ETA, status.
+- It never sees a customer's history, brand-wide analytics or unrelated customers.
 
 ---
 
@@ -480,9 +490,13 @@ Public endpoints are rate limited.
 PLATFORM_ADMIN is refused on every tenant route and cannot read Customer records or conversation content.
 Every platform action writes a PlatformAuditEvent (and a brand AuditEvent when it concerns a brand).
 A users/{uid} document with brand_id = "ALL" (or any wildcard) is rejected, not treated as platform scope.
-BRAND_MEMBER cannot manage members, retailers, retailer users, integrations or settings.
-RETAILER_ADMIN cannot access another retailer's stores in the same brand.
-RETAILER_STAFF cannot access stores outside store_ids, even within their retailer.
+Only PLATFORM_ADMIN, BRAND_ADMIN and RETAIL_ADMIN are accepted; any other role value (including CUSTOMER) is refused.
+RETAIL_ADMIN can access its own store and cannot access any other store: another retailer's store in the same brand, an unassigned store, or any other brand (404).
+RETAIL_ADMIN cannot perform brand administration.
+A brand has exactly one BRAND_ADMIN and a store at most one RETAIL_ADMIN; a second provisioning is refused (409) and a non-recorded admin document, or a RETAIL_ADMIN whose retailer_id/store_id does not match the store's record, is refused at sign-in (403).
+RETAIL_ADMIN A cannot access Store B even when both stores belong to the same retailer (404).
+A store belongs to exactly one retailer (409 on violation); a retailer may own many stores.
+BRAND_ADMIN cannot provision another BRAND_ADMIN.
 Users of a SUSPENDED brand or INACTIVE retailer are refused.
 The gcp profile refuses to start with mock/local adapters (§19).
 ```

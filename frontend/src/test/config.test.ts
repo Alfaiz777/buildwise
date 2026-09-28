@@ -1,25 +1,40 @@
 import { describe, expect, it } from 'vitest';
 import { readConfig } from '../config';
 
-const base = {
+const gcp = {
+  VITE_BUILDWISE_PROFILE: 'gcp',
   VITE_FIREBASE_API_KEY: 'public-web-key',
-  VITE_FIREBASE_AUTH_DOMAIN: 'demo-buildwise.firebaseapp.com',
-  VITE_FIREBASE_PROJECT_ID: 'demo-buildwise',
+  VITE_FIREBASE_AUTH_DOMAIN: 'buildwise-prod.firebaseapp.com',
+  VITE_FIREBASE_PROJECT_ID: 'buildwise-prod',
   VITE_FIREBASE_APP_ID: '1:123:web:abc',
 };
 
 describe('readConfig', () => {
-  it('defaults to a same-origin API and no emulator', () => {
-    const config = readConfig(base);
-    expect(config.apiBaseUrl).toBe('');
-    expect(config.authEmulatorUrl).toBeNull();
+  it('local profile (default) needs no configuration and uses the Auth emulator', () => {
+    const config = readConfig({});
+    expect(config).toMatchObject({
+      profile: 'local',
+      firebase: { projectId: 'demo-buildwise' },
+      apiBaseUrl: '',
+      authEmulatorUrl: 'http://127.0.0.1:9099',
+    });
   });
 
-  it('strips a trailing slash from the API base URL', () => {
-    expect(readConfig({ ...base, VITE_API_BASE_URL: 'https://api.test/' }).apiBaseUrl).toBe('https://api.test');
+  it('gcp profile uses the real config, same-origin API and no emulator', () => {
+    const config = readConfig(gcp);
+    expect(config).toMatchObject({ profile: 'gcp', firebase: { projectId: 'buildwise-prod' }, authEmulatorUrl: null });
   });
 
-  it('fails loudly when Firebase config is missing', () => {
-    expect(() => readConfig({ ...base, VITE_FIREBASE_PROJECT_ID: '' })).toThrow(/VITE_FIREBASE_PROJECT_ID/);
+  it('gcp profile fails loudly when Firebase config is missing', () => {
+    expect(() => readConfig({ ...gcp, VITE_FIREBASE_PROJECT_ID: '' })).toThrow(/VITE_FIREBASE_PROJECT_ID/);
+  });
+
+  it('gcp profile refuses the Auth emulator', () => {
+    expect(() => readConfig({ ...gcp, VITE_FIREBASE_AUTH_EMULATOR_URL: 'http://127.0.0.1:9099' })).toThrow(/refuses/);
+  });
+
+  it('rejects unknown profiles and strips a trailing slash from the API base URL', () => {
+    expect(() => readConfig({ VITE_BUILDWISE_PROFILE: 'prod' })).toThrow(/VITE_BUILDWISE_PROFILE/);
+    expect(readConfig({ VITE_API_BASE_URL: 'https://api.test/' }).apiBaseUrl).toBe('https://api.test');
   });
 });

@@ -14,37 +14,54 @@ Buildwise connects:
 
 ## Current Status
 
-M1 — Repository + GCP Foundation
+M2 — Foundation alignment (local-first)
 
-The M0 specification is frozen (`docs/`, tag `m0-spec-freeze`).
-M1 provides the authenticated React → Cloud Run → Firestore foundation.
-No commerce features are implemented yet.
+The specification is in `docs/` (see `docs/10_EXECUTION_PLAN.md` for the milestone plan).
+M2 provides the three scoped roles (PLATFORM_ADMIN / BRAND_ADMIN / RETAIL_ADMIN), the provider ports and local
+adapters, execution profiles, the conversation-pipeline structure and minimal console
+shells. No commerce, conversation or AI features are implemented yet.
 
 ## Repository
 
 ```text
-frontend/        React + TypeScript + Vite (Brand/Retail console shell, Firebase Auth)
-backend/         Node.js 24 + TypeScript + Express API for Cloud Run
+frontend/        React + TypeScript + Vite: Platform Admin, Brand and Retailer console shells
+backend/         Node.js 24 + TypeScript + Express API (domain / application / ports / adapters)
 infrastructure/  Firestore rules, Cloud Build config, deploy scripts, GCP setup guide
-docs/            Frozen specification (source of truth)
+docs/            Specification (source of truth)
 ```
 
-## Quick start
+## Quick start (local profile — no Google Cloud needed)
 
-Requires Node.js 24 and Java 21+ (for the Firebase emulators).
+Requires Node.js 24 and Java 21+ (for the Firebase emulators). No `.env` files are needed.
 
 ```bash
 npm install
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env.local
-npm run emulators            # terminal 1
-npm run seed:user -- --email admin@demo.test --password 'demo-password-1' \
-  --brand-id brand_demo --brand-name "Demo Brand" --role BRAND_ADMIN
+npm run emulators            # terminal 1: Auth + Firestore emulators (UI: http://127.0.0.1:4000)
+npm run seed:demo            # terminal 2: synthetic users for the three roles (emulators only)
 npm run dev:backend          # terminal 2
 npm run dev:frontend         # terminal 3 → http://localhost:5173
 ```
 
-Tests: `npm test` (unit) and `npm run test:emulator` (auth chain + Firestore rules).
+Demo users (password `buildwise-demo-1`). The MVP has three internal roles and exactly one
+operator per scope: one Platform Admin, one Brand Admin per brand (provisioned by the Platform
+Admin) and at most one Retail Admin per store (provisioned by the Brand Admin, per store). A
+retailer may own many stores, but a Retail Admin operates only its own store — Bandra and Andheri
+both belong to North Retail, and each admin sees only its store (no multi-store access, no store
+staff). Customers never sign in (they use the WhatsApp customer channel). Powai Store (North
+Retail) and Koregaon Park Store (Pune Retail) have no Retail Admin, so the Brand Console's per-store
+"Provision Retail Admin" flow can be tried; it shows the local password-setup link to open.
+
+| Email | Role | Lands in |
+|---|---|---|
+| `platform@buildwise.test` | PLATFORM_ADMIN | `/platform` |
+| `admin@demo-brand.test` | BRAND_ADMIN | `/brand` (Demo Beauty Co) |
+| `retail-admin-north-1@buildwise.test` | RETAIL_ADMIN | `/retailer`: Bandra Store only (North Retail) |
+| `retail-admin-north-2@buildwise.test` | RETAIL_ADMIN | `/retailer`: Andheri Store only (North Retail) |
+| `admin@other-brand.test` | BRAND_ADMIN | `/brand` (Other Brand Ltd), for tenant-isolation checks |
+
+Interfaces and what each one shows today: [docs/11_INTERFACE_CONTRACT.md](docs/11_INTERFACE_CONTRACT.md).
+
+Tests: `npm test` (unit), `npm run test:emulator` (end-to-end on the emulators).
 Deployment: see [infrastructure/README.md](infrastructure/README.md).
 
 ## Core Loop

@@ -1,0 +1,120 @@
+import { MockAgentRuntime } from '../adapters/agent/mockAgentRuntime.js';
+import { MockCommerceProvider } from '../adapters/commerce/mockCommerceProvider.js';
+import { LocalEventSink } from '../adapters/events/localEventSink.js';
+import { FirebaseIdentityAdmin } from '../adapters/firebase/identityAdmin.js';
+import {
+  FirestoreAuditRepository,
+  FirestoreBrandRepository,
+  FirestoreRetailerRepository,
+  FirestoreStoreRepository,
+  FirestoreUserRepository,
+} from '../adapters/firestore/repositories.js';
+import { SimulatorMessagingProvider } from '../adapters/messaging/simulatorMessagingProvider.js';
+import { LocalFileStorageProvider } from '../adapters/storage/localFileStorageProvider.js';
+import { AccountService } from '../application/accountService.js';
+import { PlatformAdminService } from '../application/platformAdminService.js';
+import { TenantAdminService } from '../application/tenantAdminService.js';
+import type { AppDeps } from '../app.js';
+import { FirebaseTokenVerifier } from '../auth/tokenVerifier.js';
+import type { Config } from '../config/env.js';
+import type { Channel } from '../domain/channels.js';
+import { initFirebase } from '../firebase/admin.js';
+import type { Logger } from '../lib/logger.js';
+import type { AgentRuntime } from '../ports/agent.js';
+import type { CommerceProvider } from '../ports/commerce.js';
+import type { EventSink } from '../ports/events.js';
+import type { FileStorageProvider } from '../ports/fileStorage.js';
+import type { MessagingProvider } from '../ports/messaging.js';
+
+/**
+ * The composition root: the ONLY place that reads the execution profile and
+ * decides which adapter sits behind each port (docs/03_TECH_ARCHITECTURE.md §2.1–§2.2).
+ * Everything else depends on the port interfaces.
+ */
+
+export interface Providers {
+  commerce: CommerceProvider;
+  /** One MessagingProvider per enabled customer channel. */
+  messaging: ReadonlyMap<Channel, MessagingProvider>;
+  agent: AgentRuntime;
+  files: FileStorageProvider;
+  events: EventSink;
+}
+
+/** A real (gcp) adapter was selected before the milestone that implements it. */
+export class AdapterNotAvailableError extends Error {
+  constructor(adapter: string, phase: string) {
+    super(`${adapter} is not implemented yet (planned for ${phase}, see docs/10_EXECUTION_PLAN.md)`);
+    this.name = 'AdapterNotAvailableError';
+  }
+}
+
+const notAvailable = (adapter: string, phase = 'phase G2'): never => {
+  throw new AdapterNotAvailableError(adapter, phase);
+};
+
+export function createProviders(config: Pick<Config, 'adapters' | 'localDataDir'>): Providers {
+  const { adapters, localDataDir } = config;
+
+  const messaging = new Map<Channel, MessagingProvider>();
+  for (const channel of adapters.messagingChannels) {
+    if (channel === 'simulator') messaging.set('SIMULATOR', new SimulatorMessagingProvider());
+    else notAvailable('WhatsAppMessagingProvider');
+  }
+
+  return {
+    commerce: adapters.commerce === 'mock' ? new MockCommerceProvider() : notAvailable('ShopifyCommerceProvider'),
+    messaging,
+    agent: adapters.agentRuntime === 'mock' ? new MockAgentRuntime() : notAvailable('AdkGeminiAgentRuntime'),
+    files:
+      adapters.fileStorage === 'local'
+        ? new LocalFileStorageProvider(localDataDir)
+        : notAvailable('GCSFileStorageProvider'),
+    events: adapters.eventSink === 'local' ? new LocalEventSink(localDataDir) : notAvailable('BigQueryEventSink'),
+  };
+}
+
+export interface Container {
+  config: Config;
+  providers: Providers;
+  appDeps: AppDeps;
+}
+
+export function buildContainer(config: Config, logger: Logger): Container {
+  const providers = createProviders(config);
+  const { auth, db } = initFirebase(config.projectId, config.emulators);
+
+  const users = new FirestoreUserRepository(db);
+  const brands = new FirestoreBrandRepository(db);
+  const retailers = new FirestoreRetailerRepository(db);
+  const stores = new FirestoreStoreRepository(db);
+  const audit = new FirestoreAuditRepository(db);
+  const identity = new FirebaseIdentityAdmin(auth);
+
+  return {
+    config,
+    providers,
+    appDeps: {
+      config,
+      logger,
+      verifier: new FirebaseTokenVerifier(auth),
+      repositories: { users, brands, retailers, stores },
+      services: {
+        platformAdmin: new PlatformAdminService({ brands, users, identity, audit }),
+        tenantAdmin: new TenantAdminService({ users, retailers, stores, identity, audit }),
+        account: new AccountService(stores),
+      },
+    },
+  };
+}
+
+/** Adapter names for startup logs and diagnostics. */
+export function describeProviders(providers: Providers) {
+  return {
+    commerce: providers.commerce.name,
+    messaging_channels: [...providers.messaging.keys()],
+    agent_runtime: providers.agent.runtime,
+    file_storage: providers.files.name,
+    event_sink: providers.events.name,
+  };
+}

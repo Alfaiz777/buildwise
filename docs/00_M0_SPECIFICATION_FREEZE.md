@@ -39,6 +39,8 @@ The eight core specification files are:
 
 `10_EXECUTION_PLAN.md` (added post-M0, §11.8) defines execution profiles, the milestone sequence and spike rules. It governs **how** Buildwise is built, never **what** it is.
 
+`11_INTERFACE_CONTRACT.md` (added in M2.1, updated in M2.2; §11.8 Changes 8–9) states, per interface, the role, scope, purpose, current data and actions, out-of-scope items and empty / unauthorized / loading / error states.
+
 The PDFs and research documents remain reference material. The Markdown specification pack is the implementation source of truth.
 
 ---
@@ -99,7 +101,7 @@ The product IS:
 
 # 5. Primary users
 
-*Post-M0 (§11.8):* the user types below map to the five application roles `PLATFORM_ADMIN`, `BRAND_ADMIN`, `BRAND_MEMBER`, `RETAILER_ADMIN` and `RETAILER_STAFF` (`04_DATA_MODEL.md` §4).
+*Post-M0 (§11.8, Change 6):* the MVP has exactly three internal roles — `PLATFORM_ADMIN`, `BRAND_ADMIN` and `RETAIL_ADMIN` — plus the customer, who is a channel principal, not a role (`04_DATA_MODEL.md` §4).
 
 ## Platform
 
@@ -111,20 +113,17 @@ The D2C brand is the primary buyer/operator.
 
 Typical Buildwise brand users:
 
-- Brand Admin (`BRAND_ADMIN`)
-- Commerce/Growth/Marketing user (`BRAND_MEMBER`)
-- Operations user (`BRAND_MEMBER`)
+- Brand Admin (`BRAND_ADMIN`), the only brand role in the MVP. It also covers the commerce/growth/marketing and operations needs.
 
 Their goal is to understand and act on customer opportunities across digital and physical commerce.
 
 ## Retailer
 
-The retail business operating one or more of the brand's physical stores.
+The retail business (partner) operating one or more of the brand's physical stores (§11.8 Change 9).
 
-Typical retailer users:
+Retailer console user:
 
-- Store Manager (`RETAILER_ADMIN`: all stores of their retailer)
-- Store Staff (`RETAILER_STAFF`: assigned stores)
+- Retail Admin (`RETAIL_ADMIN`), the only retail role in the MVP: operates exactly one physical store of its retailer; each store has at most one.
 
 Their goal is to receive actionable customer requests and fulfill them correctly.
 
@@ -357,6 +356,8 @@ If two documents conflict:
         ↓
 08_TEST_PLAN.md
         ↓
+11_INTERFACE_CONTRACT.md  (per-interface contract; derived from 01–08, never overrides them)
+        ↓
 10_EXECUTION_PLAN.md      (process only; can never override 01–08)
 ```
 
@@ -513,11 +514,11 @@ These decisions are approved. Each one has a single canonical home:
 | Reservation creation in a Firestore transaction (`reserved_quantity`) | `03_TECH_ARCHITECTURE.md` §15 |
 | Contextual page token lifecycle (15-min view, single-use mutation) | `07_SECURITY_SPEC.md` §16 |
 | Stateless, request-scoped ADK in Cloud Run; state in Firestore | `03_TECH_ARCHITECTURE.md` §8.1 |
-| Critical API request/response contracts | `06_INTEGRATION_CONTRACTS.md` §14.1–§14.7 |
+| Critical API request/response contracts | `06_INTEGRATION_CONTRACTS.md` §14.1–§14.9 |
 | Firebase ID token → Cloud Run → verification → user/brand/role → authorization | `07_SECURITY_SPEC.md` §4.1 |
 | Gemini timeout, retry, webhook idempotency, rate limiting | `03_TECH_ARCHITECTURE.md` §16, `07_SECURITY_SPEC.md` §17 |
 | All 12 AI evaluation scenarios covered | `08_TEST_PLAN.md` §7 |
-| `User.store_ids` for retail roles (superseded by §11.8: scoped roles with `retailer_id` + `store_ids`) | `04_DATA_MODEL.md` §4 |
+| Retail users scoped by store list (superseded by §11.8 Change 6, then Change 8: `RETAIL_ADMIN` scoped to one store) | `04_DATA_MODEL.md` §4 |
 | `brand.settings.allowed_storefront_origins` | `04_DATA_MODEL.md` §3 |
 | `RetailInventory.reserved_quantity` | `04_DATA_MODEL.md` §10 |
 | `Outcome.reservation_id` | `04_DATA_MODEL.md` §16 |
@@ -544,15 +545,15 @@ M0 was frozen at tag `m0-spec-freeze`. The changes below were approved **after**
 
 - Buildwise has exactly **four interfaces**: Platform Admin Console, Brand Console, Retailer Console, Customer AI Channel (`01` §8b).
 - The customer remains WhatsApp-first, with contextual pages only when needed and no dashboard.
-- The five application roles are `PLATFORM_ADMIN`, `BRAND_ADMIN`, `BRAND_MEMBER`, `RETAILER_ADMIN`, `RETAILER_STAFF` (`04` §4, `07` §4). They replace `BRAND_MARKETING`, `BRAND_OPERATIONS`, `RETAIL_MANAGER` and `RETAIL_STAFF`.
-- Scopes: platform / brand / retailer (store) / customer.
+- A five-role model with platform, brand and retailer scopes replaced the M0 brand/retail roles. *Superseded by Change 6* (three internal roles).
+- Scopes: platform / brand / retail / customer.
 - Platform scope is a distinct principal type, never `brand_id = "ALL"` (`07` §4.1–§4.2).
 - New `Retailer` entity, belonging to exactly one brand (`04` §8a). It adds `RetailStore.retailer_id`, `Reservation.retailer_id` and `User.retailer_id`.
 - `PlatformAuditEvent` added for platform actions (`04` §18.0).
 
 **Decisions:**
 
-- **D1:** `BRAND_MEMBER` is read-mostly and non-administrative (`07` §4.0). Separate marketing/operations roles are not reintroduced for the MVP.
+- **D1:** a read-mostly brand role. *Superseded by Change 6:* `BRAND_ADMIN` is the only brand role.
 - **D2:** `PLATFORM_ADMIN` has **no** default access to customer PII or conversation content. Any future support access must be explicitly authorized, narrowly scoped, audited and separately specified (`07` §4.2).
 
 ### Change 2 — Simulator as a channel adapter (approved)
@@ -588,10 +589,61 @@ M0 was frozen at tag `m0-spec-freeze`. The changes below were approved **after**
 
 ### Change 5 — Review decisions D4–D7 (approved)
 
-- **D4:** The customer simulator is restricted to `BRAND_ADMIN`. `BRAND_MEMBER` stays read-mostly and cannot start simulator conversations or reservations. `PLATFORM_ADMIN` does not use the simulator in the MVP (`07` §4.0, `06` §14.2).
-- **D5:** Brand roles can **view** reservations but cannot change their operational status. Only `RETAILER_ADMIN` / `RETAILER_STAFF` fulfill and transition reservations (`07` §4.0, `06` §14.4).
+- **D4:** The customer simulator is restricted to `BRAND_ADMIN`. `PLATFORM_ADMIN` and `RETAIL_ADMIN` do not use it in the MVP (`07` §4.0, `06` §14.2).
+- **D5:** `BRAND_ADMIN` can **view** reservations but cannot change their operational status. Only `RETAIL_ADMIN` fulfills and transitions reservations (`07` §4.0, `06` §14.4).
 - **D6:** `decision_source = AGENT | DETERMINISTIC_FALLBACK`, never `GEMINI`. The runtime is tracked separately as `runtime = MOCK | ADK_GEMINI`, and a `MOCK` decision is never represented as a Gemini decision (`04` §14, `05` §9.2).
 - **D7:** The unused `POST /api/auth/session` route is removed (`06` §14).
+
+### Change 6 — MVP role simplification (approved)
+
+The prototype uses only the minimum roles it needs:
+
+| Actor | Kind | Scope | Console |
+|---|---|---|---|
+| `PLATFORM_ADMIN` | internal role | platform (no `brand_id`) | Platform Admin Console |
+| `BRAND_ADMIN` | internal role (the only brand role) | one brand | Brand Console |
+| `RETAIL_ADMIN` | internal role (the only retail role) | one store of one retailer in one brand (Change 8) | Retailer Console |
+| Customer | channel principal, **not** a role | own conversation / context / resources | Customer AI Channel (no login) |
+
+- **Removed:** the read-mostly brand role (`BRAND_MEMBER`), the store-staff role (`RETAILER_STAFF`) and per-user store assignment (`store_ids`). The retailer admin role is renamed `RETAILER_ADMIN` → `RETAIL_ADMIN`, and its scope `RETAILER` → `RETAIL`. A user document carrying any other role value is refused (`07` §4.1).
+- **Brand administration routes** follow the simplification: `GET /api/brand/users`, `POST /api/brand/retailers/:retailerId/admins` (`06` §14.7; brand-admin self-provisioning was removed again by Change 7; Retail Admin provisioning became store-based in Change 9). `GET /api/me` returns only the fields of the caller's scope (`06` §14.8).
+- **Not introduced:** granular permission matrices, store-staff roles, brand-member roles, extra admin tiers, customer authentication. The role model may be extended only after the core prototype works, through a spec change.
+
+### Change 7 — One operator per scope (approved)
+
+- **Exactly one operator per applicable scope:** one `PLATFORM_ADMIN` for the prototype; exactly one `BRAND_ADMIN` per brand; exactly one `RETAIL_ADMIN` per retailer (per store since Change 9) (`04` §4). Recorded as `Brand.brand_admin_user_id` and `Retailer.retail_admin_user_id`, claimed in a Firestore transaction at provisioning; a second one is refused with `409 BRAND_ADMIN_ALREADY_PROVISIONED` / `409 RETAIL_ADMIN_ALREADY_PROVISIONED`. A non-recorded admin document is refused at sign-in (`07` §4.1).
+- **Only `PLATFORM_ADMIN` provisions a `BRAND_ADMIN`.** `POST /api/brand/admins` and the "Add brand admin" UI are removed; `GET /api/brand/users` remains as a read-only accounts view.
+- **`BRAND_ADMIN` provisions its retailers' Retail Admins**, one per retailer (one per store, provisioned from the store, since Change 9).
+- **Store → retailer assignment is deferred to retail ingestion (M4).** The Brand Console no longer asks for store IDs; `PATCH /api/brand/stores/:storeId` stays backend-only (used by tests and as the ingestion building block) (`06` §14.7).
+- **Not introduced:** admin replacement, multiple admins per scope, store-level staff assignment.
+
+### Change 8 — Retail ownership and interface contract (M2.1, approved)
+
+- **Ownership model:** *superseded by Change 9.* M2.1 used one retailer ↔ one store ↔ one `RETAIL_ADMIN` (`Retailer.store_id`, `Retailer.retail_admin_user_id`).
+- **Store-level retail scope:** a `RETAIL_ADMIN` requires `brand_id`, `retailer_id` and `store_id`, and can access only its own store. Another store (even of the same brand), another retailer or brand → `404`; brand and platform routes → `403` (`07` §4.1). There is no multi-store access and no store-staff role.
+- **Provisioning:** *superseded by Change 9* (retailer-based in M2.1; store-based since M2.2). Still valid: a `users/{uid}` whose `store_id` is missing or does not match the recorded admin/store is refused (`403 USER_MISCONFIGURED`).
+- **Association:** retail ingestion establishes store → retailer ownership (M4). Until then the association is backend-only. No console has manual store-ID entry. The M2.1 one-store-per-retailer conflicts are removed by Change 9.
+- **API:** `GET /api/me` for `RETAIL` returns `store_id` and a single `store` (not a `stores` list); `GET /api/retail/stores/:storeId` added (`06` §14.8, §14.9).
+- **Interface contract:** `11_INTERFACE_CONTRACT.md` documents the four frozen interfaces. No UI redesign and no new features.
+- **Supersedes:** "`RETAIL_ADMIN` operates every store of its retailer" (Change 6) and "store access derived from `RetailStore.retailer_id`".
+
+### Change 9 — Final retail ownership: store-based Retail Admins (M2.2, approved)
+
+```text
+Brand
+ └── Retailer              (retail business / partner, e.g. Nykaa)
+      ├── Store A ── RETAIL_ADMIN_A
+      ├── Store B ── RETAIL_ADMIN_B
+      └── Store C ── RETAIL_ADMIN_C
+```
+
+- **A retailer may own many stores.** Each store belongs to exactly one retailer (`RetailStore.retailer_id`). The M2.1 rule "one retailer owns one store" and `Retailer.store_id` are removed.
+- **At most one `RETAIL_ADMIN` per store**, recorded as `RetailStore.retail_admin_user_id` (claimed in a Firestore transaction). `Retailer.retail_admin_user_id` is removed. Each `RETAIL_ADMIN` operates exactly one store; there is no multi-store Retail Admin and no store-staff role.
+- **Store-level scope unchanged:** `RETAIL_ADMIN` requires `brand_id` + `retailer_id` + `store_id`; Retail Admin A cannot access Store B even when both stores belong to the same retailer (`404`). At sign-in the user must be the store's recorded admin and user and store must agree on the retailer, else `403 USER_MISCONFIGURED`.
+- **Store-based provisioning:** the Brand Admin provisions a Retail Admin from a specific store: `POST /api/brand/stores/:storeId/admins` (replaces `POST /api/brand/retailers/:retailerId/admins`). The store must exist in the brand, belong to a retailer (`409 STORE_HAS_NO_RETAILER`) and have no Retail Admin (`409 RETAIL_ADMIN_ALREADY_PROVISIONED`, no setup link generated). The response carries the local Firebase password-setup link, displayed in the local prototype; production delivery (invitation email) is a later concern.
+- **Brand Console** shows Retailer → Stores → Retail Admin (`GET /api/brand/stores`), with the provisioning action on each store without an admin. No manual store-ID entry.
+- **Association:** a store cannot be attached to a second retailer (`409 STORE_ALREADY_ASSIGNED`) nor detached while it has a Retail Admin (`409 STORE_HAS_ADMIN`). M4 ingestion supports one retailer → many stores through the same domain rule.
+- **Unchanged:** the three roles, `GET /api/me` shape (`store_id` + single `store`), `GET /api/retail/stores/:storeId`, and the Customer AI Channel (WhatsApp-only, not an admin role).
 
 ### Supporting additions
 
@@ -1100,7 +1152,8 @@ Buildwise/
 │   ├── 07_SECURITY_SPEC.md
 │   ├── 08_TEST_PLAN.md
 │   ├── 09_LEARNING_LOG.md
-│   └── 10_EXECUTION_PLAN.md   (post-M0)
+│   ├── 10_EXECUTION_PLAN.md   (post-M0)
+│   └── 11_INTERFACE_CONTRACT.md (post-M0, M2.1)
 │
 ├── frontend/
 ├── backend/
