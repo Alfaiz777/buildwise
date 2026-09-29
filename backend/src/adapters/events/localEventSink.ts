@@ -5,7 +5,7 @@ import type { EventSink } from '../../ports/events.js';
 
 /**
  * Local-profile analytics export: append-only JSON Lines, one file per UTC day,
- * under `<dataDir>/events`. The BigQuery equivalent arrives in phase G2.
+ * under `<dataDir>/events`. The BigQuery equivalent arrives in phase L2.
  */
 export class LocalEventSink implements EventSink {
   readonly name = 'LOCAL' as const;

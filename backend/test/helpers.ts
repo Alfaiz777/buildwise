@@ -1,10 +1,20 @@
+import { randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
+import { MockCommerceProvider } from '../src/adapters/commerce/mockCommerceProvider.js';
+import { CsvRetailFileParser } from '../src/adapters/retail/csvRetailFileParser.js';
 import { createApp } from '../src/app.js';
 import { AccountService } from '../src/application/accountService.js';
+import { CatalogService } from '../src/application/catalogService.js';
+import { CommerceSyncService } from '../src/application/commerceSyncService.js';
 import { PlatformAdminService } from '../src/application/platformAdminService.js';
+import { RetailImportService } from '../src/application/retailImportService.js';
+import { StoreService } from '../src/application/storeService.js';
 import { TenantAdminService } from '../src/application/tenantAdminService.js';
 import type { TokenVerifier, VerifiedToken } from '../src/auth/tokenVerifier.js';
 import { AppError, Errors } from '../src/lib/errors.js';
 import { silentLogger, type Logger } from '../src/lib/logger.js';
+import type { CommerceProvider } from '../src/ports/commerce.js';
+import type { FileStorageProvider, LocalUploadReceiver, PendingUpload } from '../src/ports/fileStorage.js';
 import type { IdentityAdmin } from '../src/ports/identity.js';
 import type { StoreAssignmentDecision, StoreAssignmentState } from '../src/domain/retailOwnership.js';
 import {
@@ -15,15 +25,29 @@ import {
   type BrandAuditInput,
   type BrandRecord,
   type BrandRepository,
+  type ConnectionRecord,
+  type ConnectionRepository,
+  type InventoryRecord,
+  type InventoryRepository,
+  type InventoryUpsert,
+  type MappingRecord,
+  type MappingRepository,
   type NewUser,
   type PlatformAuditInput,
   type PlatformAuditRecord,
+  type ProductRecord,
+  type ProductRepository,
   type RetailerRecord,
   type RetailerRepository,
+  type RetailImportCounts,
+  type RetailImportRecord,
+  type RetailImportRepository,
+  type StoreImportFields,
   type StoreRecord,
   type StoreRepository,
   type UserRecord,
   type UserRepository,
+  type VariantRecord,
 } from '../src/ports/repositories.js';
 
 /**
@@ -129,6 +153,13 @@ export class MemoryStores implements StoreRepository {
   async list(brandId: string) {
     return this.stores.filter((s) => s.brandId === brandId);
   }
+  async upsertFromImport(brandId: string, stores: StoreImportFields[]) {
+    for (const fields of stores) {
+      const existing = this.find(brandId, fields.storeId);
+      if (existing) Object.assign(existing, fields);
+      else this.stores.push({ ...fields, brandId, retailerId: null, retailAdminUserId: null });
+    }
+  }
   adminSlot(brandId: string, storeId: string) {
     return memorySlot(() => {
       const s = this.find(brandId, storeId);
@@ -156,6 +187,165 @@ export class MemoryStores implements StoreRepository {
     });
     if (decision.ok && decision.change !== 'NONE') store!.retailerId = decision.change === 'ASSIGN' ? retailerId : null;
     return decision;
+  }
+}
+
+const iso = () => new Date().toISOString();
+
+export class MemoryProducts implements ProductRepository {
+  readonly products: ProductRecord[] = [];
+  readonly variants: VariantRecord[] = [];
+  async listProducts(brandId: string) {
+    return this.products.filter((p) => p.brandId === brandId);
+  }
+  async listVariants(brandId: string) {
+    return this.variants.filter((v) => v.brandId === brandId);
+  }
+  async upsertCatalog(brandId: string, products: ProductRecord[], variants: VariantRecord[]) {
+    const put = <T extends { brandId: string }>(list: T[], item: T, same: (x: T) => boolean) => {
+      const i = list.findIndex((x) => x.brandId === brandId && same(x));
+      if (i >= 0) list[i] = structuredClone(item);
+      else list.push(structuredClone(item));
+    };
+    for (const p of products) put(this.products, p, (x) => x.productId === p.productId);
+    for (const v of variants) put(this.variants, v, (x) => x.variantId === v.variantId);
+  }
+}
+
+export class MemoryMappings implements MappingRepository {
+  readonly mappings: MappingRecord[] = [];
+  async list(brandId: string) {
+    return this.mappings.filter((m) => m.brandId === brandId);
+  }
+  async upsertMany(brandId: string, mappings: MappingRecord[]) {
+    for (const m of mappings) {
+      const i = this.mappings.findIndex((x) => x.brandId === brandId && x.mappingId === m.mappingId);
+      const record = { ...m, brandId, updatedAt: iso() };
+      if (i >= 0) this.mappings[i] = record;
+      else this.mappings.push(record);
+    }
+  }
+}
+
+export class MemoryInventory implements InventoryRepository {
+  readonly rows: InventoryRecord[] = [];
+  async listByBrand(brandId: string) {
+    return this.rows.filter((r) => r.brandId === brandId);
+  }
+  async listByStore(brandId: string, storeId: string) {
+    return this.rows.filter((r) => r.brandId === brandId && r.storeId === storeId);
+  }
+  async listByVariant(brandId: string, variantId: string) {
+    return this.rows.filter((r) => r.brandId === brandId && r.variantId === variantId);
+  }
+  async upsertStock(brandId: string, rows: InventoryUpsert[], availabilityOf: (q: number, r: number) => string) {
+    for (const row of rows) {
+      const inventoryId = `${row.storeId}__${row.canonicalSku}`;
+      const existing = this.rows.find((r) => r.brandId === brandId && r.inventoryId === inventoryId);
+      const reservedQuantity = existing?.reservedQuantity ?? 0;
+      const record: InventoryRecord = {
+        ...row,
+        inventoryId,
+        brandId,
+        reservedQuantity,
+        availabilityStatus: availabilityOf(row.quantity, reservedQuantity),
+        lastUpdatedAt: iso(),
+      };
+      if (existing) Object.assign(existing, record);
+      else this.rows.push(record);
+    }
+  }
+}
+
+export class MemoryConnections implements ConnectionRepository {
+  readonly connections: ConnectionRecord[] = [];
+  async get(brandId: string, connectionId: string) {
+    return this.connections.find((c) => c.brandId === brandId && c.connectionId === connectionId) ?? null;
+  }
+  async list(brandId: string) {
+    return this.connections.filter((c) => c.brandId === brandId);
+  }
+  async put(connection: ConnectionRecord) {
+    const i = this.connections.findIndex(
+      (c) => c.brandId === connection.brandId && c.connectionId === connection.connectionId,
+    );
+    if (i >= 0) this.connections[i] = { ...connection };
+    else this.connections.push({ ...connection });
+  }
+}
+
+export class MemoryImports implements RetailImportRepository {
+  readonly imports: RetailImportRecord[] = [];
+  private find(brandId: string, importId: string) {
+    return this.imports.find((r) => r.brandId === brandId && r.importId === importId) ?? null;
+  }
+  async create(record: RetailImportRecord) {
+    this.imports.push({ ...record, createdAt: new Date(Date.now() + this.imports.length).toISOString() });
+  }
+  async get(brandId: string, importId: string) {
+    const r = this.find(brandId, importId);
+    return r ? { ...r } : null;
+  }
+  async list(brandId: string, limit: number) {
+    return this.imports
+      .filter((r) => r.brandId === brandId)
+      .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+      .slice(0, limit);
+  }
+  async claimForProcessing(brandId: string, importId: string) {
+    const r = this.find(brandId, importId);
+    if (!r || r.status !== 'UPLOADED') return false;
+    r.status = 'PROCESSING';
+    return true;
+  }
+  async finish(
+    brandId: string,
+    importId: string,
+    result: RetailImportCounts & {
+      status: 'COMPLETED' | 'FAILED';
+      failureCode: string | null;
+      rowErrorsReference: string | null;
+    },
+  ) {
+    Object.assign(this.find(brandId, importId)!, result, { completedAt: iso() });
+  }
+}
+
+/** In-memory FileStorageProvider + local upload receiver (same contract as the local adapter). */
+export class MemoryFiles implements FileStorageProvider, LocalUploadReceiver {
+  readonly name = 'LOCAL' as const;
+  readonly files = new Map<string, Buffer>();
+  readonly pending = new Map<string, PendingUpload>();
+  async createUploadTarget(key: string, contentType: string, maxBytes: number) {
+    const uploadId = randomUUID();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    this.pending.set(uploadId, { key, contentType, maxBytes, expiresAt });
+    return {
+      method: 'PUT' as const,
+      url: `/api/local-files/uploads/${uploadId}`,
+      headers: { 'Content-Type': contentType },
+      expiresAt,
+    };
+  }
+  describeUpload(uploadId: string) {
+    return this.pending.get(uploadId) ?? null;
+  }
+  async acceptUpload(uploadId: string, body: Buffer) {
+    const upload = this.pending.get(uploadId)!;
+    this.files.set(upload.key, body);
+    this.pending.delete(uploadId);
+    return upload;
+  }
+  async openRead(key: string) {
+    const body = this.files.get(key);
+    if (!body) throw new Error('not found');
+    return Readable.from([body]);
+  }
+  async write(key: string, body: string | Buffer, _contentType?: string) {
+    this.files.set(key, Buffer.from(body));
+  }
+  async delete(key: string) {
+    this.files.delete(key);
   }
 }
 
@@ -229,6 +419,10 @@ const store = (
   storeStatus: 'ACTIVE',
   storeHours: { timezone: 'Asia/Kolkata', monday: '10:00-21:00' },
   retailAdminUserId,
+  latitude: 19.07,
+  longitude: 72.87,
+  reservationAvailable: true,
+  pickupAvailable: true,
 });
 const user = (userId: string, role: string, fields: Partial<UserRecord> = {}): UserRecord => ({
   userId,
@@ -315,7 +509,9 @@ export function seedWorld() {
 }
 
 /** A fresh, isolated app + in-memory state per call. */
-export function buildTestWorld(options: { corsAllowedOrigins?: string[]; logger?: Logger } = {}) {
+export function buildTestWorld(
+  options: { corsAllowedOrigins?: string[]; logger?: Logger; commerce?: CommerceProvider; localUploads?: boolean } = {},
+) {
   const world = seedWorld();
   const users = new MemoryUsers(world.users);
   const brands = new MemoryBrands(world.brands);
@@ -324,6 +520,30 @@ export function buildTestWorld(options: { corsAllowedOrigins?: string[]; logger?
   const audit = new MemoryAudit();
   const identity = new FakeIdentity();
   for (const u of world.users) if (u.email) identity.byEmail.set(u.email, u.userId);
+  const products = new MemoryProducts();
+  const mappings = new MemoryMappings();
+  const inventory = new MemoryInventory();
+  const connections = new MemoryConnections();
+  const imports = new MemoryImports();
+  const files = new MemoryFiles();
+  const commerceSync = new CommerceSyncService({
+    commerce: options.commerce ?? new MockCommerceProvider(),
+    products,
+    mappings,
+    connections,
+    audit,
+  });
+  const retailImports = new RetailImportService({
+    files,
+    parser: new CsvRetailFileParser(),
+    imports,
+    stores,
+    retailers,
+    products,
+    mappings,
+    inventory,
+    audit,
+  });
 
   const emailOf = (uid: string) => users.users.find((u) => u.userId === uid)?.email ?? null;
   const app = createApp({
@@ -333,11 +553,33 @@ export function buildTestWorld(options: { corsAllowedOrigins?: string[]; logger?
     repositories: { users, brands, retailers, stores },
     services: {
       platformAdmin: new PlatformAdminService({ brands, users, identity, audit }),
-      tenantAdmin: new TenantAdminService({ users, retailers, stores, identity, audit }),
-      account: new AccountService(stores),
+      tenantAdmin: new TenantAdminService({ users, retailers, stores, inventory, identity, audit }),
+      account: new AccountService({ stores, inventory, products }),
+      commerceSync,
+      catalog: new CatalogService({ products, mappings, inventory }),
+      retailImports,
     },
+    localUploads: options.localUploads === false ? undefined : files,
   });
-  return { app, world, users, brands, retailers, stores, audit, identity };
+  return {
+    app,
+    world,
+    users,
+    brands,
+    retailers,
+    stores,
+    audit,
+    identity,
+    products,
+    mappings,
+    inventory,
+    connections,
+    imports,
+    files,
+    commerceSync,
+    retailImports,
+    storeService: new StoreService({ stores, inventory }),
+  };
 }
 
 export const bearer = (userId: string) => `Bearer token-${userId}`;

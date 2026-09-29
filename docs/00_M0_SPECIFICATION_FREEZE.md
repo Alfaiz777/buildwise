@@ -5,7 +5,7 @@
 **Product name:** Buildwise  
 **Primary customer channel:** WhatsApp  
 **Primary online commerce system:** Shopify  
-**Primary physical-retail input:** Brand-provided retail store/inventory data (CSV/XLSX for MVP)  
+**Primary physical-retail input:** Brand-provided retail store/inventory data (CSV for the prototype; XLSX deferred, §11.8 Change 10)  
 **Backend language:** Node.js + TypeScript  
 **Agent framework:** Google ADK for TypeScript  
 **Primary AI:** Gemini on Vertex AI  
@@ -306,7 +306,7 @@ Shopify
 WhatsApp Cloud API
 = primary customer conversation channel
 
-Retail CSV/XLSX
+Retail CSV (XLSX deferred, §11.8 Change 10)
 = physical retail network input for MVP
 
 BigQuery
@@ -470,7 +470,7 @@ Web intent reaches the WhatsApp conversation through a short-lived opaque token 
 
 Supported MVP retail file size:
 
-> **Up to 10 MB per CSV/XLSX file.**
+> **Up to 10 MB per CSV file** (XLSX deferred, §11.8 Change 10).
 
 Flow:
 
@@ -530,10 +530,10 @@ These decisions are approved. Each one has a single canonical home:
 
 These items do not change any product or architecture boundary. They are settled at the start of M1, before the feature that needs them:
 
-- **Reservation expiry trigger.** The expiry sweep endpoint is specified (`03_TECH_ARCHITECTURE.md` §15), but the schedule mechanism is not yet chosen. The options are Cloud Scheduler, or relying only on the sweep run when the retailer console loads. *Status: locally, the sweep runs on retailer-console load; the `gcp` schedule is decided at cutover (G1).*
+- **Reservation expiry trigger.** The expiry sweep endpoint is specified (`03_TECH_ARCHITECTURE.md` §15), but the schedule mechanism is not yet chosen. The options are Cloud Scheduler, or relying only on the sweep run when the retailer console loads. *Status: locally, the sweep runs on retailer-console load; the `gcp` schedule is decided at deployment (phase L1, Change 10).*
 - **User provisioning.** How the first Brand Admin and the retail users are created and linked to a brand and stores. For the MVP, a seed/admin script is acceptable. *Status: resolved by §11.8. The seed script bootstraps only the first `PLATFORM_ADMIN`; everything else follows the provisioning chain in `07_SECURITY_SPEC.md` §4.4.*
-- **Meta webhook timing.** Verify that synchronous processing within the 20 s AI budget avoids unnecessary redeliveries. Duplicates are already safe. *Status: moved to spike S2 / phase G2.*
-- **Shopify auth mechanism.** Verify it against the development store (`06_INTEGRATION_CONTRACTS.md` §9). *Status: moved to spike S1 / phase G2.*
+- **Meta webhook timing.** Verify that synchronous processing within the 20 s AI budget avoids unnecessary redeliveries. Duplicates are already safe. *Status: moved to spike S2 / phase L2 (Change 10).*
+- **Shopify auth mechanism.** Verify it against the development store (`06_INTEGRATION_CONTRACTS.md` §9). *Status: moved to spike S1 / phase L2 (Change 10).*
 
 ## 11.8 Post-M0 change log
 
@@ -582,7 +582,7 @@ M0 was frozen at tag `m0-spec-freeze`. The changes below were approved **after**
 
 ### Change 4 — Execution strategy (approved)
 
-- **Local first:** the complete core product is built locally first (M2–M12), then cut over to GCP (G1), then the real integrations (G2), then the final live verification (G3). The plan is `10_EXECUTION_PLAN.md`.
+- **Local first:** the complete core product is built locally first (M2–M12), then cut over to GCP (G1), then the real integrations (G2), then the final live verification (G3) — *sequence superseded by Change 10 (M3–M7, then L1–L3)*. The plan is `10_EXECUTION_PLAN.md`.
 - **Not a blocker:** GCP is not a blocker for any local milestone.
 - **Spikes:** Shopify, Meta WhatsApp and ADK/Gemini spikes are small and isolated.
 - **Judged path:** the judged prototype runs the `gcp` profile with real integrations.
@@ -644,6 +644,32 @@ Brand
 - **Brand Console** shows Retailer → Stores → Retail Admin (`GET /api/brand/stores`), with the provisioning action on each store without an admin. No manual store-ID entry.
 - **Association:** a store cannot be attached to a second retailer (`409 STORE_ALREADY_ASSIGNED`) nor detached while it has a Retail Admin (`409 STORE_HAS_ADMIN`). M4 ingestion supports one retailer → many stores through the same domain rule.
 - **Unchanged:** the three roles, `GET /api/me` shape (`store_id` + single `store`), `GET /api/retail/stores/:storeId`, and the Customer AI Channel (WhatsApp-only, not an admin role).
+
+### Change 10 — Local-first delivery plan, CSV-only retail input, product knowledge fields, route fix (approved, start of M3)
+
+- **Execution plan (supersedes the sequence in Change 4):** the whole prototype is built on the `local` profile first, in five milestones, then taken live in three phases (`10_EXECUTION_PLAN.md` §3–§4):
+
+  | # | Milestone | Replaces |
+  |---|---|---|
+  | M3 | Catalog & store truth | old M3 commerce data + M4 retail ingestion |
+  | M4 | Intent → conversation | old M5 customer intent + M6 pipeline/simulator |
+  | M5 | Decide & reserve | old M7 agent/tools/guardrail + M8 reservations (contextual pages deferred) |
+  | M6 | Store fulfilment & outcomes | old M9 Retailer Console + M10 outcomes/intelligence |
+  | M7 | Local E2E + hardening | old M11 platform/hardening + M12 local E2E |
+  | L1 | Live deploy | old G1: Cloud Run + Firebase Hosting, real Firebase, Gemini on Vertex AI via ADK |
+  | L2 | Live integrations | old G2: WhatsApp Cloud API, Shopify development store, BigQuery |
+  | L3 | Live E2E | old G3: final live verification |
+
+  Target: complete by **15 Oct 2026**, submit **18 Oct 2026**.
+- **Retail upload is CSV only** for the prototype. XLSX is deferred; the canonical schema and the 10 MB limit are unchanged (`04` §9.1–§9.2, `06` §12).
+- **Product knowledge fields:** `Product` gains optional `tags` (string list) and `attributes` (string map, e.g. `skin_type`, `key_ingredients`, `size`), so EDUCATE / COMPARE answers can be grounded in catalogue data (`04` §7, `06` §2).
+- **Route conflict fix:** `/api/retail/*` is the Retailer Console (RETAIL scope, `06` §14.9). Brand retail import therefore moves from `POST /api/retail/import` to the brand-scoped `/api/brand/retail-imports` routes (`06` §14).
+- **Recorded for later milestones (no code before then):**
+  - online-order attribution through an opaque reference carried through checkout (M6 / L2);
+  - a Brand Console human-handoff queue (M6);
+  - Reservation `pickup_code`, optional `customer_eta`, and retailer refusal recorded as `cancelled_by` / `cancel_reason` (M5 / M6; `04` §15);
+  - unmet local demand recorded as a payload on the existing `STORE_RECOMMENDATION` event (M5 / M6).
+- **Final live stack:** the existing `gcp` profile, deployed on Cloud Run (backend) and Firebase Hosting (frontend), with Firestore, Cloud Storage, Secret Manager, BigQuery (the `EventSink` export), Gemini on Vertex AI through ADK for TypeScript, WhatsApp Cloud API and a Shopify development store. The simulator stays enabled in `gcp` as the judge-testable customer channel (`BRAND_ADMIN` only). Product knowledge is passed to Gemini in context; there is no RAG pipeline.
 
 ### Supporting additions
 

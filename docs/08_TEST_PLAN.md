@@ -8,8 +8,8 @@ Verification happens in two stages (`10_EXECUTION_PLAN.md`):
 
 | Stage | When | Profile | Proves |
 |---|---|---|---|
-| Local verification | M2–M12 | `local` | Domain logic, pipeline, security and journey on emulators + local adapters |
-| Live verification | G2–G3 | `gcp` | Real adapters honor the same contracts; real AI quality; production behavior |
+| Local verification | M2–M7 | `local` | Domain logic, pipeline, security and journey on emulators + local adapters |
+| Live verification | L2–L3 | `gcp` | Real adapters honor the same contracts; real AI quality; production behavior |
 
 ---
 
@@ -86,7 +86,7 @@ EventSink             LocalEventSink              | BigQueryEventSink
 Each port has **one** shared contract suite:
 
 - the local adapter runs it in every build
-- the real adapter runs the same suite in phase G2
+- the real adapter runs the same suite in phase L2
 
 The domain logic must behave identically with either adapter.
 
@@ -139,7 +139,7 @@ Verify:
 Test:
 
 ```text
-valid spreadsheet
+valid CSV file
 missing columns
 duplicate rows
 invalid SKU
@@ -217,8 +217,8 @@ Two runs of the same 12 scenarios, with different purposes:
 
 | Run | Runtime | Purpose | Pass rule |
 |---|---|---|---|
-| Local pipeline run (M7 onward; scenarios 6 and 12 from M8; all 12 in M12) | `MockAgentRuntime` | Verifies pipeline, tools, guardrail, persistence and outcome recording. **Not** an AI-quality result. | Deterministic: each scenario runs once and must pass 1/1 |
-| **Final AI evaluation** (G3) | `AdkGeminiAgentRuntime` | Verifies Buildwise AI behavior | The rules below |
+| Local pipeline run (M5 onward; all 12 scenarios in M7) | `MockAgentRuntime` | Verifies pipeline, tools, guardrail, persistence and outcome recording. **Not** an AI-quality result. | Deterministic: each scenario runs once and must pass 1/1 |
+| **Final AI evaluation** (L3) | `AdkGeminiAgentRuntime` | Verifies Buildwise AI behavior | The rules below |
 
 Final AI evaluation rules:
 
@@ -267,7 +267,7 @@ retail re-upload → quantity overwritten, reserved_quantity preserved
 invalid status transition → 409
 ```
 
-The Firestore emulator does not reproduce production contention exactly. The concurrency test therefore runs **again against real Firestore** in phase G3 (`10_EXECUTION_PLAN.md` §4).
+The Firestore emulator does not reproduce production contention exactly. The concurrency test therefore runs **again against real Firestore** in phase L3 (`10_EXECUTION_PLAN.md` §4).
 
 ---
 
@@ -389,8 +389,8 @@ The same journey is verified twice:
 
 | Run | Profile | Commerce | Channel | Agent |
 |---|---|---|---|---|
-| M12 local E2E | `local` | `MockCommerceProvider` | simulator | `MockAgentRuntime` |
-| G3 live E2E (final) | `gcp` | Shopify | WhatsApp | ADK + Gemini |
+| M7 local E2E | `local` | `MockCommerceProvider` | simulator | `MockAgentRuntime` |
+| L3 live E2E (final) | `gcp` | Shopify | WhatsApp | ADK + Gemini |
 
 The final test (live form):
 
@@ -466,7 +466,7 @@ When the agent runtime (Gemini) fails, the expected result is the deterministic 
 
 # 14. Production smoke test
 
-After the `gcp` deployment (phases G1–G3), verify:
+After the `gcp` deployment (phases L1–L3), verify:
 
 ```text
 login

@@ -37,7 +37,7 @@ Requires Node.js 24 and Java 21+ (for the Firebase emulators). No `.env` files a
 ```bash
 npm install
 npm run emulators            # terminal 1: Auth + Firestore emulators (UI: http://127.0.0.1:4000)
-npm run seed:demo            # terminal 2: synthetic users for the three roles (emulators only)
+npm run seed:demo            # terminal 2: users, catalogue sync and demo CSV import (emulators only)
 npm run dev:backend          # terminal 2
 npm run dev:frontend         # terminal 3 → http://localhost:5173
 ```
@@ -60,6 +60,24 @@ Retail) and Koregaon Park Store (Pune Retail) have no Retail Admin, so the Brand
 | `admin@other-brand.test` | BRAND_ADMIN | `/brand` (Other Brand Ltd), for tenant-isolation checks |
 
 Interfaces and what each one shows today: [docs/11_INTERFACE_CONTRACT.md](docs/11_INTERFACE_CONTRACT.md).
+
+### What M3 (catalog & store truth) shows
+
+`seed:demo` syncs the synthetic "Demo Beauty Co" catalogue (10 products, 18 variants) through the
+mock commerce provider, then runs the real retail import on
+[`backend/fixtures/retail/demo-retail.csv`](backend/fixtures/retail/demo-retail.csv): four stores,
+their stock and SKU mappings. That file contains two invalid rows and one unknown SKU on purpose, so
+the import report shows real row errors.
+
+- **Brand Console** (`admin@demo-brand.test`): setup checklist, catalog & SKU mapping, "Sync
+  catalog", CSV upload with import history and row-error reports, and per-store SKU counts.
+- **Retailer Console** (`retail-admin-north-1@buildwise.test`): the read-only stock of Bandra Store
+  only (Vitamin C Glow Serum 30 ml: 3 in stock — Andheri has 5 and Powai 0, but this admin never
+  sees them).
+- Try your own upload: edit a copy of the demo CSV (e.g. change a quantity or add a row with
+  `store_hours.monday` = `21:00-10:00`) and import it from the Brand Console.
+
+Uploaded files and import reports are stored under `backend/.data/files` (local profile).
 
 Tests: `npm test` (unit), `npm run test:emulator` (end-to-end on the emulators).
 Deployment: see [infrastructure/README.md](infrastructure/README.md).

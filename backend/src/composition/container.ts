@@ -5,14 +5,24 @@ import { FirebaseIdentityAdmin } from '../adapters/firebase/identityAdmin.js';
 import {
   FirestoreAuditRepository,
   FirestoreBrandRepository,
+  FirestoreConnectionRepository,
+  FirestoreInventoryRepository,
+  FirestoreMappingRepository,
+  FirestoreProductRepository,
   FirestoreRetailerRepository,
+  FirestoreRetailImportRepository,
   FirestoreStoreRepository,
   FirestoreUserRepository,
 } from '../adapters/firestore/repositories.js';
 import { SimulatorMessagingProvider } from '../adapters/messaging/simulatorMessagingProvider.js';
+import { CsvRetailFileParser } from '../adapters/retail/csvRetailFileParser.js';
 import { LocalFileStorageProvider } from '../adapters/storage/localFileStorageProvider.js';
 import { AccountService } from '../application/accountService.js';
+import { CatalogService } from '../application/catalogService.js';
+import { CommerceSyncService } from '../application/commerceSyncService.js';
 import { PlatformAdminService } from '../application/platformAdminService.js';
+import { RetailImportService } from '../application/retailImportService.js';
+import { StoreService } from '../application/storeService.js';
 import { TenantAdminService } from '../application/tenantAdminService.js';
 import type { AppDeps } from '../app.js';
 import { FirebaseTokenVerifier } from '../auth/tokenVerifier.js';
@@ -49,7 +59,7 @@ export class AdapterNotAvailableError extends Error {
   }
 }
 
-const notAvailable = (adapter: string, phase = 'phase G2'): never => {
+const notAvailable = (adapter: string, phase = 'phase L2'): never => {
   throw new AdapterNotAvailableError(adapter, phase);
 };
 
@@ -78,6 +88,8 @@ export interface Container {
   config: Config;
   providers: Providers;
   appDeps: AppDeps;
+  /** Used by the agent tools from M5 (no HTTP route in M3). */
+  storeService: StoreService;
 }
 
 export function buildContainer(config: Config, logger: Logger): Container {
@@ -90,10 +102,16 @@ export function buildContainer(config: Config, logger: Logger): Container {
   const stores = new FirestoreStoreRepository(db);
   const audit = new FirestoreAuditRepository(db);
   const identity = new FirebaseIdentityAdmin(auth);
+  const products = new FirestoreProductRepository(db);
+  const mappings = new FirestoreMappingRepository(db);
+  const inventory = new FirestoreInventoryRepository(db);
+  const connections = new FirestoreConnectionRepository(db);
+  const imports = new FirestoreRetailImportRepository(db);
 
   return {
     config,
     providers,
+    storeService: new StoreService({ stores, inventory }),
     appDeps: {
       config,
       logger,
@@ -101,9 +119,23 @@ export function buildContainer(config: Config, logger: Logger): Container {
       repositories: { users, brands, retailers, stores },
       services: {
         platformAdmin: new PlatformAdminService({ brands, users, identity, audit }),
-        tenantAdmin: new TenantAdminService({ users, retailers, stores, identity, audit }),
-        account: new AccountService(stores),
+        tenantAdmin: new TenantAdminService({ users, retailers, stores, inventory, identity, audit }),
+        account: new AccountService({ stores, inventory, products }),
+        commerceSync: new CommerceSyncService({ commerce: providers.commerce, products, mappings, connections, audit }),
+        catalog: new CatalogService({ products, mappings, inventory }),
+        retailImports: new RetailImportService({
+          files: providers.files,
+          parser: new CsvRetailFileParser(),
+          imports,
+          stores,
+          retailers,
+          products,
+          mappings,
+          inventory,
+          audit,
+        }),
       },
+      localUploads: providers.files instanceof LocalFileStorageProvider ? providers.files : undefined,
     },
   };
 }

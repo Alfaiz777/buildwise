@@ -19,20 +19,26 @@
  *
  *   platform@buildwise.test  PLATFORM_ADMIN;  admin@demo-brand.test  BRAND_ADMIN of brd_demo
  *
- * Stores without a Retail Admin show the Brand Console's per-store "Provision Retail Admin".
- * Customers are not console users; they arrive through the customer channel (M6).
+ * M3: the catalogue comes from a real sync through the wired CommerceProvider (mock
+ * locally), and stores + stock + SKU mappings come from running the real retail import on
+ * backend/fixtures/retail/demo-retail.csv — the same code path as the Brand Console. The
+ * demo CSV deliberately contains 2 invalid rows and 1 unknown SKU, so its import report
+ * shows real row errors.
  *
  * Every password: buildwise-demo-1
- *
- * Stores and their retailer are seeded directly only because retail ingestion arrives in M4.
  * Usage: npm run seed:demo   (re-runnable; resets the two fixture brands, upserts the users)
  */
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 import type { Auth } from 'firebase-admin/auth';
+import { buildContainer } from '../src/composition/container.js';
 import { loadConfig } from '../src/config/env.js';
 import { initFirebase } from '../src/firebase/admin.js';
+import { silentLogger } from '../src/lib/logger.js';
 
 const PASSWORD = 'buildwise-demo-1';
+const SEED_ACTOR = { type: 'SYSTEM' as const, id: 'seed-demo' };
 
 const config = loadConfig();
 if (!config.usingEmulators || !config.projectId.startsWith('demo-')) {
@@ -40,17 +46,8 @@ if (!config.usingEmulators || !config.projectId.startsWith('demo-')) {
   process.exit(1);
 }
 const { auth, db } = initFirebase(config.projectId, config.emulators);
-
-const HOURS = {
-  timezone: 'Asia/Kolkata',
-  monday: '10:00-21:00',
-  tuesday: '10:00-21:00',
-  wednesday: '10:00-21:00',
-  thursday: '10:00-21:00',
-  friday: '10:00-21:00',
-  saturday: '10:00-22:00',
-  sunday: '11:00-20:00',
-};
+const container = buildContainer(config, silentLogger);
+const { commerceSync, retailImports } = container.appDeps.services;
 
 const now = FieldValue.serverTimestamp();
 
@@ -77,29 +74,19 @@ async function retailer(db: Firestore, brandId: string, retailerId: string, name
   });
 }
 
-/** A store of one retailer (a retailer may own many stores). */
-async function store(
-  db: Firestore,
-  brandId: string,
-  retailerId: string,
-  store: { storeId: string; storeName: string; city: string; latitude: number; longitude: number },
-) {
-  await db.doc(`brands/${brandId}/stores/${store.storeId}`).set({
-    store_id: store.storeId,
-    brand_id: brandId,
-    retailer_id: retailerId,
-    store_name: store.storeName,
-    city: store.city,
-    address: `${store.storeName}, ${store.city}`,
-    latitude: store.latitude,
-    longitude: store.longitude,
-    store_hours: HOURS,
-    store_status: 'ACTIVE',
-    reservation_available: true,
-    pickup_available: true,
-    retail_admin_user_id: null,
-    updated_at: now,
-  });
+/** Runs the real retail import (create → store the file → process), as the console does. */
+async function importRetailFile(brandId: string, fixture: string) {
+  const path = fileURLToPath(new URL(`../fixtures/retail/${fixture}`, import.meta.url));
+  const { record } = await retailImports.create(brandId, SEED_ACTOR, fixture);
+  await container.providers.files.write(record.fileKey, await readFile(path), 'text/csv');
+  const report = await retailImports.process(brandId, SEED_ACTOR, record.importId);
+  const r = report.record;
+  console.log(
+    `  ${brandId}: import ${r.status} — ${r.rowsValid}/${r.rowsProcessed} rows valid, ` +
+      `${r.mappingsCreated} SKUs mapped, ${r.mappingsFailed} not mapped, ${r.rowsInvalid} row errors`,
+  );
+  for (const e of report.rowErrors)
+    console.log(`      line ${e.line}: ${e.code} (${e.sku ?? '-'} @ ${e.storeId ?? '-'})`);
 }
 
 async function user(
@@ -140,47 +127,21 @@ await db.recursiveDelete(db.doc('brands/brd_other'));
 
 await brand(db, 'brd_demo', 'Demo Beauty Co');
 await brand(db, 'brd_other', 'Other Brand Ltd');
-
 await retailer(db, 'brd_demo', 'rtl_north', 'North Retail');
-await store(db, 'brd_demo', 'rtl_north', {
-  storeId: 'st_north_1',
-  storeName: 'Bandra Store',
-  city: 'Mumbai',
-  latitude: 19.06,
-  longitude: 72.83,
-});
-await store(db, 'brd_demo', 'rtl_north', {
-  storeId: 'st_north_2',
-  storeName: 'Andheri Store',
-  city: 'Mumbai',
-  latitude: 19.12,
-  longitude: 72.85,
-});
-await store(db, 'brd_demo', 'rtl_north', {
-  storeId: 'st_north_3',
-  storeName: 'Powai Store',
-  city: 'Mumbai',
-  latitude: 19.12,
-  longitude: 72.91,
-});
 await retailer(db, 'brd_demo', 'rtl_pune', 'Pune Retail');
-await store(db, 'brd_demo', 'rtl_pune', {
-  storeId: 'st_pune_1',
-  storeName: 'Koregaon Park Store',
-  city: 'Pune',
-  latitude: 18.54,
-  longitude: 73.89,
-});
 await retailer(db, 'brd_other', 'rtl_other', 'Other Brand Retail');
-await store(db, 'brd_other', 'rtl_other', {
-  storeId: 'st_other_1',
-  storeName: 'Other Brand Store',
-  city: 'Delhi',
-  latitude: 28.63,
-  longitude: 77.22,
-});
 
-console.log(`Demo fixture ready (password for every user: ${PASSWORD}):`);
+console.log('Catalogue sync (mock commerce):');
+for (const brandId of ['brd_demo', 'brd_other']) {
+  const c = await commerceSync.sync(brandId, SEED_ACTOR);
+  console.log(`  ${brandId}: ${c.productCount} products, ${c.variantCount} variants from ${c.source}`);
+}
+
+console.log('Retail import (stores, stock, SKU mappings):');
+await importRetailFile('brd_demo', 'demo-retail.csv');
+await importRetailFile('brd_other', 'other-brand-retail.csv');
+
+console.log(`Demo users (password for every user: ${PASSWORD}):`);
 await user(auth, db, 'platform@buildwise.test', 'PLATFORM_ADMIN', none);
 const demoAdmin = await user(auth, db, 'admin@demo-brand.test', 'BRAND_ADMIN', { ...none, brandId: 'brd_demo' });
 const north1 = await user(auth, db, 'retail-admin-north-1@buildwise.test', 'RETAIL_ADMIN', {

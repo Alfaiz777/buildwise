@@ -37,9 +37,9 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
   );
 }
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
   return (
-    <section className="panel">
+    <section className="panel" id={id}>
       <h2>{title}</h2>
       {children}
     </section>
