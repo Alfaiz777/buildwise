@@ -1,7 +1,7 @@
 /**
  * Port contract suites (docs/08_TEST_PLAN.md §4). Each suite is written against
  * the PORT and takes an adapter factory, so the same suite runs against the real
- * gcp adapters in phase G2.
+ * gcp adapters in phase L2.
  */
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -38,6 +38,13 @@ function commerceContract(name: string, make: () => CommerceProvider) {
       expect(variant.sku).toBeTruthy();
       expect(await provider.getProductVariant(variant.externalVariantId)).toEqual(variant);
       expect(await provider.getProductVariant('gid://shopify/ProductVariant/unknown')).toBeNull();
+    });
+
+    it('carries product knowledge (tags / attributes) in the normalized shape', async () => {
+      const [product] = await make().getProducts();
+      expect(Array.isArray(product!.tags)).toBe(true);
+      expect(typeof product!.attributes).toBe('object');
+      expect(Object.values(product!.attributes).every((v) => typeof v === 'string')).toBe(true);
     });
 
     it('filters orders and inventory, and resolves customers and locations', async () => {
@@ -149,6 +156,14 @@ function fileStorageContract(
       await expect(provider.openRead('retail/brd_1/read-me.csv')).rejects.toThrow();
     });
 
+    it('writes server-side files that can be read back', async () => {
+      const provider = make();
+      await provider.write('retail/brd_1/report.json', '{"errors":[]}', 'application/json');
+      const chunks: Buffer[] = [];
+      for await (const chunk of await provider.openRead('retail/brd_1/report.json')) chunks.push(Buffer.from(chunk));
+      expect(Buffer.concat(chunks).toString('utf8')).toBe('{"errors":[]}');
+    });
+
     it.each(['../escape.csv', 'retail/../../etc/passwd', '/absolute.csv', 'retail//x.csv', 'a\\b.csv'])(
       'rejects unsafe key %s',
       async (key) => {
@@ -234,6 +249,23 @@ describe('MockAgentRuntime specifics', () => {
   it('always identifies itself as MOCK, never as Gemini', async () => {
     const runtime = new MockAgentRuntime();
     expect(runtime.runtime).toBe('MOCK');
+  });
+});
+
+describe('LocalFileStorageProvider upload receiver (local profile only)', () => {
+  it('accepts one upload per target, stores it under the key, and expires targets', async () => {
+    let now = new Date('2026-10-01T10:00:00.000Z');
+    const provider = new LocalFileStorageProvider(dataDir, () => now);
+    const target = await provider.createUploadTarget('retail/brd_1/up.csv', 'text/csv', 10);
+    const uploadId = target.url.split('/').pop()!;
+    expect(provider.describeUpload(uploadId)).toMatchObject({ key: 'retail/brd_1/up.csv', maxBytes: 10 });
+    await expect(provider.acceptUpload(uploadId, Buffer.alloc(11))).rejects.toThrow(/size limit/);
+    await provider.acceptUpload(uploadId, Buffer.from('a,b'));
+    expect(provider.describeUpload(uploadId)).toBeNull();
+
+    const expiring = await provider.createUploadTarget('retail/brd_1/late.csv', 'text/csv', 10);
+    now = new Date('2026-10-01T11:00:00.000Z');
+    expect(provider.describeUpload(expiring.url.split('/').pop()!)).toBeNull();
   });
 });
 

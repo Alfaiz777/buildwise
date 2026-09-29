@@ -79,7 +79,7 @@ Required:
 - Brand Admin creates retailers and sees each retailer's stores; a retailer may own many stores
 - Brand Admin provisions one Retail Admin per store, from that store (`RETAIL_ADMIN` is the only retail role); a store that already has its Retail Admin shows it and offers no second provisioning; the local prototype displays the password-setup link
 - a Retail Admin operates only its one store, never another store of the same retailer
-- stores and their retailer come with retail data ingestion (§4, milestone M4), not with manual store entry
+- stores and their retailer come with retail data ingestion (§4, milestone M3), not with manual store entry
 - connect Shopify
 - show connection status
 - initial sync status
@@ -121,7 +121,7 @@ The source of the intent event must be explicit.
 
 # 4. Retail network ingestion
 
-Brand uploads CSV/XLSX data (≤ 10 MB per file) using the canonical retail schema (`04_DATA_MODEL.md` §9.1). Required:
+Brand uploads CSV data (≤ 10 MB per file; XLSX deferred) using the canonical retail schema (`04_DATA_MODEL.md` §9.1). Required:
 
 ```text
 store_id
@@ -382,7 +382,7 @@ Looker — optional for the MVP
 
 # 12. MVP acceptance criteria
 
-The MVP is accepted when all of these work, first in the `local` profile (M12) and finally in the `gcp` profile with the real integrations (G3; see §14).
+The MVP is accepted when all of these work, first in the `local` profile (M7) and finally in the `gcp` profile with the real integrations (L3; see §14).
 
 ### 0. Platform administration
 
@@ -453,7 +453,7 @@ Do not allow implementation to expand into:
 
 The MVP is built **locally first**, then cut over to Google Cloud (`10_EXECUTION_PLAN.md`).
 
-| | `local` profile (M2–M12) | `gcp` profile (G1–G3, judged) |
+| | `local` profile (M2–M7) | `gcp` profile (L1–L3, judged) |
 |---|---|---|
 | Commerce | `MockCommerceProvider` | Shopify |
 | Customer channel | simulator | WhatsApp (+ simulator fallback) |

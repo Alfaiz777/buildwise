@@ -21,6 +21,25 @@ describe('createApiClient', () => {
     expect(url).not.toContain('brand');
   });
 
+  it('uploads a file: Bearer token for same-origin API targets, none for absolute signed URLs', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => json(200, { upload_id: 'u' }));
+    const api = createApiClient({ baseUrl: '', getIdToken: async () => 't', fetchImpl: fetchImpl as typeof fetch });
+    const file = new Blob(['store_id\n'], { type: 'text/csv' });
+
+    await expect(api.upload('/api/local-files/uploads/u', file, 'text/csv')).resolves.toEqual({ upload_id: 'u' });
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/local-files/uploads/u');
+    expect(init.method).toBe('PUT');
+    expect(init.body).toBe(file);
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer t');
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('text/csv');
+
+    await api.upload('https://storage.example/signed?sig=1', file, 'text/csv');
+    const [signedUrl, signedInit] = fetchImpl.mock.calls[1] as [string, RequestInit];
+    expect(signedUrl).toBe('https://storage.example/signed?sig=1');
+    expect((signedInit.headers as Record<string, string>).Authorization).toBeUndefined();
+  });
+
   it('sends JSON bodies for POST and PATCH with the same auth header', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => json(201, { id: 'x' }));
     const api = createApiClient({ baseUrl: '', getIdToken: async () => 't', fetchImpl: fetchImpl as typeof fetch });

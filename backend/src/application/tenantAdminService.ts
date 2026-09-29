@@ -5,6 +5,7 @@ import { newId } from '../lib/ids.js';
 import type { IdentityAdmin } from '../ports/identity.js';
 import type {
   AuditRepository,
+  InventoryRepository,
   RetailerRecord,
   RetailerRepository,
   StoreRecord,
@@ -18,9 +19,12 @@ export interface TenantAdminDeps {
   users: UserRepository;
   retailers: RetailerRepository;
   stores: StoreRepository;
+  inventory: InventoryRepository;
   identity: IdentityAdmin;
   audit: AuditRepository;
 }
+
+export type StoreWithStock = StoreRecord & { skuCount: number; stockUpdatedAt: string | null };
 
 const ALREADY_PROVISIONED = 'This store already has its Retail Admin. Each store has at most one.';
 
@@ -74,9 +78,24 @@ export class TenantAdminService {
     return this.deps.retailers.list(principal.brandId);
   }
 
-  /** The brand's stores (from the retail/store data flow), each with its retailer and Retail Admin. */
-  listStores(principal: BrandPrincipal): Promise<StoreRecord[]> {
-    return this.deps.stores.list(principal.brandId);
+  /**
+   * The brand's stores (from the retail/store data flow), each with its retailer, Retail
+   * Admin, and a stock summary computed from inventory (never stored twice).
+   */
+  async listStores(principal: BrandPrincipal): Promise<StoreWithStock[]> {
+    const [stores, stock] = await Promise.all([
+      this.deps.stores.list(principal.brandId),
+      this.deps.inventory.listByBrand(principal.brandId),
+    ]);
+    return stores.map((store) => {
+      const rows = stock.filter((row) => row.storeId === store.storeId);
+      const updated =
+        rows
+          .map((row) => row.lastUpdatedAt ?? '')
+          .sort()
+          .at(-1) || null;
+      return { ...store, skuCount: rows.length, stockUpdatedAt: updated };
+    });
   }
 
   async createRetailer(principal: BrandPrincipal, name: string): Promise<RetailerRecord> {
@@ -118,8 +137,8 @@ export class TenantAdminService {
   /**
    * Associates a store with a retailer (or removes the association), atomically and
    * under the one-store ↔ one-retailer rule (domain/retailOwnership.ts). A retailer may
-   * own many stores. Backend-only in M2 (no console UI): stores and their retailer arrive
-   * with retail ingestion (M4), where retailer_id comes from the retail file
+   * own many stores. Backend-only (no console UI): stores and their retailer arrive
+   * with retail ingestion (M3), where retailer_id comes from the retail file
    * (docs/04_DATA_MODEL.md §9.1).
    */
   async assignStoreRetailer(

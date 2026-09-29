@@ -66,6 +66,8 @@ MockCommerceProvider
 ShopifyCommerceProvider
 ```
 
+Products carry optional `tags` and `attributes` (`04_DATA_MODEL.md` §7) in the same normalized shape for every adapter.
+
 `MockCommerceProvider` serves a deterministic fixture dataset (products, variants, customers, orders, inventory, locations) in the same normalized shapes, including Shopify-format IDs. It is the commerce source for the local profile and for automated tests. It is **not** the judged demo path: the `gcp` profile uses `ShopifyCommerceProvider`.
 
 ---
@@ -118,15 +120,14 @@ Adapters only translate and transport. Policy (consent, opt-out, customer-servic
 
 The earlier `RetailProvider` mixed an import adapter with domain logic. It is split as follows.
 
-**Retail import (adapter concern):** parsing CSV/XLSX into the canonical retail schema (`04_DATA_MODEL.md` §9.1).
+**Retail import (adapter concern):** parsing CSV (XLSX deferred) into the canonical retail schema (`04_DATA_MODEL.md` §9.1).
 
 ```text
 RetailFileParser
-  parseStores(fileStream)      → canonical store rows + row errors
-  parseInventory(fileStream)   → canonical inventory rows + row errors
+  parse(file bytes)            → header + raw rows with line numbers (format only)
 ```
 
-The file itself is read through `FileStorageProvider` (§6a). The parser is identical in both profiles. A future `POSRetailSource` would be a new adapter behind the same canonical output.
+The parser is a port (`ports/retailFile.ts`) with one adapter, `CsvRetailFileParser`. It only decodes the file (BOM, quoting, line numbers). Validation, normalization, store-level consistency and SKU mapping are domain rules (`domain/retailRows.ts`, `domain/skuMapping.ts`) applied by `RetailImportService`, so they are identical in every profile. The file itself is read through `FileStorageProvider` (§6a). A future `POSRetailSource` would be a new adapter behind the same canonical output.
 
 **Retail domain services (not adapters; identical in every profile, over Firestore):**
 
@@ -306,7 +307,7 @@ Do not let Shopify-specific credentials leak into:
 - Gemini context
 - browser storage
 
-The exact Shopify auth/distribution mechanism must be verified against the current Shopify development setup during spike S1 and phase G2 (`10_EXECUTION_PLAN.md`). Local milestones use `MockCommerceProvider`.
+The exact Shopify auth/distribution mechanism must be verified against the current Shopify development setup during spike S1 and phase L2 (`10_EXECUTION_PLAN.md`). Local milestones use `MockCommerceProvider`.
 
 For the hackathon MVP, one controlled development-store setup is acceptable as long as the end-to-end product behavior works.
 
@@ -421,7 +422,7 @@ The application produces a channel-neutral outbound message. The `MessagingProvi
 Input file:
 
 ```text
-CSV/XLSX
+CSV   (XLSX deferred for the prototype, 00 §11.8 Change 10)
 ```
 
 Required fields use the **canonical retail schema** (`04_DATA_MODEL.md` §9.1):
@@ -449,7 +450,7 @@ pickup_available
 reservation_available
 ```
 
-Maximum file size: 10 MB per CSV/XLSX file.
+Maximum file size: 10 MB per CSV file.
 
 Normalization output:
 
@@ -520,18 +521,22 @@ GET   /api/platform/audit
 GET   /api/brands/:brandId
 GET   /api/brand/users                             (read-only: the brand's BRAND_ADMIN and RETAIL_ADMINs)
 GET   /api/brand/retailers               POST /api/brand/retailers
-GET   /api/brand/stores                           (stores with their retailer and Retail Admin)
+GET   /api/brand/stores                           (stores with their retailer, Retail Admin and stock summary)
+GET   /api/brand/connections                      (integration status only; never credentials)
 POST  /api/brand/stores/:storeId/admins           (provision the store's single RETAIL_ADMIN)
-PATCH /api/brand/stores/:storeId                   (associate store → retailer; backend-only until M4, no UI)
+PATCH /api/brand/stores/:storeId                   (associate store → retailer; backend-only, no UI)
 POST  /api/integrations/shopify/connect            (BRAND_ADMIN)
 POST  /api/integrations/shopify/sync               (BRAND_ADMIN)
 GET   /api/products
 GET   /api/customers/:id
-POST  /api/retail/import                           (BRAND_ADMIN)
+POST  /api/brand/retail-imports                    (create an import + upload target; 06 §6a)
+POST  /api/brand/retail-imports/:importId/process  (validate → normalize → map → Firestore)
+GET   /api/brand/retail-imports                    (history)   GET /api/brand/retail-imports/:importId (report)
 POST  /api/analytics/events
 
 # Retailer Console (RETAIL_ADMIN, own store only) — §14.9
 GET   /api/retail/stores/:storeId                  (own store; any other store → 404)
+GET   /api/retail/stores/:storeId/inventory        (own store's stock, read-only; any other store → 404)
 
 # Brand + Retailer Consoles (BRAND_ADMIN view, RETAIL_ADMIN operate its own store)
 GET   /api/reservations
@@ -941,11 +946,26 @@ Auth: `FIREBASE`, role `BRAND_ADMIN` (the only brand role), for every route in t
 | `GET /api/brand/users` | read-only: the brand's console users (its `BRAND_ADMIN` and its retailers' `RETAIL_ADMIN`s): `user_id, email, role, retailer_id, store_id, status` |
 | `POST /api/brand/retailers` | `{ "name" }` → `{ "retailer_id", "name", "status" }` |
 | `GET /api/brand/retailers` | the brand's retailers: `retailer_id, name, status` |
-| `GET /api/brand/stores` | the brand's stores: `store_id, store_name, city, store_status, retailer_id, retail_admin_user_id` (null = not provisioned) |
+| `GET /api/brand/stores` | the brand's stores: `store_id, store_name, city, store_status, retailer_id, retail_admin_user_id` (null = not provisioned), `sku_count`, `stock_updated_at` (computed from `retailInventory`) |
 | `POST /api/brand/stores/:storeId/admins` | `{ "email" }` → the store's **single** `RETAIL_ADMIN` + `password_setup_link`. Its `brand_id`, `retailer_id` and `store_id` come from the store record; any scope in the request is ignored. A second one → `409 RETAIL_ADMIN_ALREADY_PROVISIONED` (no user and no link created); a store without a retailer → `409 STORE_HAS_NO_RETAILER`. There is no retailer-wide provisioning route. |
-| `PATCH /api/brand/stores/:storeId` | `{ "retailer_id": "..." \| null }`: associate a store with a retailer (a retailer may own many stores), or remove the association. Errors: `409 STORE_ALREADY_ASSIGNED`, `409 STORE_HAS_ADMIN` (detaching a store operated by its Retail Admin). **Backend-only until M4**: there is no Brand Console UI, because stores and their retailer come from retail ingestion; kept for tests and as the ingestion building block. Response: the store in the `GET /api/brand/stores` shape. |
+| `PATCH /api/brand/stores/:storeId` | `{ "retailer_id": "..." \| null }`: associate a store with a retailer (a retailer may own many stores), or remove the association. Errors: `409 STORE_ALREADY_ASSIGNED`, `409 STORE_HAS_ADMIN` (detaching a store operated by its Retail Admin). **Backend-only**: there is no Brand Console UI, because stores and their retailer come from retail ingestion (M3); kept for tests and as the ingestion building block. Response: the store in the `GET /api/brand/stores` shape. |
 
 There is **no** route for a `BRAND_ADMIN` to create another `BRAND_ADMIN`: only `PLATFORM_ADMIN` provisions a brand's single Brand Admin (§14.6).
+
+Catalogue and retail data (M3), same auth:
+
+| Route | Body / result |
+|---|---|
+| `POST /api/integrations/shopify/sync` | Syncs products and variants through the wired `CommerceProvider` (§8; mock locally) into `products`, `productVariants` and `productMappings` (source `SHOPIFY`), idempotently by deterministic IDs. Returns the connection: `connection_id, provider, source, status, connected_at, last_sync_at, last_error, product_count, variant_count`. Provider failure → `502 COMMERCE_SYNC_FAILED` (retryable) and the connection records a normalized `last_error`. Customers and orders are not synced in M3. |
+| `GET /api/brand/connections` | `{ "connections": [...] }` in the shape above. Never credentials. |
+| `GET /api/products` | `products[]` (with `tags`, `attributes`, and `variants[]`: `sku, canonical_sku, barcode, price, currency, mapping_status, stores_stocked`), `retail_mappings_needing_attention[]` (retail SKUs not AUTO_MATCHED), `mapping_summary { auto_matched, needs_attention }` |
+| `POST /api/brand/retail-imports` | `{ "file_name": "*.csv" }` → `201 { "import": {...}, "upload": { "method": "PUT", "url", "headers", "expires_at" } }`. The browser PUTs the file to `upload.url` (§6a). |
+| `PUT /api/local-files/uploads/:uploadId` | **local profile only** (mounted only when `LocalFileStorageProvider` is wired): raw file body, ≤ 10 MB; the upload's key must belong to the caller's brand, else `404`; one upload per target; expired/unknown → `404`. In `gcp` the browser PUTs to a Cloud Storage signed URL instead. |
+| `POST /api/brand/retail-imports/:importId/process` | Validate → normalize → SKU mapping → Firestore (`04` §9–§10.1). Returns the report: `import_id, file_name, status, failure_code, rows_processed, rows_valid, rows_invalid, mappings_created, mappings_failed, row_errors[] { line, store_id, sku, code, field, message }`. `409 FILE_NOT_UPLOADED`, `409 IMPORT_ALREADY_PROCESSED`. A file without the required columns → `status: FAILED, failure_code: MISSING_COLUMNS`. |
+| `GET /api/brand/retail-imports` | the latest imports (newest first) |
+| `GET /api/brand/retail-imports/:importId` | one report, with its row errors read back from `FileStorageProvider` (`row_errors_reference`) |
+
+Retail import semantics: an import is an **upsert** (stores and SKUs absent from the file are untouched); a store's retailer is set through the same domain rule as `PATCH /api/brand/stores/:storeId` (a store owned by another retailer → row error `RETAILER_CONFLICT`, never moved); `retail_admin_user_id` is never set by ingestion; inventory is written only for AUTO_MATCHED SKUs, and a re-import never changes `reserved_quantity`. Row error codes: `MISSING_VALUE, INVALID_STORE_ID, INVALID_SKU, INVALID_COORDINATES, INVALID_QUANTITY, INVALID_PRICE, INVALID_STATUS, INVALID_BOOLEAN, INVALID_TIMEZONE, INVALID_HOURS, INVALID_RETAILER_ID, DUPLICATE_ROW, STORE_FIELDS_CONFLICT, UNKNOWN_RETAILER, RETAILER_CONFLICT, UNKNOWN_SKU, SKU_CONFLICT, SKU_NEEDS_REVIEW`.
 
 Errors: `409 RETAIL_ADMIN_ALREADY_PROVISIONED`, `409 STORE_HAS_NO_RETAILER`, `409 STORE_ALREADY_ASSIGNED`, `409 STORE_HAS_ADMIN`, `409 USER_EXISTS_IN_OTHER_BRAND`, `409 USER_ALREADY_PROVISIONED`, `404 NOT_FOUND` for another brand's retailer or store.
 
@@ -980,7 +1000,9 @@ Auth: `FIREBASE`, role `RETAIL_ADMIN`, for every route in this section. Scope is
 |---|---|
 | `GET /api/retail/stores/:storeId` | the principal's own store: `store_id, store_name, city, address, store_status, store_hours`. Any other store (same brand, another retailer, unassigned, another brand, or missing) → `404 NOT_FOUND`. |
 
-Other scopes calling `/api/retail/*` → `403 FORBIDDEN`. Inventory and reservations for the store are added in later milestones under the same store-level rule.
+| `GET /api/retail/stores/:storeId/inventory` | the own store's stock, read-only: `items[] { sku, canonical_sku, variant_id, product_title, variant_title, quantity, reserved_quantity, available_quantity, availability_status, offline_price, last_updated_at }`. Any other store — including another store of the same retailer — → `404`. |
+
+Other scopes calling `/api/retail/*` → `403 FORBIDDEN`. Reservations for the store are added in later milestones under the same store-level rule.
 
 ---
 
@@ -1030,7 +1052,7 @@ failure tests
 
 External integration tests should be isolated so the domain logic remains testable without live services.
 
-Each port has **one** contract test suite. The local adapter runs it in every build. The real adapter runs the same suite once it exists (phase G2, `10_EXECUTION_PLAN.md` §4), which is how the two profiles are kept behaviorally equivalent.
+Each port has **one** contract test suite. The local adapter runs it in every build. The real adapter runs the same suite once it exists (phase L2, `10_EXECUTION_PLAN.md` §4), which is how the two profiles are kept behaviorally equivalent.
 
 ## 17.1 Integration spike findings
 

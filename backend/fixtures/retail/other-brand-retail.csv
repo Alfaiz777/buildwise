@@ -1,0 +1,3 @@
+store_id,store_name,city,address,latitude,longitude,store_hours.timezone,store_hours.monday,store_hours.tuesday,store_hours.wednesday,store_hours.thursday,store_hours.friday,store_hours.saturday,store_hours.sunday,store_status,pickup_available,reservation_available,retailer_id,sku,quantity,offline_price
+st_other_1,Other Brand Store,Delhi,"Connaught Place, New Delhi 110001",28.6315,77.2167,Asia/Kolkata,10:00-21:00,10:00-21:00,10:00-21:00,10:00-21:00,10:00-21:00,10:00-21:00,11:00-19:00,ACTIVE,true,true,rtl_other,DBC-VCSERUM-30,6,795
+st_other_1,Other Brand Store,Delhi,"Connaught Place, New Delhi 110001",28.6315,77.2167,Asia/Kolkata,10:00-21:00,10:00-21:00,10:00-21:00,10:00-21:00,10:00-21:00,10:00-21:00,11:00-19:00,ACTIVE,true,true,rtl_other,DBC-MINSPF-50,4,649

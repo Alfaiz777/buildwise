@@ -1,6 +1,10 @@
 import { useCallback, useState, type FormEvent } from 'react';
 import { useApi, type ProvisionedUser, type Role } from '../../api/apiContext';
 import { ConsoleShell, errorMessage, Section, SetupLink, useLoad } from '../../components/ConsoleShell';
+import { CatalogSection } from './CatalogSection';
+import { RetailImportSection } from './RetailImportSection';
+import { SetupChecklist } from './SetupChecklist';
+import { formatDateTime, type BrandStore, type CatalogResponse, type Connection, type RetailImport } from './types';
 
 interface BrandUser {
   user_id: string;
@@ -15,14 +19,6 @@ interface Retailer {
   name: string;
   status: string;
 }
-interface BrandStore {
-  store_id: string;
-  store_name: string;
-  city: string;
-  store_status: string;
-  retailer_id: string | null;
-  retail_admin_user_id: string | null;
-}
 
 /**
  * Brand Console shell (M2) for the brand's single BRAND_ADMIN: manage the brand's
@@ -32,14 +28,20 @@ interface BrandStore {
  * Hierarchy: Retailer → its Stores → each Store's Retail Admin. A retailer may own many
  * stores; each store has at most one Retail Admin, provisioned from that store's row.
  * The Brand Admin is provisioned by the Platform Admin (there is no "add brand admin"
- * here). Stores come from the retail/store data flow (ingestion, M4): there is no
- * store-ID entry and no store-assignment UI.
+ * here). Stores come from the retail CSV import (M3): there is no store-ID entry and no
+ * store-assignment UI. M3 adds the setup checklist, catalogue & mapping, and retail import.
  */
 export function BrandHome() {
   const api = useApi();
   const users = useLoad(useCallback(() => api.get<{ users: BrandUser[] }>('/api/brand/users'), [api]));
   const retailers = useLoad(useCallback(() => api.get<{ retailers: Retailer[] }>('/api/brand/retailers'), [api]));
   const stores = useLoad(useCallback(() => api.get<{ stores: BrandStore[] }>('/api/brand/stores'), [api]));
+  const connections = useLoad(
+    useCallback(() => api.get<{ connections: Connection[] }>('/api/brand/connections'), [api]),
+  );
+  const catalog = useLoad(useCallback(() => api.get<CatalogResponse>('/api/products'), [api]));
+  const imports = useLoad(useCallback(() => api.get<{ imports: RetailImport[] }>('/api/brand/retail-imports'), [api]));
+  const [syncing, setSyncing] = useState(false);
   const [provisioned, setProvisioned] = useState<ProvisionedUser | null>(null);
   const [provisioningStore, setProvisioningStore] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +65,24 @@ export function BrandHome() {
       await handler(new FormData(form));
       form.reset();
     });
+  };
+
+  const syncCatalog = () => {
+    setSyncing(true);
+    void run(async () => {
+      try {
+        await api.post('/api/integrations/shopify/sync', {});
+      } finally {
+        setSyncing(false);
+        connections.reload();
+        catalog.reload();
+      }
+    });
+  };
+  const afterImport = () => {
+    imports.reload();
+    stores.reload();
+    catalog.reload();
   };
 
   const addRetailer = submit(async (f) => {
@@ -92,6 +112,14 @@ export function BrandHome() {
       )}
       <SetupLink result={provisioned} />
 
+      <SetupChecklist
+        connection={connections.data?.connections.find((c) => c.provider === 'SHOPIFY') ?? null}
+        catalog={catalog.data}
+        stores={stores.data?.stores ?? null}
+        syncing={syncing}
+        onSync={syncCatalog}
+      />
+
       <Section title="Brand administrator">
         {users.error && <p className="error">{users.error}</p>}
         <p>
@@ -100,7 +128,11 @@ export function BrandHome() {
         <p className="muted small">One Brand Admin per brand, provisioned by the Buildwise platform admin.</p>
       </Section>
 
-      <Section title="Retailers and stores">
+      <CatalogSection catalog={catalog.data} error={catalog.error} syncing={syncing} onSync={syncCatalog} />
+
+      <RetailImportSection imports={imports.data?.imports ?? null} error={imports.error} onImported={afterImport} />
+
+      <Section title="Retailers and stores" id="retailers">
         {retailers.error && <p className="error">{retailers.error}</p>}
         {stores.error && <p className="error">{stores.error}</p>}
         {retailers.data?.retailers.length === 0 && <p className="muted">No retailers yet.</p>}
@@ -111,7 +143,7 @@ export function BrandHome() {
               {r.status !== 'ACTIVE' && <span className="badge">{r.status}</span>}
             </h3>
             {storesOf(r.retailer_id).length === 0 ? (
-              <p className="muted small">No stores yet. Stores arrive through retail data import.</p>
+              <p className="muted small">No stores yet. Stores arrive through the retail CSV import.</p>
             ) : (
               <table>
                 <thead>
@@ -119,6 +151,8 @@ export function BrandHome() {
                     <th>Store</th>
                     <th>City</th>
                     <th>Status</th>
+                    <th>SKUs</th>
+                    <th>Stock updated</th>
                     <th>Retail Admin</th>
                   </tr>
                 </thead>
@@ -130,6 +164,8 @@ export function BrandHome() {
                       </td>
                       <td>{s.city}</td>
                       <td>{s.store_status}</td>
+                      <td>{s.sku_count}</td>
+                      <td className="small">{formatDateTime(s.stock_updated_at)}</td>
                       <td>
                         {s.retail_admin_user_id ? (
                           emailOf(s.retail_admin_user_id)
@@ -174,7 +210,7 @@ export function BrandHome() {
         </form>
         <p className="muted small">
           A retailer may own several stores. Each store has one Retail Admin, who operates only that store. Stores and
-          their retailer come from retail data import (later milestone)
+          their retailer come from the retail CSV import
           {unassigned > 0 && `; ${unassigned} store(s) are not yet associated with a retailer`}.
         </p>
       </Section>

@@ -248,3 +248,40 @@ code {
   padding: 2rem;
   text-align: center;
 }
+
+.checklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.checklist li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.checklist .check {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.checklist li.done .check {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.step-action {
+  margin-top: 0.35rem;
+}
+
+.report {
+  margin-top: 1rem;
+}

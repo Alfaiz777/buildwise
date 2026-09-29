@@ -6,7 +6,7 @@ import type { AgentDecision, AgentRuntime, DecisionInput, ToolExecutor } from '.
  * is tagged runtime = MOCK and must never be presented as Gemini.
  *
  * M2 establishes the contract with one rule (explicit human request → handoff).
- * The documented rule set and tool use arrive in M7.
+ * The documented rule set and tool use arrive in M5.
  */
 const HUMAN_REQUEST = /\b(human|person|agent|someone|representative)\b/i;
 

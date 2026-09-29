@@ -2,7 +2,7 @@
  * CommerceProvider port (docs/06_INTEGRATION_CONTRACTS.md §2).
  * Normalized, provider-neutral shapes: no Shopify GraphQL shapes leak past the adapter.
  * IDs keep the source system's format (Shopify GIDs) in both adapters.
- * M3 (commerce sync) may extend these shapes; the method set is canonical.
+ * The method set is canonical; M3 added product `tags` / `attributes` (docs/04 §7).
  */
 
 export interface CommerceVariant {
@@ -22,6 +22,10 @@ export interface CommerceProduct {
   description: string;
   category: string | null;
   status: 'ACTIVE' | 'ARCHIVED' | 'DRAFT';
+  /** Product knowledge for grounded answers, e.g. ["serum", "brightening"]. */
+  tags: string[];
+  /** Product knowledge as a flat string map, e.g. { skin_type: "oily", size: "30 ml" }. */
+  attributes: Record<string, string>;
   variants: CommerceVariant[];
 }
 

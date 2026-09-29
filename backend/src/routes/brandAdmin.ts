@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { TenantAdminService } from '../application/tenantAdminService.js';
+import type { StoreWithStock, TenantAdminService } from '../application/tenantAdminService.js';
 import { getBrandPrincipal } from '../auth/authorize.js';
 import { isValidTenantId } from '../domain/principal.js';
 import { Errors } from '../lib/errors.js';
 import { parseInput } from '../lib/validation.js';
-import type { RetailerRecord, StoreRecord } from '../ports/repositories.js';
+import type { RetailerRecord } from '../ports/repositories.js';
 import { userJson } from './platform.js';
 
 /**
@@ -32,13 +32,15 @@ const retailerJson = (r: RetailerRecord) => ({
   status: r.status,
 });
 
-const storeAdminJson = (s: StoreRecord) => ({
+const storeAdminJson = (s: StoreWithStock) => ({
   store_id: s.storeId,
   store_name: s.storeName,
   city: s.city,
   store_status: s.storeStatus,
   retailer_id: s.retailerId,
   retail_admin_user_id: s.retailAdminUserId,
+  sku_count: s.skuCount,
+  stock_updated_at: s.stockUpdatedAt,
 });
 
 function idParam(value: unknown): string {
@@ -93,14 +95,14 @@ export function brandAdminRouter(admin: TenantAdminService): Router {
 
   /**
    * Store → retailer association (a store belongs to one retailer; a retailer may own many).
-   * Backend-only in M2 (no console UI): the only way to associate existing stores before
-   * retail ingestion (M4), and exercised by the tests. 409 STORE_ALREADY_ASSIGNED /
+   * Backend-only (no console UI): retail ingestion (M3) normally sets a store's retailer;
+   * this route is kept for tests and store corrections. 409 STORE_ALREADY_ASSIGNED /
    * STORE_HAS_ADMIN on violations.
    */
   router.patch('/stores/:storeId', async (req, res) => {
     const { retailer_id } = parseInput(AssignStore, req.body);
     const store = await admin.assignStoreRetailer(getBrandPrincipal(res), idParam(req.params.storeId), retailer_id);
-    res.json(storeAdminJson(store));
+    res.json(storeAdminJson({ ...store, skuCount: 0, stockUpdatedAt: null }));
   });
 
   return router;

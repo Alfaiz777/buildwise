@@ -9,7 +9,7 @@ import { RetailerHome } from './pages/retailer/RetailerHome';
 
 /**
  * One React app, three console areas. The customer is never a console user:
- * the Customer AI Channel (simulator, contextual pages) arrives in M6/M8.
+ * the Customer AI Channel (simulator) arrives in M4; contextual pages are deferred.
  */
 export function AppRoutes() {
   return (
