@@ -103,7 +103,7 @@ The MVP has **exactly one operator per scope**: one `PLATFORM_ADMIN`, one `BRAND
 | Brand settings, security/configuration | | ✓ | |
 | Provision another `BRAND_ADMIN` | ✗ (only one per brand) | ✗ | |
 | Create retailers; provision each store's single `RETAIL_ADMIN` | | ✓ | |
-| Store → retailer association (a retailer may own many stores) | | via retail ingestion (M4); backend-only until then | |
+| Store → retailer association (a retailer may own many stores) | | via retail ingestion (M3); backend-only otherwise | |
 | Retail file upload, SKU mapping resolution | | ✓ | |
 | Customer intent, AI conversations, recommendations | | ✓ | |
 | Outcomes, analytics / insights | aggregate only | ✓ | |
@@ -217,7 +217,7 @@ BRAND_ADMIN                  → creates Retailers + provisions each STORE's sin
                                (a second one → 409 RETAIL_ADMIN_ALREADY_PROVISIONED;
                                 store without a retailer → 409 STORE_HAS_NO_RETAILER)
 BRAND_ADMIN cannot provision another BRAND_ADMIN (no such route or service).
-Store → retailer association (one retailer, many stores): retail ingestion (M4).
+Store → retailer association (one retailer, many stores): retail ingestion (M3).
 ```
 
 There is no self-signup. Firebase Auth client sign-up is disabled in GCP.

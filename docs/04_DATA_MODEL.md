@@ -242,7 +242,11 @@ Product
 - category
 - status
 - asset_references
+- tags                  (optional string list, e.g. ["serum", "brightening"])
+- attributes            (optional string map, e.g. skin_type, key_ingredients, size)
 ```
+
+`tags` and `attributes` are product knowledge used to ground EDUCATE / COMPARE answers (`00` §11.8 Change 10). They come from the commerce source and are passed to the AI in context.
 
 ---
 
@@ -309,7 +313,7 @@ Rules:
 - **One retailer, many stores:** a retailer may own any number of stores; a store belongs to at most one retailer (`RetailStore.retailer_id`). Attaching a store that already has a retailer → `409 STORE_ALREADY_ASSIGNED`; detaching a store that has a `RETAIL_ADMIN` → `409 STORE_HAS_ADMIN`.
 - **One Retail Admin per store:** the `BRAND_ADMIN` provisions a store's single `RETAIL_ADMIN` from that store (claimed transactionally in `RetailStore.retail_admin_user_id`; a second one → `409 RETAIL_ADMIN_ALREADY_PROVISIONED`; a store without a retailer → `409 STORE_HAS_NO_RETAILER`).
 - A store with no retailer is visible only to brand scope until it is associated with one.
-- The store ↔ retailer association is established by retail ingestion (M4): the optional `retailer_id` column of the retail file (§9.1). Until then the Brand Console has **no** store UI and no manual store-ID entry; a backend-only association operation exists for tests and as the ingestion building block (`06_INTEGRATION_CONTRACTS.md` §14.7).
+- The store ↔ retailer association is established by retail ingestion (M3): the optional `retailer_id` column of the retail file (§9.1). Until then the Brand Console has **no** store UI and no manual store-ID entry; a backend-only association operation exists for tests and as the ingestion building block (`06_INTEGRATION_CONTRACTS.md` §14.7).
 - An `INACTIVE` retailer's users are refused during principal resolution.
 
 ---
@@ -410,7 +414,7 @@ Rules:
 - A day with an empty value is treated as **closed** that day.
 - Hours that run past midnight are not supported in the MVP.
 
-Representation in the CSV/XLSX upload (flat files cannot nest objects). Each part is its own column, named by its path:
+Representation in the CSV upload (flat files cannot nest objects; XLSX is deferred). Each part is its own column, named by its path:
 
 ```text
 store_hours.timezone
@@ -704,6 +708,10 @@ Reservation
 - customer_arrived_at
 - completed_at
 - cancelled_at
+- pickup_code            (M5/M6: short code the customer shows at the store)
+- customer_eta           (M5/M6: optional expected arrival time)
+- cancelled_by           (M5/M6: CUSTOMER | RETAILER | SYSTEM)
+- cancel_reason          (M5/M6: e.g. a retailer refusal reason)
 ```
 
 Status:

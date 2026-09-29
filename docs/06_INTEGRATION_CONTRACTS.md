@@ -66,6 +66,8 @@ MockCommerceProvider
 ShopifyCommerceProvider
 ```
 
+Products carry optional `tags` and `attributes` (`04_DATA_MODEL.md` §7) in the same normalized shape for every adapter.
+
 `MockCommerceProvider` serves a deterministic fixture dataset (products, variants, customers, orders, inventory, locations) in the same normalized shapes, including Shopify-format IDs. It is the commerce source for the local profile and for automated tests. It is **not** the judged demo path: the `gcp` profile uses `ShopifyCommerceProvider`.
 
 ---
@@ -118,7 +120,7 @@ Adapters only translate and transport. Policy (consent, opt-out, customer-servic
 
 The earlier `RetailProvider` mixed an import adapter with domain logic. It is split as follows.
 
-**Retail import (adapter concern):** parsing CSV/XLSX into the canonical retail schema (`04_DATA_MODEL.md` §9.1).
+**Retail import (adapter concern):** parsing CSV (XLSX deferred) into the canonical retail schema (`04_DATA_MODEL.md` §9.1).
 
 ```text
 RetailFileParser
@@ -306,7 +308,7 @@ Do not let Shopify-specific credentials leak into:
 - Gemini context
 - browser storage
 
-The exact Shopify auth/distribution mechanism must be verified against the current Shopify development setup during spike S1 and phase G2 (`10_EXECUTION_PLAN.md`). Local milestones use `MockCommerceProvider`.
+The exact Shopify auth/distribution mechanism must be verified against the current Shopify development setup during spike S1 and phase L2 (`10_EXECUTION_PLAN.md`). Local milestones use `MockCommerceProvider`.
 
 For the hackathon MVP, one controlled development-store setup is acceptable as long as the end-to-end product behavior works.
 
@@ -421,7 +423,7 @@ The application produces a channel-neutral outbound message. The `MessagingProvi
 Input file:
 
 ```text
-CSV/XLSX
+CSV   (XLSX deferred for the prototype, 00 §11.8 Change 10)
 ```
 
 Required fields use the **canonical retail schema** (`04_DATA_MODEL.md` §9.1):
@@ -449,7 +451,7 @@ pickup_available
 reservation_available
 ```
 
-Maximum file size: 10 MB per CSV/XLSX file.
+Maximum file size: 10 MB per CSV file.
 
 Normalization output:
 
@@ -522,12 +524,14 @@ GET   /api/brand/users                             (read-only: the brand's BRAND
 GET   /api/brand/retailers               POST /api/brand/retailers
 GET   /api/brand/stores                           (stores with their retailer and Retail Admin)
 POST  /api/brand/stores/:storeId/admins           (provision the store's single RETAIL_ADMIN)
-PATCH /api/brand/stores/:storeId                   (associate store → retailer; backend-only until M4, no UI)
+PATCH /api/brand/stores/:storeId                   (associate store → retailer; backend-only, no UI)
 POST  /api/integrations/shopify/connect            (BRAND_ADMIN)
 POST  /api/integrations/shopify/sync               (BRAND_ADMIN)
 GET   /api/products
 GET   /api/customers/:id
-POST  /api/retail/import                           (BRAND_ADMIN)
+POST  /api/brand/retail-imports                    (create an import + upload target; 06 §6a)
+POST  /api/brand/retail-imports/:importId/process  (validate → normalize → map → Firestore)
+GET   /api/brand/retail-imports                    (history)   GET /api/brand/retail-imports/:importId (report)
 POST  /api/analytics/events
 
 # Retailer Console (RETAIL_ADMIN, own store only) — §14.9
@@ -943,7 +947,7 @@ Auth: `FIREBASE`, role `BRAND_ADMIN` (the only brand role), for every route in t
 | `GET /api/brand/retailers` | the brand's retailers: `retailer_id, name, status` |
 | `GET /api/brand/stores` | the brand's stores: `store_id, store_name, city, store_status, retailer_id, retail_admin_user_id` (null = not provisioned) |
 | `POST /api/brand/stores/:storeId/admins` | `{ "email" }` → the store's **single** `RETAIL_ADMIN` + `password_setup_link`. Its `brand_id`, `retailer_id` and `store_id` come from the store record; any scope in the request is ignored. A second one → `409 RETAIL_ADMIN_ALREADY_PROVISIONED` (no user and no link created); a store without a retailer → `409 STORE_HAS_NO_RETAILER`. There is no retailer-wide provisioning route. |
-| `PATCH /api/brand/stores/:storeId` | `{ "retailer_id": "..." \| null }`: associate a store with a retailer (a retailer may own many stores), or remove the association. Errors: `409 STORE_ALREADY_ASSIGNED`, `409 STORE_HAS_ADMIN` (detaching a store operated by its Retail Admin). **Backend-only until M4**: there is no Brand Console UI, because stores and their retailer come from retail ingestion; kept for tests and as the ingestion building block. Response: the store in the `GET /api/brand/stores` shape. |
+| `PATCH /api/brand/stores/:storeId` | `{ "retailer_id": "..." \| null }`: associate a store with a retailer (a retailer may own many stores), or remove the association. Errors: `409 STORE_ALREADY_ASSIGNED`, `409 STORE_HAS_ADMIN` (detaching a store operated by its Retail Admin). **Backend-only**: there is no Brand Console UI, because stores and their retailer come from retail ingestion (M3); kept for tests and as the ingestion building block. Response: the store in the `GET /api/brand/stores` shape. |
 
 There is **no** route for a `BRAND_ADMIN` to create another `BRAND_ADMIN`: only `PLATFORM_ADMIN` provisions a brand's single Brand Admin (§14.6).
 
@@ -1030,7 +1034,7 @@ failure tests
 
 External integration tests should be isolated so the domain logic remains testable without live services.
 
-Each port has **one** contract test suite. The local adapter runs it in every build. The real adapter runs the same suite once it exists (phase G2, `10_EXECUTION_PLAN.md` §4), which is how the two profiles are kept behaviorally equivalent.
+Each port has **one** contract test suite. The local adapter runs it in every build. The real adapter runs the same suite once it exists (phase L2, `10_EXECUTION_PLAN.md` §4), which is how the two profiles are kept behaviorally equivalent.
 
 ## 17.1 Integration spike findings
 

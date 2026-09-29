@@ -31,7 +31,7 @@ Brand                       e.g. Dot & Key
 - Each store has at most one Retail Admin (`RetailStore.retail_admin_user_id`), provisioned only by the Brand Admin, from that store.
 - Each Retail Admin operates exactly one store. Retail access is store-level: brand, retailer and store must all match. Retail Admin A cannot access Store B, even though both stores belong to the same retailer.
 - No multi-store Retail Admin, no store picker, no store-staff role.
-- Stores and their retailer come from the retail/store data flow (retail ingestion, M4). There is no manual store-ID entry in any console.
+- Stores and their retailer come from the retail/store data flow (retail ingestion, M3). There is no manual store-ID entry in any console.
 
 All scope is resolved by the backend from the verified Firebase ID token and `users/{uid}` (`07` §4.1). No interface sends, or is trusted to send, a `brand_id`, `retailer_id` or `store_id` that defines its own scope. A hand-edited `users/{uid}` grants nothing: a Retail Admin is accepted only as the recorded admin of the store it names.
 
@@ -92,7 +92,7 @@ All scope is resolved by the backend from the verified Firebase ID token and `us
 | Principal / scope | The customer is a channel principal resolved from the channel identity inside one brand. It is **not** a role, never has a `users/{uid}` document and never signs in to a console. |
 | Purpose | WhatsApp-only customer interaction: continue the customer's product journey conversationally (`01`, `05`). The simulator is the local stand-in for WhatsApp, and contextual pages open from the conversation; neither is a separate customer app. |
 | Data (M2) | None user-facing. The backend has the conversation pipeline foundation (fixed stage order, `03` §8.2) and the simulator messaging adapter, exercised by tests only. |
-| Actions (M2) | None user-facing. The simulator and the channel flow arrive in M6; contextual pages in M8. |
+| Actions (M2) | None user-facing. The simulator and the channel flow arrive in M4; contextual pages are deferred (`00` §11.8 Change 10). |
 | Out of scope | Any console route: a `users/{uid}` claiming `CUSTOMER` is refused with `403 USER_MISCONFIGURED` everywhere. Any other customer's conversation, context or resources. Admin roles and provisioning. |
-| Empty / loading / error | Defined with the channel flow in M6. WhatsApp failures fall back per `00` §11.2. |
+| Empty / loading / error | Defined with the channel flow in M4. WhatsApp failures fall back per `00` §11.2. |
 | Unauthorized | The customer is identified by channel identity or page token, never by Firebase Auth (`07` §4.3). The simulator is operated by the brand's `BRAND_ADMIN` inside its own brand; `PLATFORM_ADMIN` and `RETAIL_ADMIN` have no customer-conversation access (`07` §4.0). |

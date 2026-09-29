@@ -1,8 +1,8 @@
 # Buildwise — Infrastructure
 
 How Buildwise runs in the `local` profile and how it is deployed in the `gcp` profile
-(docs/03_TECH_ARCHITECTURE.md §2.2). The main build path is local-first; GCP cutover is
-phase G1 (docs/10_EXECUTION_PLAN.md).
+(docs/03_TECH_ARCHITECTURE.md §2.2). The main build path is local-first; going live is
+phase L1 (docs/10_EXECUTION_PLAN.md).
 
 ```text
 Browser ──► Firebase Hosting ──(/api/** rewrite)──► Cloud Run: buildwise-api ──► Firestore
@@ -19,9 +19,9 @@ Browser ──► Firebase Hosting ──(/api/** rewrite)──► Cloud Run: b
 | Database | Firestore emulator `:8085` | Firestore (Native mode) |
 | Credentials | none (emulators) or `gcloud auth application-default login` | Cloud Run service account (ADC). No key files. |
 | Profile | `BUILDWISE_PROFILE=local` (default) | `BUILDWISE_PROFILE=gcp`, `VITE_BUILDWISE_PROFILE=gcp` |
-| Adapters | mock commerce, simulator channel, mock agent, local files (`backend/.data`), local event sink | Shopify, WhatsApp (+ simulator fallback), ADK + Gemini, Cloud Storage, BigQuery (phase G2) |
+| Adapters | mock commerce, simulator channel, mock agent, local files (`backend/.data`), local event sink | Shopify, WhatsApp (+ simulator fallback), ADK + Gemini, Cloud Storage, BigQuery (phases L1–L2) |
 | Config | none required (optional `backend/.env`) | Cloud Run env vars, `frontend/.env.production.local` at build time |
-| Secrets | none | Secret Manager (phase G1/G2) |
+| Secrets | none | Secret Manager (phases L1–L2) |
 
 The gcp profile refuses to start with any mock/local adapter or the emulators.
 
