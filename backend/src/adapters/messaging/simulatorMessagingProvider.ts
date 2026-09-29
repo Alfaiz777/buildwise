@@ -14,7 +14,7 @@ import type {
  * everything else happens in the same ConversationPipeline as WhatsApp.
  *
  * `send()` never contacts an external service. The pipeline persists every
- * outbound ConversationMessage (M6), and the simulator UI reads the conversation.
+ * outbound ConversationMessage (M4), and the simulator UI reads the conversation.
  */
 
 /** What the simulator route hands over: the verified brand plus the request body. */

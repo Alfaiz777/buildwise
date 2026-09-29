@@ -54,7 +54,7 @@ export interface DecisionInput {
   customerId: string;
   conversationId: string;
   message: InboundMessage;
-  /** Minimum-necessary context; shape grows with M5/M7. */
+  /** Minimum-necessary context; shape grows with M4/M5. */
   context: Record<string, unknown>;
   /** Recent turns only, oldest first. */
   history: { direction: 'INBOUND' | 'OUTBOUND'; text: string }[];

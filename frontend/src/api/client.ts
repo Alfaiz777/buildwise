@@ -19,6 +19,12 @@ export interface ApiClient {
   get<T>(path: string): Promise<T>;
   post<T>(path: string, body: unknown): Promise<T>;
   patch<T>(path: string, body: unknown): Promise<T>;
+  /**
+   * PUTs a file to an upload target returned by the backend. A same-origin API path
+   * (the local profile's /api/local-files/uploads/...) gets the Bearer token; an absolute
+   * signed URL (Cloud Storage in gcp) is used as-is, without Buildwise credentials.
+   */
+  upload<T>(url: string, file: Blob, contentType: string): Promise<T>;
 }
 
 type Method = 'GET' | 'POST' | 'PATCH';
@@ -80,5 +86,21 @@ export function createApiClient(options: {
     get: <T>(path: string) => request<T>('GET', path),
     post: <T>(path: string, body: unknown) => request<T>('POST', path, body),
     patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
+    upload: async <T>(url: string, file: Blob, contentType: string) => {
+      const sameOrigin = url.startsWith('/');
+      const put = async (forceRefresh: boolean) => {
+        const headers: Record<string, string> = { 'Content-Type': contentType, Accept: 'application/json' };
+        if (sameOrigin) {
+          const token = await getIdToken(forceRefresh);
+          if (!token) throw new ApiError(401, 'AUTH_REQUIRED', 'Sign in to continue.', false, null);
+          headers.Authorization = `Bearer ${token}`;
+        }
+        return fetchImpl(sameOrigin ? `${baseUrl}${url}` : url, { method: 'PUT', headers, body: file });
+      };
+      let res = await put(false);
+      if (res.status === 401 && sameOrigin) res = await put(true);
+      if (!res.ok) throw await toError(res);
+      return (await res.json().catch(() => ({}))) as T;
+    },
   };
 }

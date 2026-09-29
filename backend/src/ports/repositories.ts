@@ -8,6 +8,9 @@
  */
 import type { Role } from '../domain/principal.js';
 import type { StoreAssignmentDecision, StoreAssignmentState } from '../domain/retailOwnership.js';
+import type { MappingStatus } from '../domain/skuMapping.js';
+
+export type { MappingStatus };
 
 export interface UserRecord {
   userId: string;
@@ -89,13 +92,37 @@ export interface StoreRecord {
   storeStatus: string;
   /** Structured store hours (docs/04_DATA_MODEL.md §9.2), if present. */
   storeHours: Record<string, string> | null;
+  latitude: number | null;
+  longitude: number | null;
+  reservationAvailable: boolean;
+  pickupAvailable: boolean;
   /** The store's single RETAIL_ADMIN (at most one per store), or null before provisioning. */
   retailAdminUserId: string | null;
+}
+
+/** Store fields a retail import may set. Never retailer_id or retail_admin_user_id. */
+export interface StoreImportFields {
+  storeId: string;
+  storeName: string;
+  city: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  storeHours: Record<string, string>;
+  storeStatus: 'ACTIVE' | 'INACTIVE';
+  reservationAvailable: boolean;
+  pickupAvailable: boolean;
 }
 
 export interface StoreRepository {
   get(brandId: string, storeId: string): Promise<StoreRecord | null>;
   list(brandId: string): Promise<StoreRecord[]>;
+  /**
+   * Creates or updates stores from a retail import. New stores start with no retailer
+   * and no Retail Admin; existing stores keep both (ownership changes only through
+   * assignRetailer, admins only through provisioning).
+   */
+  upsertFromImport(brandId: string, stores: StoreImportFields[]): Promise<void>;
   /**
    * Store → retailer (un)assignment. The adapter reads the store and the target retailer
    * in one transaction, asks `decide` (a pure domain rule) and writes only if the
@@ -112,6 +139,169 @@ export interface StoreRepository {
    * retailer: it fails with DomainConflictError('STORE_HAS_NO_RETAILER') otherwise.
    */
   adminSlot(brandId: string, storeId: string): AdminSlot;
+}
+
+/** docs/04_DATA_MODEL.md §7 */
+export interface ProductRecord {
+  productId: string;
+  brandId: string;
+  canonicalProductId: string;
+  shopifyProductId: string;
+  title: string;
+  description: string;
+  category: string | null;
+  status: string;
+  tags: string[];
+  attributes: Record<string, string>;
+}
+
+/** docs/04_DATA_MODEL.md §8 */
+export interface VariantRecord {
+  variantId: string;
+  brandId: string;
+  productId: string;
+  shopifyVariantId: string;
+  title: string;
+  sku: string;
+  /** Normalized SKU (domain/skuMapping.ts), or null when the catalogue SKU is unusable. */
+  canonicalSku: string | null;
+  barcode: string | null;
+  price: number;
+  currency: string;
+  status: string;
+}
+
+export interface ProductRepository {
+  listProducts(brandId: string): Promise<ProductRecord[]>;
+  listVariants(brandId: string): Promise<VariantRecord[]>;
+  /** Idempotent upsert by deterministic IDs: re-syncing updates, never duplicates. */
+  upsertCatalog(brandId: string, products: ProductRecord[], variants: VariantRecord[]): Promise<void>;
+}
+
+/** docs/04_DATA_MODEL.md §8.1 */
+export interface MappingRecord {
+  mappingId: string;
+  brandId: string;
+  sourceSystem: 'SHOPIFY' | 'RETAIL_FILE';
+  sourceIdentifier: string;
+  canonicalSku: string | null;
+  variantId: string | null;
+  mappingStatus: MappingStatus;
+  mappingReason: string;
+  /** ISO-8601; set by the repository. */
+  updatedAt: string | null;
+}
+
+export interface MappingRepository {
+  list(brandId: string): Promise<MappingRecord[]>;
+  upsertMany(brandId: string, mappings: MappingRecord[]): Promise<void>;
+}
+
+/** docs/04_DATA_MODEL.md §10 */
+export interface InventoryRecord {
+  inventoryId: string;
+  brandId: string;
+  storeId: string;
+  sku: string;
+  canonicalSku: string;
+  variantId: string;
+  quantity: number;
+  reservedQuantity: number;
+  offlinePrice: number;
+  availabilityStatus: string;
+  /** ISO-8601 */
+  lastUpdatedAt: string | null;
+}
+
+export interface InventoryUpsert {
+  storeId: string;
+  sku: string;
+  canonicalSku: string;
+  variantId: string;
+  quantity: number;
+  offlinePrice: number;
+}
+
+export interface InventoryRepository {
+  listByBrand(brandId: string): Promise<InventoryRecord[]>;
+  listByStore(brandId: string, storeId: string): Promise<InventoryRecord[]>;
+  listByVariant(brandId: string, variantId: string): Promise<InventoryRecord[]>;
+  /**
+   * Overwrites quantity / offline_price / availability_status / last_updated_at, and
+   * NEVER reserved_quantity (docs/04 §10). `availabilityOf` is the pure domain rule,
+   * applied to the stored reserved_quantity.
+   */
+  upsertStock(
+    brandId: string,
+    rows: InventoryUpsert[],
+    availabilityOf: (quantity: number, reservedQuantity: number) => string,
+  ): Promise<void>;
+}
+
+/** docs/04_DATA_MODEL.md §5 (credentials are never stored here). */
+export interface ConnectionRecord {
+  connectionId: string;
+  brandId: string;
+  provider: 'SHOPIFY' | 'WHATSAPP' | 'RETAIL_FILE';
+  /** Which adapter served the data (MOCK locally, SHOPIFY live). */
+  source: string;
+  status: 'CONNECTED' | 'ERROR';
+  /** ISO-8601 */
+  connectedAt: string | null;
+  lastSyncAt: string | null;
+  lastError: { code: string; message: string } | null;
+  productCount: number;
+  variantCount: number;
+}
+
+export interface ConnectionRepository {
+  get(brandId: string, connectionId: string): Promise<ConnectionRecord | null>;
+  list(brandId: string): Promise<ConnectionRecord[]>;
+  put(connection: ConnectionRecord): Promise<void>;
+}
+
+export type RetailImportStatus = 'UPLOADED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+
+export interface RetailImportCounts {
+  rowsProcessed: number;
+  rowsValid: number;
+  rowsInvalid: number;
+  mappingsCreated: number;
+  mappingsFailed: number;
+}
+
+/** docs/04_DATA_MODEL.md §10.1 */
+export interface RetailImportRecord extends RetailImportCounts {
+  importId: string;
+  brandId: string;
+  fileKey: string;
+  fileName: string;
+  uploadedBy: string;
+  status: RetailImportStatus;
+  /** File-level failure (e.g. MISSING_COLUMNS), or null. */
+  failureCode: string | null;
+  rowErrorsReference: string | null;
+  /** ISO-8601 */
+  createdAt: string | null;
+  completedAt: string | null;
+}
+
+export interface RetailImportRepository {
+  create(record: RetailImportRecord): Promise<void>;
+  get(brandId: string, importId: string): Promise<RetailImportRecord | null>;
+  /** Newest first. */
+  list(brandId: string, limit: number): Promise<RetailImportRecord[]>;
+  /** UPLOADED → PROCESSING atomically; false if the import is in any other state. */
+  claimForProcessing(brandId: string, importId: string): Promise<boolean>;
+  finish(
+    brandId: string,
+    importId: string,
+    result: RetailImportCounts & {
+      status: 'COMPLETED' | 'FAILED';
+      failureCode: string | null;
+      rowErrorsReference: string | null;
+    },
+  ): Promise<void>;
 }
 
 /** docs/04_DATA_MODEL.md §18 */

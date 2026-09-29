@@ -4,8 +4,8 @@ export type ToolHandler = (input: Record<string, unknown>) => Promise<Omit<ToolR
 
 /**
  * The backend-owned ToolExecutor. Only registered tools can run; anything else
- * is BLOCKED. Agent tools (docs/05_AI_AGENT_SPEC.md §6) are registered from M7,
- * reservation tools from M8. There is deliberately no record_outcome tool.
+ * is BLOCKED. Agent tools (docs/05_AI_AGENT_SPEC.md §6) are registered from M5,
+ * reservation tools in M5 too. There is deliberately no record_outcome tool.
  */
 export class ToolRegistry implements ToolExecutor {
   private readonly handlers = new Map<string, ToolHandler>();

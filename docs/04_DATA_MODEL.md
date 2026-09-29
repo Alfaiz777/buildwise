@@ -180,8 +180,12 @@ IntegrationConnection
 - credential_reference
 - connected_at
 - last_sync_at
-- last_error
+- last_error            ({ code, message } — normalized, never a raw provider message)
+- source                (adapter that served the data: MOCK locally, SHOPIFY live)
+- product_count / variant_count   (result of the last sync)
 ```
+
+The SHOPIFY connection uses the deterministic ID `SHOPIFY` (one per brand).
 
 Providers:
 
@@ -446,7 +450,7 @@ Gemini never computes or asserts opening hours. It receives only the verified `o
 
 ```text
 RetailInventory
-- inventory_id          (deterministic: store_id + canonical_sku)
+- inventory_id          (deterministic: `{store_id}__{canonical_sku}`)
 - brand_id
 - store_id
 - sku                   (retail SKU as uploaded, normalized)
@@ -475,6 +479,8 @@ LOW_STOCK
 OUT_OF_STOCK
 UNKNOWN
 ```
+
+`availability_status` is derived deterministically from `available_quantity` (`domain/storeTruth.ts`): ≤ 0 → `OUT_OF_STOCK`, ≤ 3 → `LOW_STOCK`, otherwise `IN_STOCK`. It is recomputed on every import from the stored `reserved_quantity`.
 
 ## 10.1 RetailImport
 

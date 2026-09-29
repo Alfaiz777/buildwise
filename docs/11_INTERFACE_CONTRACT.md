@@ -1,8 +1,8 @@
 # Buildwise — Interface Contract
 
-Status: added in M2.1 and updated in M2.2 (post-M0, `00_M0_SPECIFICATION_FREEZE.md` §11.8 Changes 8–9).
+Status: added in M2.1, updated in M2.2 and M3 (post-M0, `00_M0_SPECIFICATION_FREEZE.md` §11.8 Changes 8–10).
 
-This document states, for each of the four frozen interfaces, who uses it, what it may show and do **today (end of M2.2)**, and how it behaves when it is empty, unauthorized, loading or failing. It describes the current contract only. It adds no features, and it never overrides `01`–`08`: roles and scopes come from `04_DATA_MODEL.md` §4, routes from `06_INTEGRATION_CONTRACTS.md` §14, and enforcement from `07_SECURITY_SPEC.md` §4.
+This document states, for each of the four frozen interfaces, who uses it, what it may show and do **today (end of M3)**, and how it behaves when it is empty, unauthorized, loading or failing. It describes the current contract only. It adds no features, and it never overrides `01`–`08`: roles and scopes come from `04_DATA_MODEL.md` §4, routes from `06_INTEGRATION_CONTRACTS.md` §14, and enforcement from `07_SECURITY_SPEC.md` §4.
 
 Interface names are frozen:
 
@@ -65,11 +65,12 @@ All scope is resolved by the backend from the verified Firebase ID token and `us
 |---|---|
 | Role / scope | `BRAND_ADMIN`, exactly its own brand. |
 | Purpose | Manage one brand's retailer network and store-level Retail Admin provisioning. |
-| Data (M2) | The brand's Brand Admin (read-only). The retail hierarchy: each retailer, then its stores (name, ID, city, status), then each store's Retail Admin (email) or "Not provisioned". A count of stores not yet associated with a retailer. |
-| Actions (M2) | Create a retailer. On a store **without** a Retail Admin: "Provision Retail Admin" → enter the admin's email → the backend creates the `RETAIL_ADMIN` bound to that store's `brand_id` + `retailer_id` + `store_id` and returns the local password-setup link, which the console displays. A store **with** a Retail Admin shows that admin and no provisioning action. |
-| Routes | `GET /api/brands/:brandId` (own brand), `GET /api/brand/users`, `GET/POST /api/brand/retailers`, `GET /api/brand/stores`, `POST /api/brand/stores/:storeId/admins`. `PATCH /api/brand/stores/:storeId` exists backend-only (no UI) until ingestion. |
-| Out of scope | Other brands (`404`); platform routes (`403`); Retailer Console routes (`403`); creating another Brand Admin; retailer-wide Retail Admins; entering store IDs; assigning stores; store staff. Product, retail ingestion, customers, conversations, reservations and analytics arrive in later milestones. |
-| Empty state | No retailers: "No retailers yet." plus "Create retailer". A retailer without stores: "No stores yet. Stores arrive through retail data import." Every store has its Retail Admin: no provisioning action is shown. |
+| Data (M3) | **Setup checklist** at the top: Catalog synced (product / variant counts, last sync) → Stores & stock imported (stores with stock, "stock as of") → SKU mapping (auto-matched / need attention) → Retail Admins provisioned (x of y stores). **Catalog & mapping:** products → variants (SKU, price, mapping status, stores stocking it) and the retail SKUs needing attention. **Retail import:** import history and the report of each import with its row errors. The brand's Brand Admin (read-only). The retail hierarchy: each retailer, then its stores (name, ID, city, status, SKU count, last stock update), then each store's Retail Admin (email) or "Not provisioned". A count of stores not yet associated with a retailer. |
+| Actions (M3) | "Sync catalog" (runs the wired commerce provider; mock locally). "Upload and import" a retail CSV (create import → upload the file → process → report). Create a retailer. On a store **without** a Retail Admin: "Provision Retail Admin" → enter the admin's email → the backend creates the `RETAIL_ADMIN` bound to that store's `brand_id` + `retailer_id` + `store_id` and returns the local password-setup link, which the console displays. A store **with** a Retail Admin shows that admin and no provisioning action. |
+| Routes | `GET /api/brands/:brandId` (own brand), `GET /api/brand/users`, `GET/POST /api/brand/retailers`, `GET /api/brand/stores`, `POST /api/brand/stores/:storeId/admins`, `POST /api/integrations/shopify/sync`, `GET /api/brand/connections`, `GET /api/products`, `POST/GET /api/brand/retail-imports`, `POST /api/brand/retail-imports/:importId/process`, `GET /api/brand/retail-imports/:importId`, and locally the upload target `PUT /api/local-files/uploads/:uploadId`. `PATCH /api/brand/stores/:storeId` exists backend-only (no UI). |
+| Out of scope | Other brands (`404`); platform routes (`403`); Retailer Console routes (`403`); creating another Brand Admin; retailer-wide Retail Admins; entering store IDs; assigning stores by hand; resolving SKU mappings by hand; XLSX files; store staff. Customers, conversations, reservations and analytics arrive in later milestones. |
+| Empty state | Each unchecked checklist step is the empty state with its action ("Sync catalog", "Import a retail CSV", "Review mapping", "Provision per store"). No products: "No products yet. Sync the catalog from your commerce store." No imports: "No imports yet." No retailers: "No retailers yet." plus "Create retailer". A retailer without stores: "No stores yet. Stores arrive through the retail CSV import." Every store has its Retail Admin: no provisioning action is shown. |
+| Errors | A rejected import shows its `failure_code` (e.g. `MISSING_COLUMNS`); rejected rows are listed with line, store, SKU, code and message (first 50). A failed sync shows its normalized error in the checklist. |
 | Unauthorized | A second Retail Admin for a store → `409 RETAIL_ADMIN_ALREADY_PROVISIONED` (no user, no setup link). Store without a retailer → `409 STORE_HAS_NO_RETAILER`. Another brand's store or retailer → `404`. |
 
 ## 5. Retailer Console
@@ -77,12 +78,12 @@ All scope is resolved by the backend from the verified Firebase ID token and `us
 | Item | Contract |
 |---|---|
 | Role / scope | `RETAIL_ADMIN`, exactly one physical store: `brand_id` + `retailer_id` + `store_id`, verified at sign-in against `RetailStore.retail_admin_user_id` and `RetailStore.retailer_id`. |
-| Purpose | Allow a `RETAIL_ADMIN` to operate exactly one physical store (in later milestones: its inventory view and the customer reservations sent to it). |
-| Data (M2) | Retailer name and the one store: name, ID, city, address, status, hours. |
-| Actions (M2) | None beyond viewing. |
-| Routes | `GET /api/me` (returns `store_id` and a single `store`), `GET /api/retail/stores/:storeId` (own store only). |
+| Purpose | Allow a `RETAIL_ADMIN` to operate exactly one physical store (in later milestones: the customer reservations sent to it). |
+| Data (M3) | Retailer name and the one store: name, ID, city, address, status, hours. **Store stock** (read-only): SKU, product, quantity, reserved, available, last updated. |
+| Actions (M3) | None beyond viewing. |
+| Routes | `GET /api/me` (returns `store_id` and a single `store`), `GET /api/retail/stores/:storeId`, `GET /api/retail/stores/:storeId/inventory` (own store only). |
 | Out of scope | Any other store, **including other stores of the same retailer** (`404`); another retailer or brand (`404`); brand routes and platform routes (`403`); a store picker or a list of the retailer's stores; store staff; editing store data. |
-| Empty state | Inventory and reservations section: "Nothing to show yet … appear here in a later milestone." There is no "no store" state: a Retail Admin without a valid store is refused at sign-in (`403 USER_MISCONFIGURED`). |
+| Empty state | Store stock: "No stock has been imported for this store yet. Your brand imports it from its retail file." Reservations: "appear here in a later milestone". There is no "no store" state: a Retail Admin without a valid store is refused at sign-in (`403 USER_MISCONFIGURED`). |
 | Unauthorized | Retailer `INACTIVE` → `403 RETAILER_INACTIVE`. Brand suspended → `403 BRAND_INACTIVE`. User document not matching the store's recorded admin or retailer → `403 USER_MISCONFIGURED`. |
 
 ## 6. Customer AI Channel / WhatsApp

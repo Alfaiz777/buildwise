@@ -2,22 +2,29 @@ import cors from 'cors';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
 import type { AccountService } from './application/accountService.js';
+import type { CatalogService } from './application/catalogService.js';
+import type { CommerceSyncService } from './application/commerceSyncService.js';
 import type { PlatformAdminService } from './application/platformAdminService.js';
+import type { RetailImportService } from './application/retailImportService.js';
 import type { TenantAdminService } from './application/tenantAdminService.js';
 import { authenticate } from './auth/authenticate.js';
 import { requireScope } from './auth/authorize.js';
 import type { TokenVerifier } from './auth/tokenVerifier.js';
 import type { Config } from './config/env.js';
 import type { Logger } from './lib/logger.js';
+import type { LocalUploadReceiver } from './ports/fileStorage.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { requestContext } from './middleware/requestContext.js';
 import type { BrandRepository, RetailerRepository, StoreRepository, UserRepository } from './ports/repositories.js';
 import { brandAdminRouter } from './routes/brandAdmin.js';
 import { brandsRouter } from './routes/brands.js';
+import { connectionsRouter, integrationsRouter, productsRouter } from './routes/catalog.js';
 import { healthRouter } from './routes/health.js';
+import { localFilesRouter } from './routes/localFiles.js';
 import { meRouter } from './routes/me.js';
 import { platformRouter } from './routes/platform.js';
 import { retailRouter } from './routes/retail.js';
+import { retailImportsRouter } from './routes/retailImports.js';
 
 export interface AppDeps {
   config: Pick<Config, 'corsAllowedOrigins'>;
@@ -33,12 +40,17 @@ export interface AppDeps {
     platformAdmin: PlatformAdminService;
     tenantAdmin: TenantAdminService;
     account: AccountService;
+    commerceSync: CommerceSyncService;
+    catalog: CatalogService;
+    retailImports: RetailImportService;
   };
+  /** Local profile only: receives browser uploads for LocalFileStorageProvider. */
+  localUploads?: LocalUploadReceiver;
 }
 
 /** Builds the Express app. All I/O is injected (see composition/container.ts). */
 export function createApp(deps: AppDeps): Express {
-  const { config, logger, verifier, repositories, services } = deps;
+  const { config, logger, verifier, repositories, services, localUploads } = deps;
   const app = express();
 
   app.disable('x-powered-by');
@@ -53,7 +65,7 @@ export function createApp(deps: AppDeps): Express {
     app.use(
       cors({
         origin: config.corsAllowedOrigins,
-        methods: ['GET', 'POST', 'PATCH'],
+        methods: ['GET', 'POST', 'PATCH', 'PUT'],
         allowedHeaders: ['Authorization', 'Content-Type'],
         maxAge: 600,
       }),
@@ -77,6 +89,11 @@ export function createApp(deps: AppDeps): Express {
   tenant.use(requireScope('BRAND', 'RETAIL'));
   tenant.use(brandsRouter(repositories.brands));
   tenant.use('/brand', requireScope('BRAND'), brandAdminRouter(services.tenantAdmin));
+  tenant.use('/brand', requireScope('BRAND'), connectionsRouter(services.commerceSync));
+  tenant.use('/brand/retail-imports', requireScope('BRAND'), retailImportsRouter(services.retailImports));
+  tenant.use('/integrations', requireScope('BRAND'), integrationsRouter(services.commerceSync));
+  tenant.use('/products', requireScope('BRAND'), productsRouter(services.catalog));
+  if (localUploads) tenant.use('/local-files', requireScope('BRAND'), localFilesRouter(localUploads));
   // Retailer Console: store-scoped, RETAIL_ADMIN only.
   tenant.use('/retail', requireScope('RETAIL'), retailRouter(services.account));
   api.use(tenant);

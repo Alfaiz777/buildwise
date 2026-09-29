@@ -68,7 +68,7 @@ export type TenantPrincipal = BrandPrincipal | RetailPrincipal;
  * The customer is resolved, never logged in (docs/07_SECURITY_SPEC.md §4.3):
  * from a channel identity (WhatsApp / simulator) or a contextual page token.
  * Customer principals never reach console routes and never appear in users/{uid}.
- * Used from M6/M8 onward.
+ * Used from M4 onward.
  */
 export interface CustomerPrincipal {
   readonly scope: 'CUSTOMER';

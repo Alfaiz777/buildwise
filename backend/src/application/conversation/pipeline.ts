@@ -11,7 +11,7 @@ import type { InboundMessage, OutboundMessage } from '../../ports/messaging.js';
  *   Simulator channel ┘
  *
  * The stage order is fixed here and cannot be changed by wiring. M2 provides the
- * structure; the stages are implemented in M6 (1–5, 9–10), M7 (6–8) and M10 (11).
+ * structure; the stages are implemented in M4 (1–5, 9–10), M5 (6–8) and M6 (11).
  */
 export const PIPELINE_STAGES = [
   'IDEMPOTENCY',

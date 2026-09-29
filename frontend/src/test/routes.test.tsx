@@ -68,6 +68,8 @@ const STORES = [
     store_status: 'ACTIVE',
     retailer_id: 'rtl_north',
     retail_admin_user_id: 'r',
+    sku_count: 10,
+    stock_updated_at: '2026-10-05T06:30:00.000Z',
   },
   {
     store_id: 'st_2',
@@ -76,27 +78,162 @@ const STORES = [
     store_status: 'ACTIVE',
     retailer_id: 'rtl_north',
     retail_admin_user_id: null,
+    sku_count: 0,
+    stock_updated_at: null,
   },
 ];
+const CONNECTIONS = [
+  {
+    connection_id: 'SHOPIFY',
+    provider: 'SHOPIFY',
+    source: 'MOCK',
+    status: 'CONNECTED',
+    connected_at: '2026-10-05T06:00:00.000Z',
+    last_sync_at: '2026-10-05T06:00:00.000Z',
+    last_error: null,
+    product_count: 10,
+    variant_count: 18,
+  },
+];
+const CATALOG = {
+  products: [
+    {
+      product_id: 'prd_1001',
+      title: 'Vitamin C Glow Serum',
+      category: 'Serum',
+      tags: ['serum'],
+      variants: [
+        {
+          variant_id: 'var_2001',
+          title: '30 ml',
+          sku: 'DBC-VCSERUM-30',
+          canonical_sku: 'DBC-VCSERUM-30',
+          price: 795,
+          currency: 'INR',
+          mapping_status: 'AUTO_MATCHED',
+          stores_stocked: 4,
+        },
+      ],
+    },
+  ],
+  retail_mappings_needing_attention: [
+    { source_identifier: 'DBC-LIPBALM-10', mapping_status: 'UNMAPPED', mapping_reason: 'NO_CATALOG_MATCH' },
+  ],
+  mapping_summary: { auto_matched: 18, needs_attention: 1 },
+};
+const IMPORT = {
+  import_id: 'imp_0123456789abcdef',
+  file_name: 'demo-retail.csv',
+  status: 'COMPLETED',
+  failure_code: null,
+  rows_processed: 36,
+  rows_valid: 33,
+  rows_invalid: 3,
+  mappings_created: 18,
+  mappings_failed: 1,
+  created_at: '2026-10-05T06:30:00.000Z',
+  completed_at: '2026-10-05T06:30:01.000Z',
+};
+const REPORT = {
+  ...IMPORT,
+  row_errors: [
+    {
+      line: 12,
+      store_id: 'st_north_1',
+      sku: 'DBC-SALCLN-100',
+      code: 'INVALID_QUANTITY',
+      field: 'quantity',
+      message: 'quantity must be a whole number of 0 or more.',
+    },
+    {
+      line: 23,
+      store_id: 'st_north_2',
+      sku: 'DBC-LIPBALM-10',
+      code: 'UNKNOWN_SKU',
+      field: null,
+      message: 'This SKU matches no product in the synced catalogue.',
+    },
+  ],
+};
+const STOCK = {
+  store_id: 'st_1',
+  items: [
+    {
+      sku: 'DBC-VCSERUM-30',
+      product_title: 'Vitamin C Glow Serum',
+      variant_title: '30 ml',
+      quantity: 3,
+      reserved_quantity: 1,
+      available_quantity: 2,
+      availability_status: 'LOW_STOCK',
+      last_updated_at: '2026-10-05T06:30:00.000Z',
+    },
+  ],
+};
 
-/** A fake API: /api/me returns `me`; list endpoints return the fixtures above. */
-function apiFor(me: MeResponse): ApiClient {
+type Fixtures = Record<string, unknown>;
+const FULL: Fixtures = {
+  '/api/brand/users': { users: BRAND_USERS },
+  '/api/brand/retailers': { retailers: RETAILERS },
+  '/api/brand/stores': { stores: STORES },
+  '/api/brand/connections': { connections: CONNECTIONS },
+  '/api/products': CATALOG,
+  '/api/brand/retail-imports': { imports: [IMPORT] },
+  '/api/retail/stores/st_1/inventory': STOCK,
+};
+/** A brand that has done nothing yet. */
+const EMPTY: Fixtures = {
+  '/api/brand/users': { users: [BRAND_USERS[0]] },
+  '/api/brand/retailers': { retailers: [] },
+  '/api/brand/stores': { stores: [] },
+  '/api/brand/connections': { connections: [] },
+  '/api/products': {
+    products: [],
+    retail_mappings_needing_attention: [],
+    mapping_summary: { auto_matched: 0, needs_attention: 0 },
+  },
+  '/api/brand/retail-imports': { imports: [] },
+  '/api/retail/stores/st_1/inventory': { store_id: 'st_1', items: [] },
+};
+
+/** A fake API: /api/me returns `me`; other endpoints return the fixtures above. */
+function apiFor(me: MeResponse, fixtures: Fixtures = FULL): ApiClient {
   const get = vi.fn(async (path: string) => {
     if (path === '/api/me') return me;
     if (path.startsWith('/api/platform/brands')) return { brands: BRANDS };
     if (path.startsWith('/api/platform/audit')) return { events: [] };
-    if (path === '/api/brand/users') return { users: BRAND_USERS };
-    if (path === '/api/brand/retailers') return { retailers: RETAILERS };
-    if (path === '/api/brand/stores') return { stores: STORES };
+    if (path.startsWith('/api/brand/retail-imports/imp_')) return REPORT;
+    if (path in fixtures) return fixtures[path];
     throw new Error(`unexpected GET ${path}`);
   });
-  const post = vi.fn(async (_path: string, body: { email?: string }) => ({
-    user_id: 'new',
-    email: body.email,
-    role: 'RETAIL_ADMIN',
-    password_setup_link: 'http://127.0.0.1:9099/emulator/action?mode=resetPassword&oobCode=abc',
-  }));
-  return { get: get as ApiClient['get'], post: post as ApiClient['post'], patch: vi.fn() as ApiClient['patch'] };
+  const post = vi.fn(async (path: string, body: { email?: string }) => {
+    if (path === '/api/integrations/shopify/sync') return CONNECTIONS[0];
+    if (path === '/api/brand/retail-imports') {
+      return {
+        import: { ...IMPORT, status: 'UPLOADED' },
+        upload: {
+          method: 'PUT',
+          url: '/api/local-files/uploads/0f8fad5b-d9cb-469f-a165-70867728950e',
+          headers: { 'Content-Type': 'text/csv' },
+          expires_at: '2026-10-05T07:00:00.000Z',
+        },
+      };
+    }
+    if (path.endsWith('/process')) return REPORT;
+    return {
+      user_id: 'new',
+      email: body.email,
+      role: 'RETAIL_ADMIN',
+      password_setup_link: 'http://127.0.0.1:9099/emulator/action?mode=resetPassword&oobCode=abc',
+    };
+  });
+  const upload = vi.fn(async () => ({ upload_id: 'u', size_bytes: 10 }));
+  return {
+    get: get as ApiClient['get'],
+    post: post as ApiClient['post'],
+    patch: vi.fn() as ApiClient['patch'],
+    upload: upload as ApiClient['upload'],
+  };
 }
 
 function renderAt(path: string, auth: Partial<AuthState>, api: ApiClient) {
@@ -171,7 +308,7 @@ describe('scope routing — each of the three roles lands in its own console are
     expect(await screen.findByText('Bandra Store')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Retailer: North Retail/ })).toBeInTheDocument();
     expect(screen.getByText('Andheri Store')).toBeInTheDocument();
-    expect(screen.getByText('No stores yet. Stores arrive through retail data import.')).toBeInTheDocument();
+    expect(screen.getByText('No stores yet. Stores arrive through the retail CSV import.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /brand admin/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /assign store/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Store ID')).not.toBeInTheDocument();
@@ -213,9 +350,26 @@ describe('scope routing — each of the three roles lands in its own console are
     expect(screen.getByText('North Retail')).toBeInTheDocument();
     expect(screen.getByText('Hill Road, Bandra')).toBeInTheDocument();
     expect(screen.getByText('mon 10:00-21:00 (Asia/Kolkata)')).toBeInTheDocument();
-    expect(screen.getByText(/inventory and customer reservations appear here/)).toBeInTheDocument();
+    expect(screen.getByText(/Customer reservations for this store appear here/)).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.queryByText('Andheri Store')).not.toBeInTheDocument();
+  });
+
+  it('RETAIL_ADMIN → Store stock shows only its own store (read-only)', async () => {
+    const api = apiFor(ME.retailAdmin);
+    renderAt('/', signedIn, api);
+    const row = (await screen.findByText('DBC-VCSERUM-30')).closest('tr')!;
+    expect(within(row).getByText('Vitamin C Glow Serum')).toBeInTheDocument();
+    expect(within(row).getByText('low stock')).toBeInTheDocument();
+    expect(row.textContent).toContain('312'); // quantity 3, reserved 1, available 2
+    const paths = (api.get as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(paths.filter((p: string) => p.includes('/inventory'))).toEqual(['/api/retail/stores/st_1/inventory']);
+    expect(screen.queryByRole('button', { name: /sync|import|upload/i })).not.toBeInTheDocument();
+  });
+
+  it('RETAIL_ADMIN → Store stock empty state', async () => {
+    renderAt('/', signedIn, apiFor(ME.retailAdmin, EMPTY));
+    expect(await screen.findByText(/No stock has been imported for this store yet/)).toBeInTheDocument();
   });
 
   it.each([
@@ -228,5 +382,70 @@ describe('scope routing — each of the three roles lands in its own console are
   ])('visiting %s with the wrong scope redirects to the user’s own area', async (path, me, expected) => {
     renderAt(path, signedIn, apiFor(me));
     expect(await screen.findByText(expected)).toBeInTheDocument();
+  });
+});
+
+describe('Brand Console — M3 catalog & store truth', () => {
+  it('setup checklist: an empty brand sees every step to do, each with its action', async () => {
+    const api = apiFor(ME.brandAdmin, EMPTY);
+    renderAt('/', signedIn, api);
+    expect(await screen.findByText('Not synced yet.')).toBeInTheDocument();
+    expect(screen.getByText('No store stock imported yet.')).toBeInTheDocument();
+    expect(screen.getByText('Nothing mapped yet.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Import a retail CSV' })).toHaveAttribute('href', '#retail-import');
+    expect(screen.getByText('No products yet. Sync the catalog from your commerce store.')).toBeInTheDocument();
+    expect(screen.getByText('No imports yet.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Sync catalog' })[0]!);
+    expect(api.post).toHaveBeenCalledWith('/api/integrations/shopify/sync', {});
+  });
+
+  it('setup checklist: done steps show their facts; open issues stay to do', async () => {
+    renderAt('/', signedIn, apiFor(ME.brandAdmin));
+    expect(await screen.findByText(/10 products · 18 variants · last sync/)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 2 stores with stock · stock as of/)).toBeInTheDocument();
+    expect(screen.getByText('18 auto-matched · 1 need attention')).toBeInTheDocument();
+    expect(screen.getByText('1 of 2 stores have their Retail Admin')).toBeInTheDocument();
+    const items = screen.getAllByRole('listitem').filter((li) => li.closest('.checklist'));
+    expect(items.map((li) => li.className)).toEqual(['done', 'done', 'todo', 'todo']);
+  });
+
+  it('catalog & mapping: variants with SKU, price and mapping status; unmapped retail SKUs stay visible', async () => {
+    renderAt('/', signedIn, apiFor(ME.brandAdmin));
+    const row = (await screen.findByText('Vitamin C Glow Serum')).closest('tr')!;
+    expect(within(row).getByText('DBC-VCSERUM-30')).toBeInTheDocument();
+    expect(within(row).getByText('₹795')).toBeInTheDocument();
+    expect(within(row).getByText('auto-matched')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Retail SKUs needing attention' })).toBeInTheDocument();
+    expect(screen.getAllByText('DBC-LIPBALM-10').length).toBeGreaterThan(0);
+  });
+
+  it('retail import: create → upload the file → process → report with row errors', async () => {
+    const api = apiFor(ME.brandAdmin);
+    renderAt('/', signedIn, api);
+    const input = await screen.findByLabelText('Retail CSV file');
+    const file = new File(['store_id\n'], 'demo-retail.csv', { type: 'text/csv' });
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.submit(input.closest('form')!);
+
+    const report = await screen.findByLabelText('Import report');
+    expect(api.post).toHaveBeenCalledWith('/api/brand/retail-imports', { file_name: 'demo-retail.csv' });
+    expect(api.upload).toHaveBeenCalledWith(
+      '/api/local-files/uploads/0f8fad5b-d9cb-469f-a165-70867728950e',
+      file,
+      'text/csv',
+    );
+    expect(api.post).toHaveBeenCalledWith('/api/brand/retail-imports/imp_0123456789abcdef/process', {});
+    expect(within(report).getByText(/33 of 36 rows imported · 3 rows rejected/)).toBeInTheDocument();
+    expect(within(report).getByText('INVALID_QUANTITY')).toBeInTheDocument();
+    expect(within(report).getByText('UNKNOWN_SKU')).toBeInTheDocument();
+  });
+
+  it('import history opens a past report; stores show SKU count and last stock update', async () => {
+    renderAt('/', signedIn, apiFor(ME.brandAdmin));
+    fireEvent.click(await screen.findByRole('button', { name: 'View report' }));
+    expect(await screen.findByLabelText('Import report')).toBeInTheDocument();
+    const bandra = screen.getByText('Bandra Store').closest('tr')!;
+    expect(within(bandra).getByText('10')).toBeInTheDocument();
   });
 });
