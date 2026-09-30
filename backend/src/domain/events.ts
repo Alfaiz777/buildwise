@@ -1,8 +1,11 @@
 /** Canonical CommerceEvent (docs/04_DATA_MODEL.md §17). */
 
 export const COMMERCE_EVENT_TYPES = [
+  'STOREFRONT_VISIT',
+  'SEARCH',
   'PRODUCT_VIEW',
   'PRODUCT_DETAIL_VIEW',
+  'VARIANT_SELECTED',
   'ADD_TO_CART',
   'CHECKOUT_STARTED',
   'WHATSAPP_CLICK',
@@ -18,6 +21,9 @@ export const COMMERCE_EVENT_TYPES = [
   'ONLINE_PURCHASE',
   'OFFLINE_PURCHASE',
   'HUMAN_HANDOFF',
+  'FOLLOW_UP_SCHEDULED',
+  'FOLLOW_UP_SUPPRESSED',
+  'FOLLOW_UP_SENT',
 ] as const;
 export type CommerceEventType = (typeof COMMERCE_EVENT_TYPES)[number];
 

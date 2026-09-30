@@ -25,6 +25,11 @@
  * demo CSV deliberately contains 2 invalid rows and 1 unknown SKU, so its import report
  * shows real row errors.
  *
+ * M4: brand settings allow the local demo storefront (http://localhost:5173), enable human
+ * handoff and use short follow-up delays (1–2 min) so the demo shows intent → delay →
+ * proactive message. Demo shoppers (mock commerce customers 3002 opted in, 3003 not) are
+ * linked when "Sign in as demo shopper" is used on /demo-store.
+ *
  * Every password: buildwise-demo-1
  * Usage: npm run seed:demo   (re-runnable; resets the two fixture brands, upserts the users)
  */
@@ -51,12 +56,31 @@ const { commerceSync, retailImports } = container.appDeps.services;
 
 const now = FieldValue.serverTimestamp();
 
+/** Local demo brand settings (docs/04 §3), with short follow-up delays for the demo. */
+const settings = (displayName: string, whatsappNumber: string) => ({
+  allowed_storefront_origins: ['http://localhost:5173'],
+  reservation_policy: { reservations_enabled: true, hold_minutes: 120, max_quantity_per_reservation: 2 },
+  human_handoff_rules: { enabled: true },
+  messaging: { display_name: displayName, whatsapp_number: whatsappNumber }, // placeholder number
+  follow_up_policy: {
+    inactivity_minutes: 1,
+    frequency_hours: 24,
+    types: {
+      SEARCH_EXPLORATION: { enabled: true, delay_minutes: 2, priority: 'NORMAL' },
+      PRODUCT_CONSIDERATION: { enabled: true, delay_minutes: 2, priority: 'NORMAL' },
+      CART_ABANDONMENT: { enabled: true, delay_minutes: 2, priority: 'NORMAL' },
+      CHECKOUT_ABANDONMENT: { enabled: true, delay_minutes: 1, priority: 'HIGH' },
+      STORE_ORIENTED: { enabled: true, delay_minutes: 1, priority: 'NORMAL' },
+    },
+  },
+});
+
 async function brand(db: Firestore, brandId: string, name: string) {
   await db.doc(`brands/${brandId}`).set({
     brand_id: brandId,
     name,
     status: 'ACTIVE',
-    settings: {},
+    settings: settings(name, brandId === 'brd_demo' ? '910000000001' : '910000000002'),
     brand_admin_user_id: null,
     created_at: now,
     updated_at: now,

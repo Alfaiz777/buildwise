@@ -248,7 +248,31 @@ export const DEFAULT_COMMERCE_FIXTURE: CommerceFixture = {
       ],
     ),
   ],
-  customers: [{ externalCustomerId: gid('Customer', 3001), firstName: 'Test', email: null, phone: null }],
+  customers: [
+    {
+      externalCustomerId: gid('Customer', 3001),
+      firstName: 'Test',
+      email: null,
+      phone: null,
+      marketingConsent: 'NOT_OPTED_IN',
+    },
+    // Synthetic demo shoppers for the local demo storefront's "Sign in as demo shopper" (M4):
+    // one has marketing consent (follow-ups possible), one does not (NO_CONSENT path).
+    {
+      externalCustomerId: gid('Customer', 3002),
+      firstName: 'Asha',
+      email: null,
+      phone: null,
+      marketingConsent: 'OPTED_IN',
+    },
+    {
+      externalCustomerId: gid('Customer', 3003),
+      firstName: 'Ravi',
+      email: null,
+      phone: null,
+      marketingConsent: 'NOT_OPTED_IN',
+    },
+  ],
   orders: [
     {
       externalOrderId: gid('Order', 4001),

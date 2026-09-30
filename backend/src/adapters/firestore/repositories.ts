@@ -161,6 +161,7 @@ const BrandDoc = z.object({
   status: z.string().min(1),
   created_at: z.unknown().optional(),
   brand_admin_user_id: z.string().min(1).nullable().optional(),
+  settings: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 const toBrand = (brandId: string, d: z.infer<typeof BrandDoc>): BrandRecord => ({
@@ -169,6 +170,7 @@ const toBrand = (brandId: string, d: z.infer<typeof BrandDoc>): BrandRecord => (
   status: d.status,
   createdAt: isoOrNull(d.created_at),
   brandAdminUserId: d.brand_admin_user_id ?? null,
+  settings: d.settings ?? {},
 });
 
 export class FirestoreBrandRepository implements BrandRepository {

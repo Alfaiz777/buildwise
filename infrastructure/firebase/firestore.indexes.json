@@ -1,0 +1,37 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "customerIntents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "last_event_at", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "customerIntents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "follow_up.status", "order": "ASCENDING" },
+        { "fieldPath": "follow_up.due_at", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "intentTokens",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "web_session_id", "order": "ASCENDING" },
+        { "fieldPath": "issued_at", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "conversations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "customer_id", "order": "ASCENDING" },
+        { "fieldPath": "channel", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

@@ -48,6 +48,8 @@ export interface BrandRecord {
   createdAt: string | null;
   /** The brand's single BRAND_ADMIN (MVP: exactly one per brand), or null before provisioning. */
   brandAdminUserId: string | null;
+  /** brand.settings (docs/04 §3), read through domain/brandSettings.ts. */
+  settings: Record<string, unknown>;
 }
 
 /**

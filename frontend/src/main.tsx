@@ -23,7 +23,7 @@ createRoot(document.getElementById('root')!).render(
     <FirebaseAuthProvider auth={auth}>
       <ApiContext.Provider value={api}>
         <BrowserRouter>
-          <AppRoutes />
+          <AppRoutes profile={config.profile} />
         </BrowserRouter>
       </ApiContext.Provider>
     </FirebaseAuthProvider>

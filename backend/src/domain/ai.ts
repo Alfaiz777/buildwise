@@ -23,8 +23,12 @@ export const GUARDRAIL_STATUSES = ['ALLOWED', 'BLOCKED', 'HUMAN_APPROVAL_REQUIRE
 export type GuardrailStatus = (typeof GUARDRAIL_STATUSES)[number];
 
 export const INTENT_TYPES = [
+  'VISIT_ONLY',
+  'SEARCH_EXPLORATION',
   'PRODUCT_EXPLORATION',
+  'PRODUCT_CONSIDERATION',
   'CART_ABANDONMENT',
+  'CHECKOUT_ABANDONMENT',
   'PRODUCT_QUESTION',
   'COMPARISON',
   'URGENT_PURCHASE',
@@ -34,5 +38,10 @@ export const INTENT_TYPES = [
 ] as const;
 export type IntentType = (typeof INTENT_TYPES)[number];
 
-export const INTENT_STAGES = ['NO_MEANINGFUL_INTENT', 'INTERESTED', 'HIGH_INTENT'] as const;
+/** Funnel progress, ordered and monotonic within a web session (docs/04 §11.1, Change 11). */
+export const INTENT_STAGES = ['VISIT', 'SEARCH', 'PRODUCT_VIEW', 'CONSIDERATION', 'CART', 'CHECKOUT'] as const;
 export type IntentStage = (typeof INTENT_STAGES)[number];
+
+/** How strong the demonstrated intent is: the former three-level stage, now derived. */
+export const INTENT_STRENGTHS = ['NO_MEANINGFUL_INTENT', 'INTERESTED', 'HIGH_INTENT'] as const;
+export type IntentStrength = (typeof INTENT_STRENGTHS)[number];

@@ -1,6 +1,7 @@
 import { useCallback, useState, type FormEvent } from 'react';
 import { useApi, type ProvisionedUser, type Role } from '../../api/apiContext';
 import { ConsoleShell, errorMessage, Section, SetupLink, useLoad } from '../../components/ConsoleShell';
+import { BrandNav } from './BrandNav';
 import { CatalogSection } from './CatalogSection';
 import { RetailImportSection } from './RetailImportSection';
 import { SetupChecklist } from './SetupChecklist';
@@ -110,6 +111,7 @@ export function BrandHome() {
           {error}
         </p>
       )}
+      <BrandNav />
       <SetupLink result={provisioned} />
 
       <SetupChecklist
