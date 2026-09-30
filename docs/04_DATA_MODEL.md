@@ -103,6 +103,25 @@ reservation_policy
 customer_communication_preferences
 human_handoff_rules
 allowed_storefront_origins
+messaging
+follow_up_policy
+```
+
+`messaging` holds the brand's `display_name` (the sender name customers see) and its `whatsapp_number` (placeholder locally). `human_handoff_rules.enabled` controls whether a customer can ask for a person.
+
+`follow_up_policy` (`00` §11.8 Change 11, D5) — prototype defaults, all configurable:
+
+```yaml
+follow_up_policy:
+  inactivity_minutes: 30            # local demo: 1
+  frequency_hours: 24               # max 1 proactive message per customer per window
+  types:
+    SEARCH_EXPLORATION:    { enabled: false, delay_minutes: 60, priority: NORMAL }  # only if the search matched
+    PRODUCT_CONSIDERATION: { enabled: true,  delay_minutes: 60, priority: NORMAL }
+    CART_ABANDONMENT:      { enabled: true,  delay_minutes: 60, priority: NORMAL }
+    CHECKOUT_ABANDONMENT:  { enabled: true,  delay_minutes: 30, priority: HIGH }
+    STORE_ORIENTED:        { enabled: true,  delay_minutes: 10, priority: NORMAL }
+# VISIT_ONLY and PRODUCT_EXPLORATION are never follow-up types (WEAK_INTENT).
 ```
 
 `reservation_policy` includes at least:
@@ -225,7 +244,18 @@ Customer
 | `WHATSAPP` | the customer's WhatsApp ID (from the webhook) |
 | `SIMULATOR` | `sim:{simulator_customer_ref}` (synthetic; never a real person's identifier) |
 
-A (`channel`, `external_ref`) pair identifies at most one Customer per brand.
+A (`channel`, `external_ref`) pair identifies at most one Customer per brand (guarded by `channelIdentities`, §21).
+
+`consent_state`:
+
+```text
+OPTED_IN       marketing / proactive contact allowed (e.g. Shopify marketing consent)
+NOT_OPTED_IN   known, but no consent for proactive contact
+OPTED_OUT      the customer sent STOP / UNSUBSCRIBE; automation stops
+UNKNOWN        default for a customer created by their first inbound message
+```
+
+Proactive follow-ups require `OPTED_IN` (`00` §11.8 Change 11, D1). An anonymous storefront visitor becomes linked to a Customer only through the handshake or a signed-in shopper; the link is stored as `webVisitors/{sha256(visitor_id)}` → `customer_id`, never the raw `visitor_id`. `last_proactive_at` enforces the per-customer frequency limit.
 
 Only relevant customer data should be retained/used. Customer records and conversation content are **customer PII** for the purposes of platform-scope restrictions (`07_SECURITY_SPEC.md` §4.2).
 
@@ -514,15 +544,21 @@ CustomerIntent
 - customer_id           (null until the web session is bound to a customer)
 - web_session_id        (opaque random storefront session ID; no PII)
 - source
-- product_variant_id
-- intent_stage
+- product_id / product_variant_id   (last product engaged with, when any)
+- matched_category      (catalogue category/tag a search matched; never the raw term)
+- intent_stage          (funnel progress, §11.2)
+- intent_strength       (derived, §11.2)
 - intent_type
 - confidence
 - event_reference
+- last_event / last_event_at
 - detected_at
 - updated_at
-- status
+- status                (ACTIVE | ABANDONED | CONVERTED | EXPIRED)
+- follow_up             (§11.3)
 ```
+
+One CustomerIntent per web session per brand (deterministic ID from the session). `ABANDONED` is set only after inactivity (`follow_up_policy.inactivity_minutes`); `CONVERTED` by a completed order (`ORDER_CREATED`).
 
 Sources:
 
@@ -539,10 +575,17 @@ Two separate fields answer two separate questions.
 
 | Field | Question | Set by |
 |---|---|---|
-| `intent_stage` | How strong is the customer's demonstrated intent? | Deterministic rules over behavioral events only. Gemini never sets it. |
+| `intent_stage` | How far has the customer progressed? (funnel stage, `00` §11.8 Change 11) | Deterministic rules over behavioral events only. Gemini never sets it. |
+| `intent_strength` | How strong is the demonstrated intent? | Derived deterministically from the stage and the WhatsApp-click signal. |
 | `intent_type` | What is the customer trying to accomplish? | Deterministic rules for web events. It may be refined by Gemini from conversation content, and the backend validates the value. |
 
-`intent_stage`:
+`intent_stage` (ordered):
+
+```text
+VISIT < SEARCH < PRODUCT_VIEW < CONSIDERATION < CART < CHECKOUT
+```
+
+`intent_strength`:
 
 ```text
 NO_MEANINGFUL_INTENT
@@ -553,8 +596,12 @@ HIGH_INTENT
 `intent_type`:
 
 ```text
+VISIT_ONLY
+SEARCH_EXPLORATION
 PRODUCT_EXPLORATION
+PRODUCT_CONSIDERATION
 CART_ABANDONMENT
+CHECKOUT_ABANDONMENT
 PRODUCT_QUESTION
 COMPARISON
 URGENT_PURCHASE
@@ -569,21 +616,53 @@ UNKNOWN
 
 These are the prototype default rules. They are deterministic and configurable, and Gemini must not invent the underlying behavioral facts.
 
+| Web event | Stage reached | Type |
+|---|---|---|
+| `STOREFRONT_VISIT` | `VISIT` | `VISIT_ONLY` |
+| `SEARCH` | `SEARCH` | `SEARCH_EXPLORATION` |
+| `PRODUCT_VIEW`, `PRODUCT_DETAIL_VIEW` | `PRODUCT_VIEW` | `PRODUCT_EXPLORATION` |
+| `VARIANT_SELECTED`, or ≥ 2 `PRODUCT_DETAIL_VIEW` of the same product | `CONSIDERATION` | `PRODUCT_CONSIDERATION` |
+| `ADD_TO_CART` | `CART` | `CART_ABANDONMENT` |
+| `CHECKOUT_STARTED` | `CHECKOUT` | `CHECKOUT_ABANDONMENT` |
+| `WHATSAPP_CLICK` with `entry = STORE_NEED` | unchanged | `STORE_ORIENTED` (overrides the type at any stage) |
+| `WHATSAPP_CLICK` with `entry = CHAT` | unchanged | unchanged |
+
+The stage is the highest stage reached in the web session: a later weak event never lowers it. The type is the type of that stage unless `STORE_ORIENTED` was set.
+
+`intent_strength` (the former stage values):
+
 ```text
 NO_MEANINGFUL_INTENT
-  default; only PRODUCT_VIEW events below the INTERESTED threshold
+  default; visit, search, or a single PRODUCT_VIEW
 
 INTERESTED
   PRODUCT_DETAIL_VIEW for a variant
   OR ≥ 2 PRODUCT_VIEW events for the same product in one web session
+  OR stage CONSIDERATION
 
 HIGH_INTENT
-  ADD_TO_CART
-  OR CHECKOUT_STARTED
-  OR WHATSAPP_CLICK
+  stage CART or CHECKOUT
+  OR any WHATSAPP_CLICK
 ```
 
-A stage can only increase within a web session.
+## 11.3 Follow-up state
+
+The follow-up decision for an intent lives on the intent itself (one follow-up per intent):
+
+```text
+follow_up
+- decision          FOLLOW_UP_ELIGIBLE | FOLLOW_UP_NOT_ELIGIBLE
+- reason            reason code (00 §11.8 Change 11, D5)
+- evaluated_at
+- due_at            last activity + the type's delay
+- priority          NORMAL | HIGH
+- status            NOT_ELIGIBLE | SCHEDULED | SUPPRESSED | SENT | REPLIED | CONVERTED | HANDOFF | OPTED_OUT
+- message_kind      SESSION | TEMPLATE
+- template_name
+- sent_message_id / conversation_id / sent_at
+```
+
+A follow-up is sent only by the follow-up engine, never before `due_at`, after the policy is re-checked.
 
 ---
 
@@ -625,7 +704,12 @@ ConversationMessage
 - external_message_id
 - timestamp
 - delivery_status
+- origin               (CUSTOMER | AUTOMATED_REPLY | PROACTIVE_FOLLOW_UP)
+- message_kind         (SESSION | TEMPLATE; outbound only)
+- template_name        (TEMPLATE only)
 ```
+
+Message text is stored with any intent token removed and truncated to 2,000 characters.
 
 Avoid storing unnecessary sensitive content in broad analytics/logging systems.
 
@@ -845,8 +929,11 @@ CommerceEvent
 Canonical `event_type` values:
 
 ```text
+STOREFRONT_VISIT
+SEARCH
 PRODUCT_VIEW
 PRODUCT_DETAIL_VIEW
+VARIANT_SELECTED
 ADD_TO_CART
 CHECKOUT_STARTED
 WHATSAPP_CLICK
@@ -862,7 +949,12 @@ PICKUP_COMPLETED
 ONLINE_PURCHASE
 OFFLINE_PURCHASE
 HUMAN_HANDOFF
+FOLLOW_UP_SCHEDULED
+FOLLOW_UP_SUPPRESSED
+FOLLOW_UP_SENT
 ```
+
+`ORDER_CREATED` is also written by the (local-only) demo order path and, in L2, by the Shopify orders webhook; it marks the session's open intents `CONVERTED`.
 
 These are the only event names. Other documents that list analytics events (for example `02_MVP_SPEC.md` §11) refer to this list.
 
@@ -1032,6 +1124,8 @@ Tenant-owned entities live under their brand. Paths are always resolved server-s
 brands/{brand_id}
 brands/{brand_id}/connections/{connection_id}
 brands/{brand_id}/customers/{customer_id}
+brands/{brand_id}/channelIdentities/{sha256(channel:external_ref)}   (uniqueness guard → customer_id)
+brands/{brand_id}/webVisitors/{sha256(visitor_id)}                   (visitor → customer link)
 brands/{brand_id}/products/{product_id}
 brands/{brand_id}/productVariants/{variant_id}
 brands/{brand_id}/productMappings/{mapping_id}

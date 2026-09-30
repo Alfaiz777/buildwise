@@ -79,6 +79,22 @@ the import report shows real row errors.
 
 Uploaded files and import reports are stored under `backend/.data/files` (local profile).
 
+### What M4 (intent → follow-up → conversation) shows
+
+1. Open the **demo storefront** at <http://localhost:5173/demo-store> (local profile only). Choose
+   **Sign in as demo shopper: Asha (opted in)** — or Ravi (not opted in), or continue as a guest.
+2. Run a **Journey scenario** (or browse by hand): visit, search, product view, add to cart,
+   checkout, or "Need it today?" (click it but don't send the message).
+3. Sign in to the Brand Console as `admin@demo-brand.test` → **Conversations & intents** →
+   **Intents** tab: every intent with its type, stage and follow-up decision in plain words
+   (anonymous and browsing-only visitors are recorded but never messaged).
+4. Wait for the real delay (1–2 min in the demo): the page runs due follow-ups every 30 s, or press
+   **Run due follow-ups**. The brand's personalised message appears in the simulator
+   (Template / Session label, "Reply STOP to opt out").
+5. Reply as `shopper_3002` in the simulator: the pipeline answers on the product. Try
+   "I want to talk to a person" (handoff: automation stops) or "STOP" (opt-out).
+6. Place an order on the storefront before a follow-up is due: it is suppressed (already converted).
+
 Tests: `npm test` (unit), `npm run test:emulator` (end-to-end on the emulators).
 Deployment: see [infrastructure/README.md](infrastructure/README.md).
 

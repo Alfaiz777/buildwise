@@ -1,6 +1,15 @@
 import type { DecisionSource, GuardrailStatus } from '../../domain/ai.js';
+import type { InboundPolicyDecision } from '../../domain/conversationPolicy.js';
 import type { AgentDecision } from '../../ports/agent.js';
+import type {
+  ConversationRecord,
+  CustomerRecord,
+  IntentRecord,
+  MessageRecord,
+} from '../../ports/conversationRepositories.js';
 import type { InboundMessage, OutboundMessage } from '../../ports/messaging.js';
+import type { BrandRecord } from '../../ports/repositories.js';
+import type { OutboundDraft } from './outbound.js';
 
 /**
  * The ONE conversation pipeline for every customer channel
@@ -29,6 +38,30 @@ export const PIPELINE_STAGES = [
 
 export type PipelineStageName = (typeof PIPELINE_STAGES)[number];
 
+/** State the M4+ stages share (each stage fills its part; later stages read it). */
+export interface PipelineData {
+  receiptKey?: string;
+  /** Set by IDEMPOTENCY for a duplicate delivery: the original result, if already stored. */
+  duplicate?: { status: 'PROCESSING' | 'PROCESSED'; result: unknown };
+  brand?: BrandRecord;
+  customer?: CustomerRecord;
+  customerCreated?: boolean;
+  conversation?: ConversationRecord;
+  conversationCreated?: boolean;
+  /** Inbound text after token stripping and truncation (null for non-text content). */
+  text?: string | null;
+  inboundMessageId?: string;
+  /** The intent bound by the handshake or already current on the conversation. */
+  intent?: IntentRecord | null;
+  policy?: InboundPolicyDecision;
+  recommendationId?: string;
+  handoffStarted?: boolean;
+  /** Replies decided in this run, sent by OUTBOUND. */
+  drafts?: OutboundDraft[];
+  /** Outbound messages persisted by OUTBOUND in this run. */
+  sent?: MessageRecord[];
+}
+
 /** Mutable state passed from stage to stage for one inbound message. */
 export interface PipelineContext {
   readonly inbound: InboundMessage;
@@ -39,6 +72,7 @@ export interface PipelineContext {
   decisionSource: DecisionSource | null;
   guardrailStatus: GuardrailStatus | null;
   outbound: OutboundMessage[];
+  data: PipelineData;
 }
 
 /** `stop` ends the run early, e.g. a duplicate delivery or a policy block. */
@@ -80,6 +114,7 @@ export class ConversationPipeline {
       decisionSource: null,
       guardrailStatus: null,
       outbound: [],
+      data: {},
     };
     const completedStages: PipelineStageName[] = [];
     for (const stage of this.stages) {

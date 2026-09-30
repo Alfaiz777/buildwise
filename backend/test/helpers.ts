@@ -2,6 +2,21 @@ import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { MockCommerceProvider } from '../src/adapters/commerce/mockCommerceProvider.js';
 import { CsvRetailFileParser } from '../src/adapters/retail/csvRetailFileParser.js';
+import { SimulatorMessagingProvider } from '../src/adapters/messaging/simulatorMessagingProvider.js';
+import { createConversationModule } from '../src/application/conversationModule.js';
+import type { Channel } from '../src/domain/channels.js';
+import type { CommerceEvent } from '../src/domain/events.js';
+import type { MessagingProvider } from '../src/ports/messaging.js';
+import {
+  MemoryConversations,
+  MemoryCustomers,
+  MemoryEvents,
+  MemoryIntents,
+  MemoryReceipts,
+  MemoryRecommendations,
+  MemoryTokens,
+  MemoryVisitors,
+} from './memoryConversation.js';
 import { createApp } from '../src/app.js';
 import { AccountService } from '../src/application/accountService.js';
 import { CatalogService } from '../src/application/catalogService.js';
@@ -107,7 +122,13 @@ export class MemoryBrands implements BrandRepository {
     return [...this.brands];
   }
   async create(brand: { brandId: string; name: string }) {
-    const record = { ...brand, status: 'ACTIVE', createdAt: new Date().toISOString(), brandAdminUserId: null };
+    const record = {
+      ...brand,
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString(),
+      brandAdminUserId: null,
+      settings: {},
+    };
     this.brands.push(record);
     return record;
   }
@@ -391,12 +412,34 @@ export class FakeIdentity implements IdentityAdmin {
   }
 }
 
+/** Storefront origin allowed for every test brand (docs/04 §3). */
+export const TEST_ORIGIN = 'http://shop.test';
+
+/** Follow-up policy with the local demo delays (docs/04 §3). */
+export const DEMO_FOLLOW_UP_POLICY = {
+  inactivity_minutes: 1,
+  frequency_hours: 24,
+  types: {
+    SEARCH_EXPLORATION: { enabled: true, delay_minutes: 2, priority: 'NORMAL' },
+    PRODUCT_CONSIDERATION: { enabled: true, delay_minutes: 2, priority: 'NORMAL' },
+    CART_ABANDONMENT: { enabled: true, delay_minutes: 2, priority: 'NORMAL' },
+    CHECKOUT_ABANDONMENT: { enabled: true, delay_minutes: 1, priority: 'HIGH' },
+    STORE_ORIENTED: { enabled: true, delay_minutes: 1, priority: 'NORMAL' },
+  },
+};
+
 const brand = (brandId: string, brandAdminUserId: string | null, status = 'ACTIVE'): BrandRecord => ({
   brandId,
   name: `Brand ${brandId}`,
   status,
   createdAt: null,
   brandAdminUserId,
+  settings: {
+    allowed_storefront_origins: [TEST_ORIGIN],
+    messaging: { display_name: `Brand ${brandId}`, whatsapp_number: '910000000000' },
+    human_handoff_rules: { enabled: true },
+    follow_up_policy: DEMO_FOLLOW_UP_POLICY,
+  },
 });
 const retailer = (brandId: string, retailerId: string, status = 'ACTIVE'): RetailerRecord => ({
   brandId,
@@ -510,7 +553,18 @@ export function seedWorld() {
 
 /** A fresh, isolated app + in-memory state per call. */
 export function buildTestWorld(
-  options: { corsAllowedOrigins?: string[]; logger?: Logger; commerce?: CommerceProvider; localUploads?: boolean } = {},
+  options: {
+    corsAllowedOrigins?: string[];
+    logger?: Logger;
+    commerce?: CommerceProvider;
+    localUploads?: boolean;
+    /** Customer channels wired (default: the simulator). */
+    channels?: Channel[];
+    /** Injected clock for the M4 services. */
+    now?: () => Date;
+    /** The local-only demo storefront (default on; off mimics the gcp profile). */
+    demoStorefront?: boolean;
+  } = {},
 ) {
   const world = seedWorld();
   const users = new MemoryUsers(world.users);
@@ -546,6 +600,38 @@ export function buildTestWorld(
   });
 
   const emailOf = (uid: string) => users.users.find((u) => u.userId === uid)?.email ?? null;
+  const customers = new MemoryCustomers();
+  const visitors = new MemoryVisitors();
+  const intents = new MemoryIntents();
+  const tokens = new MemoryTokens(intents);
+  const conversations = new MemoryConversations();
+  const recommendations = new MemoryRecommendations();
+  const receipts = new MemoryReceipts();
+  const events = new MemoryEvents();
+  const sunk: CommerceEvent[] = [];
+  const messaging = new Map<Channel, MessagingProvider>();
+  if ((options.channels ?? ['SIMULATOR']).includes('SIMULATOR'))
+    messaging.set('SIMULATOR', new SimulatorMessagingProvider());
+  const conversation = createConversationModule({
+    brands,
+    products,
+    customers,
+    visitors,
+    intents,
+    tokens,
+    conversations,
+    recommendations,
+    receipts,
+    events,
+    audit,
+    sink: { name: 'LOCAL', emit: async (batch) => void sunk.push(...batch) },
+    messaging,
+    runtimeName: 'MOCK',
+    now: options.now,
+    demoStorefront:
+      options.demoStorefront === false ? undefined : { commerce: options.commerce ?? new MockCommerceProvider() },
+  });
+
   const app = createApp({
     config: { corsAllowedOrigins: options.corsAllowedOrigins ?? [] },
     logger: options.logger ?? silentLogger,
@@ -558,6 +644,11 @@ export function buildTestWorld(
       commerceSync,
       catalog: new CatalogService({ products, mappings, inventory }),
       retailImports,
+      intents: conversation.intents,
+      simulator: conversation.simulator,
+      conversations: conversation.queries,
+      followUps: conversation.followUps,
+      demoStorefront: conversation.demoStorefront,
     },
     localUploads: options.localUploads === false ? undefined : files,
   });
@@ -579,6 +670,16 @@ export function buildTestWorld(
     commerceSync,
     retailImports,
     storeService: new StoreService({ stores, inventory }),
+    customers,
+    visitors,
+    intents,
+    tokens,
+    conversations,
+    recommendations,
+    receipts,
+    events,
+    sunk,
+    conversation,
   };
 }
 

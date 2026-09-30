@@ -389,12 +389,13 @@ describe('Brand Console — M3 catalog & store truth', () => {
   it('setup checklist: an empty brand sees every step to do, each with its action', async () => {
     const api = apiFor(ME.brandAdmin, EMPTY);
     renderAt('/', signedIn, api);
+    // Each panel loads independently: wait for every one of them (no ordering assumptions).
     expect(await screen.findByText('Not synced yet.')).toBeInTheDocument();
-    expect(screen.getByText('No store stock imported yet.')).toBeInTheDocument();
-    expect(screen.getByText('Nothing mapped yet.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Import a retail CSV' })).toHaveAttribute('href', '#retail-import');
-    expect(screen.getByText('No products yet. Sync the catalog from your commerce store.')).toBeInTheDocument();
-    expect(screen.getByText('No imports yet.')).toBeInTheDocument();
+    expect(await screen.findByText('No store stock imported yet.')).toBeInTheDocument();
+    expect(await screen.findByText('Nothing mapped yet.')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Import a retail CSV' })).toHaveAttribute('href', '#retail-import');
+    expect(await screen.findByText('No products yet. Sync the catalog from your commerce store.')).toBeInTheDocument();
+    expect(await screen.findByText('No imports yet.')).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Sync catalog' })[0]!);
     expect(api.post).toHaveBeenCalledWith('/api/integrations/shopify/sync', {});

@@ -35,6 +35,8 @@ export interface CommerceCustomer {
   firstName: string | null;
   email: string | null;
   phone: string | null;
+  /** Marketing consent from the commerce source (e.g. Shopify email/SMS marketing consent). */
+  marketingConsent: 'OPTED_IN' | 'NOT_OPTED_IN';
 }
 
 export interface CommerceOrderLine {

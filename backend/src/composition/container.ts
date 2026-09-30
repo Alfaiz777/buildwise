@@ -16,6 +16,17 @@ import {
 } from '../adapters/firestore/repositories.js';
 import { SimulatorMessagingProvider } from '../adapters/messaging/simulatorMessagingProvider.js';
 import { CsvRetailFileParser } from '../adapters/retail/csvRetailFileParser.js';
+import {
+  FirestoreCommerceEventRepository,
+  FirestoreConversationRepository,
+  FirestoreCustomerRepository,
+  FirestoreIntentRepository,
+  FirestoreIntentTokenRepository,
+  FirestoreRecommendationRepository,
+  FirestoreVisitorLinkRepository,
+  FirestoreWebhookReceiptRepository,
+} from '../adapters/firestore/conversationRepositories.js';
+import { createConversationModule } from '../application/conversationModule.js';
 import { LocalFileStorageProvider } from '../adapters/storage/localFileStorageProvider.js';
 import { AccountService } from '../application/accountService.js';
 import { CatalogService } from '../application/catalogService.js';
@@ -92,7 +103,8 @@ export interface Container {
   storeService: StoreService;
 }
 
-export function buildContainer(config: Config, logger: Logger): Container {
+/** `now` is injectable for end-to-end tests (real due_at values without real waiting). */
+export function buildContainer(config: Config, logger: Logger, options: { now?: () => Date } = {}): Container {
   const providers = createProviders(config);
   const { auth, db } = initFirebase(config.projectId, config.emulators);
 
@@ -107,6 +119,26 @@ export function buildContainer(config: Config, logger: Logger): Container {
   const inventory = new FirestoreInventoryRepository(db);
   const connections = new FirestoreConnectionRepository(db);
   const imports = new FirestoreRetailImportRepository(db);
+  const conversation = createConversationModule({
+    brands,
+    products,
+    customers: new FirestoreCustomerRepository(db),
+    visitors: new FirestoreVisitorLinkRepository(db),
+    intents: new FirestoreIntentRepository(db),
+    tokens: new FirestoreIntentTokenRepository(db),
+    conversations: new FirestoreConversationRepository(db),
+    recommendations: new FirestoreRecommendationRepository(db),
+    receipts: new FirestoreWebhookReceiptRepository(db),
+    events: new FirestoreCommerceEventRepository(db),
+    audit,
+    sink: providers.events,
+    messaging: providers.messaging,
+    runtimeName: providers.agent.runtime,
+    logger,
+    now: options.now,
+    // The demo storefront and its demo shopper / order endpoints exist only in the local profile.
+    demoStorefront: config.profile === 'local' ? { commerce: providers.commerce } : undefined,
+  });
 
   return {
     config,
@@ -134,6 +166,11 @@ export function buildContainer(config: Config, logger: Logger): Container {
           inventory,
           audit,
         }),
+        intents: conversation.intents,
+        simulator: conversation.simulator,
+        conversations: conversation.queries,
+        followUps: conversation.followUps,
+        demoStorefront: conversation.demoStorefront,
       },
       localUploads: providers.files instanceof LocalFileStorageProvider ? providers.files : undefined,
     },
