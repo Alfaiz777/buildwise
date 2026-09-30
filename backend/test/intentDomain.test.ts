@@ -232,37 +232,31 @@ describe('conversation policy (docs/07 §10, §17)', () => {
 });
 
 describe('deterministic fallback decision (docs/03 §16.2)', () => {
-  it('validates against AgentDecisionSchema and never claims price, stock or policy', () => {
+  it('validates against AgentDecisionSchema, keeps the runtime and never claims price, stock or policy', () => {
     const decision = buildFallbackDecision({
       runtime: 'MOCK',
-      wantsHuman: false,
-      handoffEnabled: true,
+      handoffEnabled: false,
       brandName: 'Demo Beauty Co',
-      intent: { type: 'CART_ABANDONMENT', productTitle: 'Vitamin C Glow Serum' },
+      intentType: 'CART_ABANDONMENT',
+      failure: 'TIMEOUT',
     });
     expect(AgentDecisionSchema.parse(decision)).toBeTruthy();
     expect(decision).toMatchObject({ runtime: 'MOCK', next_best_action: { action: 'NO_ACTION' }, tool_calls: [] });
-    expect(decision.reply.text).toContain('Vitamin C Glow Serum');
-    expect(decision.reply.text).not.toMatch(/₹|\bin stock\b|price|refund|return policy/i);
+    expect(decision.required_tools).toEqual([]);
+    expect(decision.reply.text).toMatch(/try again/i);
+    expect(decision.reply.text).not.toMatch(/₹|in stock|price|refund|return policy/i);
   });
 
-  it('a request for a person → HUMAN_HANDOFF when handoff is enabled, otherwise a normal reply', () => {
+  it('with human handoff enabled the fallback is HUMAN_HANDOFF (a person takes over), never a commerce action', () => {
     const on = buildFallbackDecision({
       runtime: 'MOCK',
-      wantsHuman: true,
       handoffEnabled: true,
       brandName: 'B',
-      intent: null,
+      intentType: null,
+      failure: 'INVALID_OUTPUT',
     });
     expect(on.next_best_action.action).toBe('HUMAN_HANDOFF');
-    expect(AgentDecisionSchema.parse(on).intent.intent_type).toBe('SUPPORT_REQUEST');
-    const off = buildFallbackDecision({
-      runtime: 'MOCK',
-      wantsHuman: true,
-      handoffEnabled: false,
-      brandName: 'B',
-      intent: null,
-    });
-    expect(off.next_best_action.action).toBe('NO_ACTION');
+    expect(on.required_tools).toEqual(['request_human_handoff']);
+    expect(AgentDecisionSchema.parse(on).intent.intent_type).toBe('UNKNOWN');
   });
 });

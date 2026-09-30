@@ -58,6 +58,7 @@ export class MemoryCustomers implements CustomerRepository {
       optedOutAt: null,
       displayRef: create.displayRef,
       lastProactiveAt: null,
+      lastLocation: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -67,7 +68,7 @@ export class MemoryCustomers implements CustomerRepository {
   async update(
     brandId: string,
     customerId: string,
-    patch: Partial<Pick<CustomerRecord, 'consentState' | 'optedOutAt' | 'lastProactiveAt'>>,
+    patch: Partial<Pick<CustomerRecord, 'consentState' | 'optedOutAt' | 'lastProactiveAt' | 'lastLocation'>>,
   ) {
     const c = this.customers.find((x) => x.brandId === brandId && x.customerId === customerId);
     if (c) Object.assign(c, patch);

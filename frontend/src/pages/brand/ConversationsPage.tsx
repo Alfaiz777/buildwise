@@ -12,7 +12,9 @@ import {
   type IntentSummary,
   type SimulatorResponse,
 } from './conversationTypes';
+import { DecisionTrace } from './DecisionTrace';
 import { IntentPanel } from './IntentPanel';
+import { ReservationsPanel } from './ReservationsPanel';
 import { SimulatorPhone, type SimulatorSend } from './SimulatorPhone';
 import { formatDateTime } from './types';
 
@@ -48,13 +50,15 @@ const newMessageId = () =>
 
 /**
  * Brand Console → "Conversations & intents" (docs/11 §4): conversation list with filters,
- * an Intents tab (every intent, anonymous and not-eligible included), the conversation
- * detail with the "Intent & follow-up" panel, and the phone-style simulator.
+ * an Intents tab (every intent, anonymous and not-eligible included), a Reservations tab
+ * (M5), the conversation detail with the "Intent & follow-up" panel and the "Why Buildwise
+ * did this" decision trace, and the phone-style simulator.
  */
 export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) {
   const api = useApi();
   const location = useLocation();
-  const [tab, setTab] = useState<'CONVERSATIONS' | 'INTENTS'>('CONVERSATIONS');
+  const [tab, setTab] = useState<'CONVERSATIONS' | 'INTENTS' | 'RESERVATIONS'>('CONVERSATIONS');
+  const [reloadKey, setReloadKey] = useState(0);
   const [filter, setFilter] = useState<Filter>('ALL');
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
@@ -89,6 +93,7 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
   const refresh = () => {
     list.reload();
     intents.reload();
+    setReloadKey((k) => k + 1);
     if (selected) void loadDetail(selected);
   };
 
@@ -106,6 +111,7 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
       setSelected(res.conversation_id);
       list.reload();
       intents.reload();
+      setReloadKey((k) => k + 1);
       void loadDetail(res.conversation_id);
     } catch (err) {
       setError(errorMessage(err));
@@ -118,16 +124,21 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
   const runDue = useCallback(
     async (silent: boolean) => {
       try {
-        const r = await api.post<{ abandoned: number; sent: number; suppressed: number }>(
-          '/api/brand/follow-ups/process-due',
-          {},
-        );
-        if (!silent || r.sent || r.suppressed || r.abandoned) {
+        const r = await api.post<{
+          abandoned: number;
+          sent: number;
+          suppressed: number;
+          reservations_expired?: number;
+        }>('/api/brand/follow-ups/process-due', {});
+        const expired = r.reservations_expired ?? 0;
+        if (!silent || r.sent || r.suppressed || r.abandoned || expired) {
           setLastRun(
-            `Due follow-ups: ${r.sent} sent, ${r.suppressed} suppressed, ${r.abandoned} sessions marked abandoned.`,
+            `Due follow-ups: ${r.sent} sent, ${r.suppressed} suppressed, ${r.abandoned} sessions marked abandoned.` +
+              (expired ? ` ${expired} reservation hold(s) expired.` : ''),
           );
           list.reload();
           intents.reload();
+          setReloadKey((k) => k + 1);
           if (selected) void loadDetail(selected);
         }
       } catch (err) {
@@ -169,6 +180,14 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
             </button>
             <button type="button" role="tab" aria-selected={tab === 'INTENTS'} onClick={() => setTab('INTENTS')}>
               Intents
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'RESERVATIONS'}
+              onClick={() => setTab('RESERVATIONS')}
+            >
+              Reservations
             </button>
             <button type="button" className="secondary" onClick={refresh}>
               Refresh
@@ -231,8 +250,10 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
                 ))}
               </ul>
             </>
-          ) : (
+          ) : tab === 'INTENTS' ? (
             <IntentsTable intents={intents.data?.intents ?? null} error={intents.error} />
+          ) : (
+            <ReservationsPanel reloadKey={reloadKey} />
           )}
         </Section>
 
@@ -250,6 +271,7 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
             onSend={(m) => void send(m)}
           />
           {detail && <IntentPanel intent={detail.intent} events={detail.web_events} conversation={detail} />}
+          {detail && <DecisionTrace recommendations={detail.recommendations} />}
         </Section>
       </div>
     </ConsoleShell>

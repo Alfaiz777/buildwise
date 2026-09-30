@@ -15,6 +15,19 @@ export function runtimeBadge(decision: SimulatorResponse['decision'] | null): st
   return decision.runtime === 'MOCK' ? 'Mock AI, deterministic' : 'Gemini';
 }
 
+/** Renders http(s) links in a message as links (e.g. the maps link and "Buy online"). */
+function linkify(text: string) {
+  return text.split(/(https?:\/\/\S+)/g).map((part, i) =>
+    /^https?:\/\//.test(part) ? (
+      <a key={i} href={part} target="_blank" rel="noopener noreferrer">
+        {part}
+      </a>
+    ) : (
+      part
+    ),
+  );
+}
+
 export interface SimulatorSend {
   customerRef: string;
   content:
@@ -89,7 +102,7 @@ export function SimulatorPhone(props: {
               {m.message_kind === 'TEMPLATE' && ' · Template'}
               {m.message_kind === 'SESSION' && m.origin === 'PROACTIVE_FOLLOW_UP' && ' · Session message'}
             </div>
-            {m.text && <div className="bubble-text">{m.text}</div>}
+            {m.text && <div className="bubble-text">{linkify(m.text)}</div>}
             {m.location && (
               <div className="bubble-text">
                 📍 Location {m.location.latitude.toFixed(2)}, {m.location.longitude.toFixed(2)}

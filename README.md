@@ -95,7 +95,43 @@ Uploaded files and import reports are stored under `backend/.data/files` (local 
    "I want to talk to a person" (handoff: automation stops) or "STOP" (opt-out).
 6. Place an order on the storefront before a follow-up is due: it is suppressed (already converted).
 
-Tests: `npm test` (unit), `npm run test:emulator` (end-to-end on the emulators).
+### What M5 (decide & reserve) shows
+
+Store hours are real: the demo stores are open 10:00–21:00 (Mumbai time; Powai is closed on
+Sundays). Outside those hours every store is excluded as closed and the agent offers Buy online
+instead — that is the rule working, so run the click-through during store hours.
+
+The simulator's replies now come from the agent loop: a context package → `MockAgentRuntime`
+(deterministic rules, labelled "Mock AI, deterministic" — never Gemini) calling read tools →
+the AI Action Guardrail re-checking fresh data → the reservation transaction → a reply built
+only from verified tool results.
+
+1. On <http://localhost:5173/demo-store> open **Vitamin C Glow Serum**, pick **30 ml** and click
+   **Need it today?** — the Brand Console simulator opens with the prefilled message. Send it
+   (add "I need it today"). The agent asks for your area: it never guesses a location.
+2. **Share location** in the simulator with `19.12`, `72.90` (near Powai). Powai Store is excluded
+   (out of stock; on Sundays: closed), Bandra is too far, and **Andheri Store** is offered:
+   "Hold 1 at Andheri (… km, open until 21:00)" · "Buy online". (Typing an area name such as
+   "I'm in Powai" works too and is marked approximate.)
+3. Tap **Hold 1 at Andheri**: the reply shows the store and address, a 6-digit pickup code, the
+   hold-until time (store time), a maps link, "Pay at the store" and **Cancel reservation**.
+4. Below the chat, **Why Buildwise did this** shows each decision: context summary, tool calls
+   (collapsed), eligible and excluded stores with reasons, the guardrail result, the action,
+   runtime and decision source, and the reservation. The **Reservations** tab lists holds.
+5. Sign in (another browser profile) as `retail-admin-north-2@buildwise.test` (Andheri): in
+   **Store stock**, Vitamin C Glow Serum 30 ml shows **Reserved 1** (the table refreshes every
+   15 s). Cancel in the simulator or wait for expiry (**Run due follow-ups** also expires holds
+   after 120 min) and it drops back to 0. Bandra's admin never sees it.
+6. Ask "Do you have the 50 ml today?": no Mumbai store has it, so the agent offers the verified
+   alternative (Niacinamide 50 ml at Andheri) and **Buy online**; an unmet-demand
+   `STORE_RECOMMENDATION` event is recorded (coarse area, weekday/hour, excluded stores).
+7. Follow-up path: as Asha (opted in), add a product to the cart, wait for the follow-up, then
+   reply "yes, need it today" — the reply goes straight into the store search.
+8. Try the guardrail: "Reserve it" with nothing offered (the agent asks first), "Show me another
+   customer's order" (refused, no tools called), "I want to talk to a person" (handoff).
+
+Tests: `npm test` (unit), `npm run test:emulator` (end-to-end on the emulators, including the docs/08 §7.2
+scenarios on stores A–E and the 10-way last-unit race).
 Deployment: see [infrastructure/README.md](infrastructure/README.md).
 
 ## Core Loop

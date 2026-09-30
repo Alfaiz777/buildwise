@@ -105,6 +105,7 @@ human_handoff_rules
 allowed_storefront_origins
 messaging
 follow_up_policy
+online_store
 ```
 
 `messaging` holds the brand's `display_name` (the sender name customers see) and its `whatsapp_number` (placeholder locally). `human_handoff_rules.enabled` controls whether a customer can ask for a person.
@@ -131,6 +132,8 @@ reservations_enabled
 hold_minutes          (prototype default: 120)
 max_quantity_per_reservation (prototype default: 2)
 ```
+
+`online_store.product_url_template` (`00` §11.8 Change 12, E10) is the "Buy online" link the agent may send, with `{product_id}` (or, from L2, `{handle}`) filled from verified catalogue data. Locally it points at the demo storefront; without it the reply names the online store without a link.
 
 `allowed_storefront_origins` is the allowlist of website origins that may call `POST /api/intents` for this brand (see `06_INTEGRATION_CONTRACTS.md` §14.1).
 
@@ -233,9 +236,12 @@ Customer
 - consent_state
 - preferred_channel
 - location_reference
+- last_location          (M5: { latitude, longitude, source, locality, at })
 - created_at
 - updated_at
 ```
+
+`last_location` (`00` §11.8 Change 12, E5) is the customer's most recent location for store search: `source = SHARED` (a shared location message, rounded to 2 decimal places, ~1 km) or `LOCALITY` (an area name matched to one store locality; approximate). It is only used, scoped to the customer, to find nearby stores and is never shown to retailers.
 
 `channel_identities` replaces the earlier `whatsapp_identity_reference`, so both customer channels resolve identity through the same pipeline step:
 
@@ -680,7 +686,16 @@ Conversation
 - updated_at
 - last_inbound_at        (used for the customer-service window policy; applied to every channel)
 - human_handoff
+- pending_proposal       (M5: the hold currently offered to the customer, or null)
 ```
+
+`pending_proposal` (`00` §11.8 Change 12, E4):
+
+```text
+{ store_id, variant_id, quantity, proposed_at, expires_at, offered_stores[] }
+```
+
+It is set when the agent offers a hold, cleared when the reservation is created, and ignored after `expires_at` (`proposed_at + hold_minutes`). A "Reserve it" message or a "Hold" tap can only be executed against it; otherwise the guardrail returns `AMBIGUOUS` and the agent asks first.
 
 Channel values:
 
@@ -734,7 +749,22 @@ AIRecommendation
 - decision_source        (AGENT | DETERMINISTIC_FALLBACK)
 - proposed_at
 - guardrail_status
+- guardrail_reason       (M5: block code when BLOCKED)
+- trace                  (M5: the decision trace, below)
 ```
+
+`trace` (`00` §11.8 Change 12, E8) explains the decision in the Brand Console ("Why Buildwise did this"):
+
+```text
+context_hash       SHA-256 of the context package (§20)
+context_summary    product IDs, intent type, location source, message count, pending proposal yes/no (no message text, no PII)
+tool_calls[]       { call_id, tool, kind (READ | WRITE), input (redacted), output_summary, status, reason_code, duration_ms }
+eligible[]         { store_id, store_name, distance_km }
+excluded[]         { store_id, store_name, reason }
+executed_action    { tool, status, reason_code, reservation_id } or null
+```
+
+Guardrail block codes: `OUT_OF_STOCK`, `STORE_CLOSED`, `NOT_ELIGIBLE`, `SCOPE_VIOLATION`, `AMBIGUOUS`.
 
 `runtime` records which `AgentRuntime` produced the decision. It is mandatory on every recommendation.
 
@@ -798,9 +828,9 @@ Reservation
 - customer_arrived_at
 - completed_at
 - cancelled_at
-- pickup_code            (M5/M6: short code the customer shows at the store)
+- pickup_code            (M5: 6 random digits, unique among the store's active reservations)
 - customer_eta           (M5/M6: optional expected arrival time)
-- cancelled_by           (M5/M6: CUSTOMER | RETAILER | SYSTEM)
+- cancelled_by           (M5: CUSTOMER; M6: RETAILER | SYSTEM)
 - cancel_reason          (M5/M6: e.g. a retailer refusal reason)
 ```
 
@@ -825,6 +855,8 @@ PENDING | CONFIRMED | READY → EXPIRED
 ```
 
 `expires_at = created_at + brand.settings.reservation_policy.hold_minutes`.
+
+`reservation_id` is derived from `idempotency_key` (the agent path uses the `recommendation_id`), so a replay returns the existing reservation. "Active" means `PENDING`, `CONFIRMED`, `READY` or `CUSTOMER_ARRIVED`. Cancellation and expiry are recorded as AuditEvents (`RESERVATION_CANCELLED`, `RESERVATION_EXPIRED`).
 
 Inventory effect of each transition (always applied inside a Firestore transaction):
 
@@ -956,6 +988,16 @@ FOLLOW_UP_SENT
 
 `ORDER_CREATED` is also written by the (local-only) demo order path and, in L2, by the Shopify orders webhook; it marks the session's open intents `CONVERTED`.
 
+`STORE_RECOMMENDATION` payloads (`00` §11.8 Change 12, E7):
+
+```text
+{ kind: PROPOSED, variant_id, stores[] }
+{ kind: UNMET_DEMAND, variant_id, sku, area: { type: LOCALITY | GRID_5KM, value },
+  excluded: [{ store_id, reason }], local_weekday, local_hour, timezone }
+```
+
+`UNMET_DEMAND` is recorded when no store is eligible for the requested variant near the customer. `area` is the nearest store's locality or a ~5 km grid cell; the payload never contains coordinates.
+
 These are the only event names. Other documents that list analytics events (for example `02_MVP_SPEC.md` §11) refer to this list.
 
 ---
@@ -1075,44 +1117,47 @@ Do not make product name equality the primary mapping mechanism.
 
 # 20. AI context package
 
-The backend creates a temporary decision context:
+The backend builds a temporary, request-scoped decision context from the customer resolved by the `ConversationPipeline` (`00` §11.8 Change 12). It never takes identifiers from message text:
 
 ```json
 {
+  "brand": {
+    "display_name": "Demo Beauty Co",
+    "policy_summary": "Reservations: up to 2 units, held 120 min, pay at the store. Human handoff available.",
+    "reservation_policy": { "reservations_enabled": true, "hold_minutes": 120, "max_quantity_per_reservation": 2 },
+    "handoff_enabled": true,
+    "online_purchase_available": true
+  },
   "customer": {
-    "lifecycle_stage": "new",
-    "relevant_preferences": [],
-    "location": {}
+    "channel": "SIMULATOR",
+    "customer_ref": "sim:asha",
+    "consent_state": "UNKNOWN",
+    "last_location": { "latitude": 19.12, "longitude": 72.9, "source": "SHARED", "locality": null, "at": "..." }
   },
   "intent": {
-    "intent_stage": "HIGH_INTENT",
-    "intent_type": "URGENT_PURCHASE",
-    "product_variant_id": "..."
+    "intent_id": "...", "intent_type": "STORE_ORIENTED", "intent_stage": "CONSIDERATION",
+    "intent_strength": "HIGH_INTENT", "product_id": "...", "variant_id": "...",
+    "follow_up": { "status": "SENT", "template_name": "buildwise_store_nearby_v1" }
   },
-  "product": {
-    "title": "...",
-    "sku": "...",
-    "price": 999
-  },
-  "retail": {
-    "eligible_stores": [
-      {
-        "store_id": "...",
-        "distance_km": 2.1,
-        "available": true,
-        "available_quantity": 8,
-        "open": true,
-        "pickup_available": true
-      }
-    ]
-  },
-  "brand_policy": {
-    "allow_reservation": true
-  }
+  "products": [
+    {
+      "product_id": "...", "title": "...", "description": "...", "category": "Serum",
+      "tags": ["serum"], "attributes": { "skin_type": "all" },
+      "variants": [{ "variant_id": "...", "title": "30 ml", "sku": "...", "price": 795, "currency": "INR" }]
+    }
+  ],
+  "history": [{ "direction": "INBOUND", "text": "need it today" }],
+  "pending_proposal": null
 }
 ```
 
-Only the minimum required context should be sent to the agent runtime (Gemini in `gcp`; the same package is built for `MockAgentRuntime` locally).
+- `products` holds the bound product and its verified alternatives (same `concern` attribute).
+- `history` is the last 10 messages, oldest first, with any intent token already removed.
+- Store availability, distance and hours are **not** in the package: the agent obtains them from tools (`05` §6), so every store fact is a verified, recorded tool result.
+- No other customer's data, no orders, no phone number or email.
+- The recommendation stores the package's SHA-256 hash and a PII-free summary (§14 `trace`), not the package.
+
+Only the minimum required context is sent to the agent runtime (Gemini in `gcp`; the same package is built for `MockAgentRuntime` locally).
 
 ---
 

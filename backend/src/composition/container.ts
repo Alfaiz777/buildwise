@@ -15,6 +15,7 @@ import {
   FirestoreUserRepository,
 } from '../adapters/firestore/repositories.js';
 import { SimulatorMessagingProvider } from '../adapters/messaging/simulatorMessagingProvider.js';
+import { FirestoreReservationRepository } from '../adapters/firestore/reservationRepository.js';
 import { CsvRetailFileParser } from '../adapters/retail/csvRetailFileParser.js';
 import {
   FirestoreCommerceEventRepository,
@@ -99,7 +100,7 @@ export interface Container {
   config: Config;
   providers: Providers;
   appDeps: AppDeps;
-  /** Used by the agent tools from M5 (no HTTP route in M3). */
+  /** StoreService (docs/06 §4); the agent tools apply the same store-truth rules. */
   storeService: StoreService;
 }
 
@@ -133,7 +134,10 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     audit,
     sink: providers.events,
     messaging: providers.messaging,
-    runtimeName: providers.agent.runtime,
+    stores,
+    inventory,
+    reservations: new FirestoreReservationRepository(db),
+    agent: providers.agent,
     logger,
     now: options.now,
     // The demo storefront and its demo shopper / order endpoints exist only in the local profile.
@@ -170,6 +174,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         simulator: conversation.simulator,
         conversations: conversation.queries,
         followUps: conversation.followUps,
+        reservations: conversation.reservations,
         demoStorefront: conversation.demoStorefront,
       },
       localUploads: providers.files instanceof LocalFileStorageProvider ? providers.files : undefined,

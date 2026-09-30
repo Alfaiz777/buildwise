@@ -13,7 +13,7 @@ let sequence = 0;
  * milliseconds + a per-process sequence (so two IDs in the same millisecond still sort in
  * creation order) + random bits (so IDs from different instances never collide).
  */
-export function sortableId(prefix: 'msg', now: Date = new Date()): string {
+export function sortableId(prefix: 'msg' | 'rec', now: Date = new Date()): string {
   const ms = Math.max(now.getTime(), lastMs);
   sequence = ms === lastMs ? sequence + 1 : 0;
   lastMs = ms;

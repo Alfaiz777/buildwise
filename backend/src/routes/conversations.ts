@@ -1,11 +1,15 @@
 import { Router } from 'express';
-import type { ConversationQueryService, IntentView } from '../application/conversationQueryService.js';
+import type {
+  ConversationDetail,
+  ConversationQueryService,
+  IntentView,
+} from '../application/conversationQueryService.js';
 import type { FollowUpService } from '../application/followUpService.js';
 import { messageJson, type SimulatorService } from '../application/simulatorService.js';
 import { getBrandPrincipal } from '../auth/authorize.js';
 import { AppError, Errors } from '../lib/errors.js';
 import { RateLimiter } from '../lib/rateLimiter.js';
-import type { FollowUpState, RecommendationRecord } from '../ports/conversationRepositories.js';
+import type { FollowUpState } from '../ports/conversationRepositories.js';
 
 /**
  * Brand Console conversation routes, BRAND_ADMIN only (mounted behind requireScope('BRAND')):
@@ -52,14 +56,28 @@ export const intentJson = (v: IntentView) => ({
   follow_up: followUpJson(v.intent.followUp),
 });
 
-const recommendationJson = (r: RecommendationRecord) => ({
+const recommendationJson = (r: ConversationDetail['recommendations'][number]) => ({
   recommendation_id: r.recommendationId,
   action: r.action,
   runtime: r.runtime,
   decision_source: r.decisionSource,
   guardrail_status: r.guardrailStatus,
+  guardrail_reason: r.guardrailReason,
   rationale_summary: r.rationaleSummary,
+  target_store_id: r.targetStoreId,
+  target_variant_id: r.targetVariantId,
   proposed_at: r.proposedAt,
+  trace: r.trace,
+  reservation: r.reservation
+    ? {
+        reservation_id: r.reservation.reservationId,
+        status: r.reservation.status,
+        store_id: r.reservation.storeId,
+        store_name: r.reservation.storeName,
+        pickup_code: r.reservation.pickupCode,
+        expires_at: r.reservation.expiresAt,
+      }
+    : null,
 });
 
 export function simulatorRouter(simulator: SimulatorService, queries: ConversationQueryService): Router {
@@ -106,6 +124,7 @@ export function brandConversationsRouter(queries: ConversationQueryService, foll
       abandoned: result.abandoned,
       sent: result.sent,
       suppressed: result.suppressed,
+      reservations_expired: result.reservationsExpired,
       results: result.results.map((r) => ({ intent_id: r.intentId, outcome: r.outcome, reason: r.reason })),
     });
   });

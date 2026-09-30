@@ -181,6 +181,8 @@ AdkGeminiAgentRuntime     Google ADK for TypeScript + Gemini on Vertex AI
 - `AgentDecision` is the structured decision contract (`05_AI_AGENT_SPEC.md` §8).
 - Both runtimes call tools **only** through the backend `ToolExecutor`, which enforces tool authorization and the AI Action Guardrail.
 - The runtime never writes to Firestore directly.
+- Tool declarations are zod schemas exported as JSON Schema (name, description, kind `READ | WRITE`, input). The runtime is given the read tools; writes are proposed in `next_best_action` and executed by the pipeline after the guardrail (`00` §11.8 Change 12, E1). A runtime call that passes `brand_id`, `customer_id` or `conversation_id` is blocked (`SCOPE_VIOLATION`).
+- Budget: 20 s per inbound message (`03` §16.1); one repair attempt for invalid output, then the deterministic fallback (`03` §16.2).
 
 ---
 
@@ -803,6 +805,8 @@ Errors: `409 OUT_OF_STOCK | STORE_INACTIVE | RESERVATIONS_DISABLED | QUANTITY_LI
 When a customer confirms a reservation in a conversation (WhatsApp or simulator channel), the agent's `create_reservation()` tool calls the same ReservationService directly (no HTTP). It uses the customer resolved by the pipeline and `idempotency_key = recommendation_id`.
 
 ### GET /api/reservations
+
+Built in M5 (read-only). `PATCH /api/reservations/:id` and `GET /api/reservations/:id` are M6.
 
 Lists reservations for the Retailer Console and the Brand Console.
 

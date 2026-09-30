@@ -31,7 +31,7 @@ export function AppRoutes({ profile = 'local' }: { profile?: FrontendProfile }) 
             <Route path="/brand/conversations" element={<ConversationsPage autoPoll={profile === 'local'} />} />
           </Route>
           <Route element={<ScopeRoute scope="RETAIL" />}>
-            <Route path="/retailer" element={<RetailerHome />} />
+            <Route path="/retailer" element={<RetailerHome autoPoll={profile === 'local'} />} />
           </Route>
         </Route>
       </Route>

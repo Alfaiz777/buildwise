@@ -19,6 +19,18 @@ import type { CommerceEventType } from '../domain/events.js';
 import type { FollowUpPriority, FollowUpStatus } from '../domain/followUpPolicy.js';
 import type { IntentSignals, WebEventType } from '../domain/intentClassification.js';
 import type { TokenRejection } from '../domain/intentToken.js';
+import type { PendingProposal } from '../domain/guardrail.js';
+
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+/** Customer location for store search (docs/04 §6): rounded to 2 dp, or a store locality. */
+export interface CustomerLocation {
+  latitude: number;
+  longitude: number;
+  source: 'SHARED' | 'LOCALITY';
+  locality: string | null;
+  at: string;
+}
 
 export type ConsentState = 'OPTED_IN' | 'NOT_OPTED_IN' | 'OPTED_OUT' | 'UNKNOWN';
 
@@ -37,6 +49,7 @@ export interface CustomerRecord {
   /** Safe label for the Brand Console, e.g. "sim:customer_01". Never a phone number. */
   displayRef: string;
   lastProactiveAt: string | null;
+  lastLocation: CustomerLocation | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -54,7 +67,7 @@ export interface CustomerRepository {
   update(
     brandId: string,
     customerId: string,
-    patch: Partial<Pick<CustomerRecord, 'consentState' | 'optedOutAt' | 'lastProactiveAt'>>,
+    patch: Partial<Pick<CustomerRecord, 'consentState' | 'optedOutAt' | 'lastProactiveAt' | 'lastLocation'>>,
   ): Promise<void>;
 }
 
@@ -172,6 +185,8 @@ export interface ConversationRecord {
   lastMessageAt: string | null;
   humanHandoff: boolean;
   aiWindow: AiWindow;
+  /** M5: the hold currently offered to the customer (docs/04 §12). */
+  pendingProposal: PendingProposal | null;
 }
 
 export type MessageOrigin = 'CUSTOMER' | 'AUTOMATED_REPLY' | 'PROACTIVE_FOLLOW_UP';
@@ -202,7 +217,10 @@ export interface ConversationRepository {
     brandId: string,
     conversationId: string,
     patch: Partial<
-      Pick<ConversationRecord, 'currentIntentId' | 'lastInboundAt' | 'lastMessageAt' | 'humanHandoff' | 'updatedAt'>
+      Pick<
+        ConversationRecord,
+        'currentIntentId' | 'lastInboundAt' | 'lastMessageAt' | 'humanHandoff' | 'updatedAt' | 'pendingProposal'
+      >
     >,
   ): Promise<void>;
   /** Newest activity first. */
@@ -233,7 +251,33 @@ export interface RecommendationRecord {
   runtime: AgentRuntimeName;
   decisionSource: DecisionSource;
   guardrailStatus: GuardrailStatus;
+  /** M5: the block code when BLOCKED. */
+  guardrailReason: string | null;
   proposedAt: string;
+  /** M5: "Why Buildwise did this" (docs/04 §14); PII-free JSON. */
+  trace: DecisionTrace | null;
+}
+
+export interface DecisionTrace {
+  context_hash: string;
+  context_summary: { [key: string]: JsonValue };
+  tool_calls: {
+    call_id: string;
+    tool: string;
+    kind: 'READ' | 'WRITE';
+    phase: 'DECIDE' | 'EXECUTE';
+    input: { [key: string]: JsonValue };
+    output_summary: { [key: string]: JsonValue };
+    status: 'EXECUTED' | 'BLOCKED' | 'FAILED';
+    reason_code: string | null;
+    duration_ms: number;
+  }[];
+  eligible: { store_id: string; store_name: string; distance_km: number; variant_id: string }[];
+  excluded: { store_id: string; store_name: string; reason: string; distance_km: number | null; variant_id: string }[];
+  guardrail: { status: GuardrailStatus; reason_code: string | null; checked: string | null };
+  executed_action: { tool: string; status: string; reason_code: string | null; reservation_id: string | null } | null;
+  repaired: boolean;
+  fallback_reason: string | null;
 }
 
 export interface RecommendationRepository {
@@ -249,8 +293,8 @@ export interface CommerceEventRecord {
   eventType: CommerceEventType;
   source: 'WEBSITE' | 'SIMULATOR' | 'WHATSAPP' | 'SHOPIFY' | 'BUILDWISE';
   entityReference: string | null;
-  /** Small, PII-free payload (e.g. product_id, matched_category, search_term, reason). */
-  payload: Record<string, string | number | null>;
+  /** Small, PII-free JSON payload (e.g. product_id, matched_category, reason, unmet_demand). */
+  payload: { [key: string]: JsonValue };
   timestamp: string;
   idempotencyKey: string;
 }

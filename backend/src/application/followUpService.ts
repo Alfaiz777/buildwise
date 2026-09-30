@@ -29,12 +29,16 @@ export interface FollowUpDeps extends OutboundDeps {
   products: ProductRepository;
   customers: CustomerRepository;
   intents: IntentRepository;
+  /** M5: expires overdue reservation holds as part of the due-work run. */
+  expireReservations?: (brandId: string) => Promise<number>;
 }
 
 export interface ProcessDueResult {
   abandoned: number;
   sent: number;
   suppressed: number;
+  /** M5: overdue reservation holds expired (and released) in this run. */
+  reservationsExpired: number;
   results: { intentId: string; outcome: 'SENT' | 'SUPPRESSED'; reason: string | null }[];
 }
 
@@ -147,8 +151,10 @@ export class FollowUpService {
 
   async processDue(brandId: string): Promise<ProcessDueResult> {
     const brand = await this.deps.brands.getById(brandId);
-    const result: ProcessDueResult = { abandoned: 0, sent: 0, suppressed: 0, results: [] };
+    const result: ProcessDueResult = { abandoned: 0, sent: 0, suppressed: 0, reservationsExpired: 0, results: [] };
     if (!brand) return result;
+    // M5: the same due-work run expires overdue reservation holds (docs/03 §15).
+    if (this.deps.expireReservations) result.reservationsExpired = await this.deps.expireReservations(brandId);
     const settings = resolveFollowUpSettings(brand.settings.follow_up_policy);
     const now = this.deps.now();
 
@@ -313,6 +319,7 @@ export class FollowUpService {
       lastMessageAt: null,
       humanHandoff: false,
       aiWindow: { windowStart: null, count: 0, noticeSent: false },
+      pendingProposal: null,
     };
     await this.deps.conversations.create(conversation);
     return conversation;

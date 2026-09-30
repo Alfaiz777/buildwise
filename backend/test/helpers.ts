@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
+import { MockAgentRuntime } from '../src/adapters/agent/mockAgentRuntime.js';
 import { MockCommerceProvider } from '../src/adapters/commerce/mockCommerceProvider.js';
+import type { AgentRuntime } from '../src/ports/agent.js';
+import { MemoryReservations } from './memoryReservations.js';
 import { CsvRetailFileParser } from '../src/adapters/retail/csvRetailFileParser.js';
 import { SimulatorMessagingProvider } from '../src/adapters/messaging/simulatorMessagingProvider.js';
 import { createConversationModule } from '../src/application/conversationModule.js';
@@ -564,6 +567,10 @@ export function buildTestWorld(
     now?: () => Date;
     /** The local-only demo storefront (default on; off mimics the gcp profile). */
     demoStorefront?: boolean;
+    /** M5: the agent runtime (default: MockAgentRuntime) and its per-message budget. */
+    agent?: AgentRuntime;
+    aiBudgetMs?: number;
+    pickupCode?: () => string;
   } = {},
 ) {
   const world = seedWorld();
@@ -608,6 +615,7 @@ export function buildTestWorld(
   const recommendations = new MemoryRecommendations();
   const receipts = new MemoryReceipts();
   const events = new MemoryEvents();
+  const reservations = new MemoryReservations({ brands, stores, inventory });
   const sunk: CommerceEvent[] = [];
   const messaging = new Map<Channel, MessagingProvider>();
   if ((options.channels ?? ['SIMULATOR']).includes('SIMULATOR'))
@@ -626,7 +634,12 @@ export function buildTestWorld(
     audit,
     sink: { name: 'LOCAL', emit: async (batch) => void sunk.push(...batch) },
     messaging,
-    runtimeName: 'MOCK',
+    stores,
+    inventory,
+    reservations,
+    agent: options.agent ?? new MockAgentRuntime(),
+    aiBudgetMs: options.aiBudgetMs,
+    pickupCode: options.pickupCode,
     now: options.now,
     demoStorefront:
       options.demoStorefront === false ? undefined : { commerce: options.commerce ?? new MockCommerceProvider() },
@@ -648,6 +661,7 @@ export function buildTestWorld(
       simulator: conversation.simulator,
       conversations: conversation.queries,
       followUps: conversation.followUps,
+      reservations: conversation.reservations,
       demoStorefront: conversation.demoStorefront,
     },
     localUploads: options.localUploads === false ? undefined : files,
@@ -680,6 +694,7 @@ export function buildTestWorld(
     events,
     sunk,
     conversation,
+    reservations,
   };
 }
 

@@ -7,7 +7,16 @@
  * and never write to Firestore.
  */
 import { z } from 'zod';
-import { AGENT_RUNTIMES, AI_ACTIONS, INTENT_TYPES, type AgentRuntimeName } from '../domain/ai.js';
+import {
+  AGENT_RUNTIMES,
+  AI_ACTIONS,
+  INTENT_TYPES,
+  type AgentRuntimeName,
+  type IntentStage,
+  type IntentStrength,
+  type IntentType,
+} from '../domain/ai.js';
+import type { ProductSheet } from '../domain/agentTools.js';
 import type { InboundMessage } from './messaging.js';
 
 export const AgentDecisionSchema = z.object({
@@ -24,6 +33,9 @@ export const AgentDecisionSchema = z.object({
     action: z.enum(AI_ACTIONS),
     store_id: z.string().optional(),
     variant_id: z.string().optional(),
+    /** M5: units to hold (default 1) and the reservation a cancel refers to. */
+    quantity: z.number().int().min(1).max(100).optional(),
+    reservation_id: z.string().optional(),
     reason: z.string(),
   }),
   response_strategy: z.object({
@@ -48,16 +60,67 @@ export const AgentDecisionSchema = z.object({
 
 export type AgentDecision = z.infer<typeof AgentDecisionSchema>;
 
-/** The controlled context package (docs/04_DATA_MODEL.md §20) plus the message being answered. */
+export interface PendingProposalView {
+  store_id: string;
+  variant_id: string;
+  quantity: number;
+  proposed_at: string;
+  expires_at: string;
+  offered_stores: string[];
+}
+
+/** The controlled context package (docs/04_DATA_MODEL.md §20). Built by the backend only. */
+export interface AgentContext {
+  brand: {
+    display_name: string;
+    policy_summary: string;
+    reservation_policy: { reservations_enabled: boolean; hold_minutes: number; max_quantity_per_reservation: number };
+    handoff_enabled: boolean;
+    online_purchase_available: boolean;
+  };
+  customer: {
+    channel: string;
+    customer_ref: string;
+    consent_state: string;
+    last_location: {
+      latitude: number;
+      longitude: number;
+      source: 'SHARED' | 'LOCALITY';
+      locality: string | null;
+      at: string;
+    } | null;
+  };
+  intent: {
+    intent_id: string;
+    intent_type: IntentType;
+    intent_stage: IntentStage;
+    intent_strength: IntentStrength;
+    product_id: string | null;
+    variant_id: string | null;
+    follow_up: { status: string; template_name: string | null } | null;
+  } | null;
+  /** The bound product and its verified alternatives. */
+  products: ProductSheet[];
+  /** Last 10 messages, oldest first, intent token already removed. */
+  history: { direction: 'INBOUND' | 'OUTBOUND'; text: string }[];
+  pending_proposal: PendingProposalView | null;
+}
+
+/** The context package plus the inbound message being answered (docs/06 §6). */
 export interface DecisionInput {
   brandId: string;
   customerId: string;
   conversationId: string;
   message: InboundMessage;
-  /** Minimum-necessary context; shape grows with M4/M5. */
-  context: Record<string, unknown>;
-  /** Recent turns only, oldest first. */
+  /** The inbound text with any intent token removed (null for non-text messages). */
+  text: string | null;
+  context: AgentContext;
+  /** Recent turns only, oldest first (same as context.history). */
   history: { direction: 'INBOUND' | 'OUTBOUND'; text: string }[];
+  /** Set on the single repair attempt after invalid output (docs/05 §8). */
+  repair?: { error: string };
+  /** JSON Schema declarations of the tools this runtime may call during decide. */
+  tools: { name: string; description: string; parameters: unknown }[];
 }
 
 export interface ToolCall {

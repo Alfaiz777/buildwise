@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MockAgentRuntime } from '../src/adapters/agent/mockAgentRuntime.js';
 import { SimulatorMessagingProvider } from '../src/adapters/messaging/simulatorMessagingProvider.js';
-import { createAgentStage } from '../src/application/conversation/agentStage.js';
+import { runAgentRuntime } from '../src/application/conversation/agentStage.js';
 import {
   CONTINUE,
   ConversationPipeline,
@@ -9,7 +9,7 @@ import {
   type PipelineStage,
   type PipelineStageName,
 } from '../src/application/conversation/pipeline.js';
-import { ToolRegistry } from '../src/application/conversation/toolRegistry.js';
+import { decisionInput, stubExecutor } from './agentFixtures.js';
 import type { AgentRuntime } from '../src/ports/agent.js';
 
 const recordingStage = (name: PipelineStageName, log: string[]): PipelineStage => ({
@@ -75,14 +75,16 @@ describe('ConversationPipeline foundation', () => {
     expect(result.stoppedAt).toEqual({ stage: 'IDEMPOTENCY', reason: 'DUPLICATE' });
   });
 
-  it('the AGENT stage calls whichever AgentRuntime is injected and validates the decision contract', async () => {
-    const log: string[] = [];
-    const agent = createAgentStage(new MockAgentRuntime(), new ToolRegistry());
-    const result = await new ConversationPipeline(allStages(log, { AGENT: agent })).handleInbound(
-      simulatorMessage('I want a person'),
+  it('the agent run calls whichever AgentRuntime is injected and validates the decision contract', async () => {
+    const result = await runAgentRuntime(
+      new MockAgentRuntime(),
+      decisionInput({ type: 'TEXT', text: 'I want a person' }),
+      stubExecutor(),
     );
-    expect(result.context.decision).toMatchObject({ runtime: 'MOCK', next_best_action: { action: 'HUMAN_HANDOFF' } });
-    expect(result.context.decisionSource).toBe('AGENT');
+    expect(result).toMatchObject({
+      ok: true,
+      decision: { runtime: 'MOCK', next_best_action: { action: 'HUMAN_HANDOFF' } },
+    });
   });
 
   it('rejects a decision that claims a different runtime (MOCK can never pose as ADK_GEMINI)', async () => {
@@ -93,13 +95,12 @@ describe('ConversationPipeline foundation', () => {
         runtime: 'ADK_GEMINI',
       }),
     };
-    const pipeline = new ConversationPipeline(allStages([], { AGENT: createAgentStage(impostor, new ToolRegistry()) }));
-    await expect(pipeline.handleInbound(simulatorMessage('hi'))).rejects.toThrow(/runtime does not match/);
+    const result = await runAgentRuntime(impostor, decisionInput({ type: 'TEXT', text: 'hi' }), stubExecutor());
+    expect(result).toEqual({ ok: false, reason: 'INVALID_OUTPUT', repaired: true });
   });
 
-  it('the ToolExecutor blocks unregistered tools; there is no record_outcome tool', async () => {
-    const tools = new ToolRegistry();
-    expect(await tools.execute({ tool: 'record_outcome', input: {} })).toMatchObject({
+  it('the ToolExecutor blocks unknown tools; there is no record_outcome tool', async () => {
+    expect(await stubExecutor().execute({ tool: 'record_outcome', input: {} })).toMatchObject({
       status: 'BLOCKED',
       reasonCode: 'UNKNOWN_TOOL',
     });

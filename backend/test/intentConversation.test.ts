@@ -161,7 +161,7 @@ describe('simulator channel → ConversationPipeline', () => {
     world = await syncedWorld();
   });
 
-  it('first message creates the customer and conversation, persists messages, and replies with the fallback', async () => {
+  it('first message creates the customer and conversation, persists messages, and replies through the agent (MockAgentRuntime)', async () => {
     const usersBefore = world.users.users.length;
     const res = await simulate(world, 'admin_a', text('customer_01', 'Hi there'));
     expect(res.status).toBe(200);
@@ -171,7 +171,7 @@ describe('simulator channel → ConversationPipeline', () => {
       decision: {
         action: 'NO_ACTION',
         runtime: 'MOCK',
-        decision_source: 'DETERMINISTIC_FALLBACK',
+        decision_source: 'AGENT',
         guardrail_status: 'ALLOWED',
         executed_action: null,
       },
@@ -186,7 +186,7 @@ describe('simulator channel → ConversationPipeline', () => {
     expect(world.users.users).toHaveLength(usersBefore); // a customer is never a console user
     expect(world.recommendations.recommendations[0]).toMatchObject({
       runtime: 'MOCK',
-      decisionSource: 'DETERMINISTIC_FALLBACK',
+      decisionSource: 'AGENT',
       guardrailStatus: 'ALLOWED',
       action: 'NO_ACTION',
     });
@@ -345,7 +345,7 @@ describe('Brand Console conversation routes (brand-scoped)', () => {
     expect(detail.body.messages.map((m: { origin: string }) => m.origin)).toEqual(['CUSTOMER', 'AUTOMATED_REPLY']);
     expect(detail.body.recommendations[0]).toMatchObject({
       runtime: 'MOCK',
-      decision_source: 'DETERMINISTIC_FALLBACK',
+      decision_source: 'AGENT',
     });
 
     const intents = await admin('/api/brand/intents');

@@ -81,7 +81,7 @@ export class EventRecorder {
       targetId: string;
       result?: 'SUCCESS' | 'DENIED' | 'FAILED';
       reasonCode?: string | null;
-      actor?: { type: 'SYSTEM' | 'USER' | 'AGENT'; id: string };
+      actor?: { type: 'SYSTEM' | 'USER' | 'AGENT' | 'CUSTOMER'; id: string };
     },
   ): Promise<void> {
     try {

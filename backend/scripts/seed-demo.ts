@@ -30,6 +30,9 @@
  * proactive message. Demo shoppers (mock commerce customers 3002 opted in, 3003 not) are
  * linked when "Sign in as demo shopper" is used on /demo-store.
  *
+ * M5: reservations are enabled (hold 120 min, max 2), and "Buy online" links to the demo
+ * storefront product page. The MockAgentRuntime answers in the simulator.
+ *
  * Every password: buildwise-demo-1
  * Usage: npm run seed:demo   (re-runnable; resets the two fixture brands, upserts the users)
  */
@@ -62,6 +65,8 @@ const settings = (displayName: string, whatsappNumber: string) => ({
   reservation_policy: { reservations_enabled: true, hold_minutes: 120, max_quantity_per_reservation: 2 },
   human_handoff_rules: { enabled: true },
   messaging: { display_name: displayName, whatsapp_number: whatsappNumber }, // placeholder number
+  // M5: the "Buy online" link opens the product on the local demo storefront.
+  online_store: { product_url_template: 'http://localhost:5173/demo-store#product={product_id}' },
   follow_up_policy: {
     inactivity_minutes: 1,
     frequency_hours: 24,

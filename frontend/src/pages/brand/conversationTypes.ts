@@ -61,16 +61,86 @@ export interface ConversationDetail extends ConversationRow {
   brand_display_name: string;
   web_events: { event_type: string; at: string; details: Record<string, string | number | null> }[];
   messages: ChatMessage[];
-  recommendations: {
-    recommendation_id: string;
-    action: string;
-    runtime: string;
-    decision_source: string;
-    guardrail_status: string;
-    rationale_summary: string;
-    proposed_at: string;
-  }[];
+  recommendations: Recommendation[];
 }
+
+/** "Why Buildwise did this" (docs/04 §14 trace; docs/11 §4). */
+export interface DecisionTrace {
+  context_hash: string;
+  context_summary: Record<string, unknown>;
+  tool_calls: {
+    call_id: string;
+    tool: string;
+    kind: 'READ' | 'WRITE';
+    phase: 'DECIDE' | 'EXECUTE';
+    input: Record<string, unknown>;
+    output_summary: Record<string, unknown>;
+    status: 'EXECUTED' | 'BLOCKED' | 'FAILED';
+    reason_code: string | null;
+    duration_ms: number;
+  }[];
+  eligible: { store_id: string; store_name: string; distance_km: number; variant_id: string }[];
+  excluded: { store_id: string; store_name: string; reason: string; distance_km: number | null; variant_id: string }[];
+  guardrail: { status: string; reason_code: string | null; checked: string | null };
+  executed_action: { tool: string; status: string; reason_code: string | null; reservation_id: string | null } | null;
+  repaired: boolean;
+  fallback_reason: string | null;
+}
+
+export interface Recommendation {
+  recommendation_id: string;
+  action: string;
+  runtime: string;
+  decision_source: string;
+  guardrail_status: string;
+  guardrail_reason?: string | null;
+  rationale_summary: string;
+  target_store_id?: string | null;
+  target_variant_id?: string | null;
+  proposed_at: string;
+  trace?: DecisionTrace | null;
+  reservation?: {
+    reservation_id: string;
+    status: string;
+    store_id: string;
+    store_name: string;
+    pickup_code: string;
+    expires_at: string;
+  } | null;
+}
+
+export interface ReservationRow {
+  reservation_id: string;
+  store_id: string;
+  store_name: string;
+  product_title: string | null;
+  variant_title: string | null;
+  sku: string;
+  quantity: number;
+  status: string;
+  active: boolean;
+  customer_display: string;
+  created_at: string;
+  expires_at: string;
+}
+
+/** Plain words for store exclusions and guardrail blocks. */
+export const EXCLUSION_TEXT: Record<string, string> = {
+  INACTIVE: 'store inactive',
+  RESERVATIONS_DISABLED: 'no reservations / pickup',
+  TOO_FAR: 'too far',
+  CLOSED: 'closed now',
+  OUT_OF_STOCK: 'out of stock',
+};
+
+export const GUARDRAIL_TEXT: Record<string, string> = {
+  OUT_OF_STOCK: 'Blocked: out of stock on fresh data.',
+  STORE_CLOSED: 'Blocked: the store is closed now.',
+  NOT_ELIGIBLE:
+    'Blocked: the store or request is not eligible (inactive, reservations off, too far or over the limit).',
+  SCOPE_VIOLATION: "Blocked: outside this customer's or brand's scope.",
+  AMBIGUOUS: 'Blocked: nothing clear to act on — the customer is asked first.',
+};
 
 export interface SimulatorResponse {
   conversation_id: string;
@@ -82,7 +152,8 @@ export interface SimulatorResponse {
     guardrail_status: string | null;
     runtime: string;
     decision_source: string | null;
-    executed_action: null;
+    guardrail_reason?: string | null;
+    executed_action: { type: string; reservation_id: string | null } | null;
     policy_reason: string | null;
   };
 }

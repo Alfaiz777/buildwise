@@ -10,6 +10,10 @@ import type {
 import type { InboundMessage, OutboundMessage } from '../../ports/messaging.js';
 import type { BrandRecord } from '../../ports/repositories.js';
 import type { OutboundDraft } from './outbound.js';
+import type { Reply } from '../../domain/agentReplies.js';
+import type { JsonValue } from '../../ports/conversationRepositories.js';
+import type { GuardrailOutcome } from '../agent/replyComposer.js';
+import type { AgentToolExecutor } from '../agent/toolExecutor.js';
 
 /**
  * The ONE conversation pipeline for every customer channel
@@ -56,6 +60,22 @@ export interface PipelineData {
   policy?: InboundPolicyDecision;
   recommendationId?: string;
   handoffStarted?: boolean;
+  /** M5: this run's ToolExecutor (calls + trace), the context package digest and the stage results. */
+  tools?: AgentToolExecutor;
+  contextHash?: string;
+  contextSummary?: { [key: string]: JsonValue };
+  guardrail?: GuardrailOutcome;
+  /** The final reply after forward dispatch (TOOLS); falls back to decision.reply. */
+  reply?: Reply;
+  repaired?: boolean;
+  fallbackReason?: string | null;
+  executedAction?: {
+    type: string;
+    tool: string;
+    status: string;
+    reasonCode: string | null;
+    reservationId: string | null;
+  } | null;
   /** Replies decided in this run, sent by OUTBOUND. */
   drafts?: OutboundDraft[];
   /** Outbound messages persisted by OUTBOUND in this run. */

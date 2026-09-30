@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useMe } from '../../account/meContext';
 import { useApi, type Store } from '../../api/apiContext';
@@ -29,15 +29,17 @@ interface StockItem {
  * Retailer Console for RETAIL_ADMIN: exactly ONE physical store, the one the backend
  * verified at sign-in (docs/11_INTERFACE_CONTRACT.md). There is no store picker and no
  * list of the retailer's other stores: a Retail Admin never operates another store.
- * M3 adds the read-only stock of this store; reservations arrive in a later milestone.
+ * M3 adds the read-only stock of this store. M5: "Reserved" rises when a customer holds a
+ * product and falls when the hold is cancelled or expires (refresh, or a 15 s poll locally);
+ * the reservation queue with status actions arrives in M6.
  */
-export function RetailerHome() {
+export function RetailerHome({ autoPoll = false }: { autoPoll?: boolean }) {
   const me = useMe();
   if (me.scope !== 'RETAIL') return <Navigate to="/" replace />;
-  return <RetailerStore retailerName={me.retailer_name} store={me.store} />;
+  return <RetailerStore retailerName={me.retailer_name} store={me.store} autoPoll={autoPoll} />;
 }
 
-function RetailerStore({ retailerName, store }: { retailerName: string; store: Store }) {
+function RetailerStore({ retailerName, store, autoPoll }: { retailerName: string; store: Store; autoPoll: boolean }) {
   const api = useApi();
   const stock = useLoad(
     useCallback(
@@ -45,6 +47,12 @@ function RetailerStore({ retailerName, store }: { retailerName: string; store: S
       [api, store.store_id],
     ),
   );
+  const { reload } = stock;
+  useEffect(() => {
+    if (!autoPoll) return;
+    const id = setInterval(reload, 15_000);
+    return () => clearInterval(id);
+  }, [autoPoll, reload]);
 
   return (
     <ConsoleShell>
@@ -67,6 +75,9 @@ function RetailerStore({ retailerName, store }: { retailerName: string; store: S
         </dl>
       </Section>
       <Section title="Store stock">
+        <button type="button" className="secondary" onClick={reload}>
+          Refresh
+        </button>
         {stock.error && <p className="error">{stock.error}</p>}
         {stock.data?.items.length === 0 ? (
           <p className="muted">
@@ -106,7 +117,10 @@ function RetailerStore({ retailerName, store }: { retailerName: string; store: S
             </tbody>
           </table>
         )}
-        <p className="muted small">Read-only. Customer reservations for this store appear here in a later milestone.</p>
+        <p className="muted small">
+          Read-only. Reserved = units held for customers at this store (released when a hold is cancelled or expires);
+          available = quantity − reserved.{autoPoll ? ' This table refreshes every 15 seconds.' : ''}
+        </p>
       </Section>
     </ConsoleShell>
   );
