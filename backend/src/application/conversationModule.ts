@@ -30,6 +30,12 @@ import { FollowUpService } from './followUpService.js';
 import { IntentService } from './intentService.js';
 import { OrderService } from './orderService.js';
 import { ReservationService } from './reservationService.js';
+import { createToolHandlers } from './agent/tools.js';
+import { AttributionService } from './attributionService.js';
+import { FulfilmentService } from './fulfilmentService.js';
+import { HandoffService } from './handoffService.js';
+import { OutcomeService } from './outcomeService.js';
+import type { AttributionRefRepository, OutcomeRepository } from '../ports/outcomes.js';
 import { SimulatorService } from './simulatorService.js';
 
 export interface ConversationModuleDeps {
@@ -56,6 +62,9 @@ export interface ConversationModuleDeps {
   aiBudgetMs?: number;
   /** Test hook: deterministic pickup codes. */
   pickupCode?: () => string;
+  /** M6: outcomes and attribution references. */
+  outcomes: OutcomeRepository;
+  attributionRefs: AttributionRefRepository;
   now?: () => Date;
   logger?: Logger;
   /** LOCAL PROFILE ONLY: enables the demo storefront service (never wired in gcp). */
@@ -77,16 +86,40 @@ export function createConversationModule(deps: ConversationModuleDeps) {
     now,
     pickupCode: deps.pickupCode,
   });
+  const outcomes = new OutcomeService({
+    outcomes: deps.outcomes,
+    recommendations: deps.recommendations,
+    intents: deps.intents,
+    conversations: deps.conversations,
+    reservations: deps.reservations,
+    products: deps.products,
+    brands: deps.brands,
+    events: recorder,
+    now,
+  });
+  const attribution = new AttributionService({ refs: deps.attributionRefs, brands: deps.brands, now });
+  const fulfilment = new FulfilmentService({
+    ...deps,
+    reservations,
+    outcomes,
+    attribution,
+    events: recorder,
+    now,
+    tools: createToolHandlers({ ...deps, reservations, events: recorder, now }),
+  });
   const followUps = new FollowUpService({
     ...deps,
     events: recorder,
     now,
-    expireReservations: (brandId) => reservations.expireDue(brandId),
+    expireReservations: (brandId) => fulfilment.expireDue(brandId),
+    closeJourneys: (brandId) => outcomes.closeExpiredJourneys(brandId),
   });
-  const orders = new OrderService({ events: recorder, followUps, now });
+  const orders = new OrderService({ events: recorder, followUps, now, attribution, outcomes, intents: deps.intents });
   const pipeline = buildConversationPipeline({
     ...deps,
     reservations,
+    attribution,
+    outcomes,
     runtimeName: deps.agent.runtime,
     events: recorder,
     now,
@@ -106,6 +139,10 @@ export function createConversationModule(deps: ConversationModuleDeps) {
     recorder,
     pipeline,
     reservations,
+    fulfilment,
+    handoff: new HandoffService({ ...deps, events: recorder, now }),
+    outcomes,
+    attribution,
     intents,
     followUps,
     orders,

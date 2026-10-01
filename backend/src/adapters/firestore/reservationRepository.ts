@@ -1,10 +1,16 @@
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
-import { ACTIVE_RESERVATION_STATUSES, type ReservationStatus } from '../../domain/reservationStatus.js';
+import {
+  ACTIVE_RESERVATION_STATUSES,
+  applyInventoryPlan,
+  type ReservationStatus,
+  type TransitionDecision,
+} from '../../domain/reservationStatus.js';
 import { deriveAvailabilityStatus } from '../../domain/storeTruth.js';
 import type {
   CreateReservationRequest,
   CreateReservationResult,
   CreateReservationRules,
+  ReservationNotification,
   ReservationRecord,
   ReservationRepository,
   TransitionResult,
@@ -42,33 +48,55 @@ const toRecord = (id: string, d: FirebaseFirestore.DocumentData): ReservationRec
   cancelledAt: d.cancelled_at ?? null,
   cancelledBy: d.cancelled_by ?? null,
   cancelReason: d.cancel_reason ?? null,
+  cancelNote: d.cancel_note ?? null,
+  pickupCodeAttempts: Number(d.pickup_code_attempts ?? 0),
+  lastNotification: d.last_notification
+    ? {
+        status: d.last_notification.status,
+        event: d.last_notification.event,
+        messageKind: d.last_notification.message_kind ?? null,
+        at: d.last_notification.at,
+      }
+    : null,
 });
 
-const toDoc = (r: ReservationRecord) => ({
-  reservation_id: r.reservationId,
-  brand_id: r.brandId,
-  retailer_id: r.retailerId,
-  customer_id: r.customerId,
-  store_id: r.storeId,
-  variant_id: r.variantId,
-  sku: r.sku,
-  canonical_sku: r.canonicalSku,
-  quantity: r.quantity,
-  status: r.status,
-  idempotency_key: r.idempotencyKey,
-  ai_recommendation_id: r.aiRecommendationId,
-  pickup_code: r.pickupCode,
-  customer_eta: r.customerEta,
-  created_at: r.createdAt,
-  expires_at: r.expiresAt,
-  confirmed_at: r.confirmedAt,
-  ready_at: r.readyAt,
-  customer_arrived_at: r.customerArrivedAt,
-  completed_at: r.completedAt,
-  cancelled_at: r.cancelledAt,
-  cancelled_by: r.cancelledBy,
-  cancel_reason: r.cancelReason,
-});
+function toDoc(r: ReservationRecord) {
+  return {
+    reservation_id: r.reservationId,
+    brand_id: r.brandId,
+    retailer_id: r.retailerId,
+    customer_id: r.customerId,
+    store_id: r.storeId,
+    variant_id: r.variantId,
+    sku: r.sku,
+    canonical_sku: r.canonicalSku,
+    quantity: r.quantity,
+    status: r.status,
+    idempotency_key: r.idempotencyKey,
+    ai_recommendation_id: r.aiRecommendationId,
+    pickup_code: r.pickupCode,
+    customer_eta: r.customerEta,
+    created_at: r.createdAt,
+    expires_at: r.expiresAt,
+    confirmed_at: r.confirmedAt,
+    ready_at: r.readyAt,
+    customer_arrived_at: r.customerArrivedAt,
+    completed_at: r.completedAt,
+    cancelled_at: r.cancelledAt,
+    cancelled_by: r.cancelledBy,
+    cancel_reason: r.cancelReason,
+    cancel_note: r.cancelNote,
+    pickup_code_attempts: r.pickupCodeAttempts,
+    last_notification: r.lastNotification
+      ? {
+          status: r.lastNotification.status,
+          event: r.lastNotification.event,
+          message_kind: r.lastNotification.messageKind,
+          at: r.lastNotification.at,
+        }
+      : null,
+  };
+}
 
 export class FirestoreReservationRepository implements ReservationRepository {
   constructor(private readonly db: Firestore) {}
@@ -148,6 +176,9 @@ export class FirestoreReservationRepository implements ReservationRepository {
         cancelledAt: null,
         cancelledBy: null,
         cancelReason: null,
+        cancelNote: null,
+        pickupCodeAttempts: 0,
+        lastNotification: null,
       };
       const reserved = inventory!.reservedQuantity + req.quantity;
       tx.create(resRef, toDoc(reservation));
@@ -167,39 +198,52 @@ export class FirestoreReservationRepository implements ReservationRepository {
   async transition(
     brandId: string,
     reservationId: string,
-    to: ReservationStatus,
-    rules: Parameters<ReservationRepository['transition']>[3],
+    decide: (current: ReservationRecord) => TransitionDecision,
   ): Promise<TransitionResult> {
     const ref = this.col(brandId).doc(reservationId);
     return this.db.runTransaction(async (tx): Promise<TransitionResult> => {
       const snap = await tx.get(ref);
       if (!snap.exists) return { status: 'NOT_FOUND' };
       const current = toRecord(snap.id, snap.data()!);
-      if (!rules.allowed(current.status)) return { status: 'INVALID_TRANSITION', reservation: current };
       const invRef = this.brand(brandId)
         .collection('retailInventory')
         .doc(inventoryIdFor(current.storeId, current.canonicalSku));
-      const inv = await tx.get(invRef);
-      const effect = rules.effect(current.quantity);
-      if (inv.exists && (effect.reserved !== 0 || effect.onHand !== 0)) {
-        const quantity = Math.max(0, Number(inv.get('quantity') ?? 0) + effect.onHand);
-        const reserved = Math.min(quantity, Math.max(0, Number(inv.get('reserved_quantity') ?? 0) + effect.reserved));
+      const inv = await tx.get(invRef); // read before any write (Firestore transaction rule)
+      const decision = decide(current);
+      if (decision.kind === 'REJECT') {
+        if (decision.pickupCodeAttempts !== undefined) {
+          tx.update(ref, { pickup_code_attempts: decision.pickupCodeAttempts });
+        }
+        return {
+          status: 'REJECTED',
+          reason: decision.reason,
+          reservation: { ...current, pickupCodeAttempts: decision.pickupCodeAttempts ?? current.pickupCodeAttempts },
+        };
+      }
+      const { plan } = decision;
+      let inventory: { quantity: number; reservedQuantity: number } | null = null;
+      if (inv.exists) {
+        inventory = applyInventoryPlan(
+          { quantity: Number(inv.get('quantity') ?? 0), reservedQuantity: Number(inv.get('reserved_quantity') ?? 0) },
+          plan,
+        );
         tx.update(invRef, {
-          quantity,
-          reserved_quantity: reserved,
-          availability_status: deriveAvailabilityStatus(quantity, reserved),
+          quantity: inventory.quantity,
+          reserved_quantity: inventory.reservedQuantity,
+          availability_status: deriveAvailabilityStatus(inventory.quantity, inventory.reservedQuantity),
           last_updated_at: FieldValue.serverTimestamp(),
         });
       }
-      const next: ReservationRecord = { ...current, ...rules.patch, status: to };
-      tx.update(ref, {
-        status: to,
-        cancelled_at: next.cancelledAt,
-        cancelled_by: next.cancelledBy,
-        cancel_reason: next.cancelReason,
-      });
-      return { status: 'OK', reservation: next };
+      const next = { ...current, ...plan.patch, status: plan.to } as ReservationRecord;
+      tx.update(ref, toDoc(next));
+      return { status: 'OK', reservation: next, before: current, inventory };
     });
+  }
+
+  async setNotification(brandId: string, reservationId: string, n: ReservationNotification) {
+    await this.col(brandId)
+      .doc(reservationId)
+      .update({ last_notification: { status: n.status, event: n.event, message_kind: n.messageKind, at: n.at } });
   }
 
   async list(
@@ -225,3 +269,6 @@ export class FirestoreReservationRepository implements ReservationRepository {
     return snap.docs.map((d) => toRecord(d.id, d.data()));
   }
 }
+
+/** The reservation document shape (for the local synthetic history writer; same mapping as live writes). */
+export const reservationToDoc = toDoc;

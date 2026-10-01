@@ -94,6 +94,24 @@ export async function buildScenarioWorld(
       pickupAvailable: true,
     })),
   );
+  // M6: sc_A and sc_B belong to retailer rtl_A, each with its own Retail Admin (one store each).
+  for (const [storeId, userId] of [
+    ['sc_A', 'radmin_scA'],
+    ['sc_B', 'radmin_scB'],
+  ] as const) {
+    const record = world.stores.stores.find((x) => x.brandId === 'brand_A' && x.storeId === storeId)!;
+    record.retailerId = 'rtl_A';
+    record.retailAdminUserId = userId;
+    world.users.users.push({
+      userId,
+      role: 'RETAIL_ADMIN',
+      brandId: 'brand_A',
+      retailerId: 'rtl_A',
+      storeId,
+      email: `${userId}@example.test`,
+      status: 'ACTIVE',
+    });
+  }
   const rows = stores.flatMap((s) =>
     [
       [V1, s.v1],

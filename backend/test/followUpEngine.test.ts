@@ -180,7 +180,7 @@ describe('follow-up engine (docs/00 §11.8 Change 11)', () => {
       .set('Origin', TEST_ORIGIN)
       .send({ brand_id: 'brand_A', web_session_id: 'ws_order_000000', shopify_variant_id: SERUM_30 });
     expect(order.status).toBe(201);
-    expect(order.body).toEqual({ order_recorded: true, intent_converted: true });
+    expect(order.body).toMatchObject({ order_recorded: true, intent_converted: true, attributed: false });
     expect(intentOf(world, 'order')).toMatchObject({
       status: 'CONVERTED',
       followUp: { status: 'SUPPRESSED', reason: 'ALREADY_CONVERTED' },

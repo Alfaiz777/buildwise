@@ -17,6 +17,8 @@ export interface IntentTracker {
     openLink: (link: string | null, prefilled: string) => void;
   }): IntentTracker;
   ids(): { web_session_id: string; visitor_id: string };
+  /** M6: the bw_ref this tab arrived with from a "Buy online" link, or null. */
+  attributionRef?(): string | null;
   track(type: string, data?: { variantId?: string; searchTerm?: string; entry?: string }): Promise<TrackResult>;
   whatsapp(entry: 'STORE_NEED' | 'CHAT', variantId?: string): Promise<TrackResult>;
   newSession(): void;
@@ -201,6 +203,7 @@ export function DemoStorePage({ tracker: injected }: { tracker?: IntentTracker }
         brand_id: brandId,
         web_session_id: tracker.ids().web_session_id,
         shopify_variant_id: cart.variantId,
+        ...(tracker.attributionRef?.() ? { bw_ref: tracker.attributionRef!() } : {}),
       }),
     });
     if (!res.ok) return setError('Could not place the order.');

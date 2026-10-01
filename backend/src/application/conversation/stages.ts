@@ -18,7 +18,7 @@ import {
 } from '../../domain/guardrail.js';
 import { roundCoordinate } from '../../domain/locality.js';
 import { canTransition, resolveReservationPolicy } from '../../domain/reservationStatus.js';
-import { unmetDemandPayload } from '../../domain/unmetDemand.js';
+import { nearestOf, unmetDemandPayload } from '../../domain/unmetDemand.js';
 import {
   decideInboundPolicy,
   isOptOutRequest,
@@ -50,6 +50,8 @@ import { buildAgentContext } from '../agent/contextBuilder.js';
 import { composeReply, type GuardrailOutcome } from '../agent/replyComposer.js';
 import { AgentToolExecutor } from '../agent/toolExecutor.js';
 import { createToolHandlers, DEFAULT_RADIUS_KM } from '../agent/tools.js';
+import type { AttributionService } from '../attributionService.js';
+import type { OutcomeService } from '../outcomeService.js';
 import type { ReservationService } from '../reservationService.js';
 import { runAgentRuntime, AI_DECISION_BUDGET_MS } from './agentStage.js';
 import { sendAndPersist, type OutboundDeps } from './outbound.js';
@@ -79,6 +81,9 @@ export interface ConversationDeps extends OutboundDeps {
   runtimeName: AgentRuntimeName;
   /** Total AI decision budget per inbound message (docs/03 §16.1); injectable for tests. */
   aiBudgetMs?: number;
+  /** M6: bw_ref on "Buy online" links, and the step-11 evidence re-check. */
+  attribution?: AttributionService;
+  outcomes?: OutcomeService;
   /** OUTCOME hook for the follow-up engine (M4 part 2). */
   onReply?: (context: PipelineContext) => Promise<void>;
 }
@@ -213,6 +218,7 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
           humanHandoff: false,
           aiWindow: { windowStart: null, count: 0, noticeSent: false },
           pendingProposal: null,
+          handoffAt: null,
         };
         await deps.conversations.create(conversation);
         context.data.conversationCreated = true;
@@ -687,7 +693,13 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
               eventType: 'STORE_RECOMMENDATION',
               source: 'BUILDWISE',
               entityReference: recommendationId,
-              payload: { kind: 'PROPOSED', variant_id: pending.variantId, stores: offered },
+              payload: {
+                kind: 'PROPOSED',
+                variant_id: pending.variantId,
+                sku: source.output.variant.sku,
+                stores: offered,
+                ...nearestOf(source.output),
+              },
               idempotencyKey: `STORE_RECOMMENDATION:PROPOSED:${recommendationId}`,
             });
           }
@@ -714,8 +726,16 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
           });
         }
 
+        // M6: a "Buy online" link carries a bw_ref that links a later order to this journey.
+        const text = deps.attribution
+          ? await deps.attribution.decorate(brandId, reply.text, {
+              intentId: context.intentId,
+              conversationId: conversation.conversationId,
+              recommendationId,
+            })
+          : reply.text;
         drafts.push({
-          text: reply.text,
+          text,
           messageType: reply.options?.length ? ('INTERACTIVE' as const) : ('TEXT' as const),
           options: reply.options?.map((o) => ({ optionId: o.option_id, label: o.label })),
           origin: 'AUTOMATED_REPLY' as const,
@@ -754,11 +774,14 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
     },
   };
 
-  /** 11. OUTCOME — M4: follow-up status after a reply (opt-out / handoff / replied). */
+  /** 11. OUTCOME — follow-up status after a reply (M4) and a re-check of stored purchase evidence (M6; never from AI output). */
   const outcome: PipelineStage = {
     name: 'OUTCOME',
     async run(context) {
       await deps.onReply?.(context);
+      if (deps.outcomes && context.customerId) {
+        await deps.outcomes.evaluateCustomer(context.inbound.brandId, context.customerId);
+      }
       return CONTINUE;
     },
   };

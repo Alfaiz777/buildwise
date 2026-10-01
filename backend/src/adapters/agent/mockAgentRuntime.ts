@@ -166,7 +166,7 @@ class MockRun {
       case 'OTHER_STORES':
         return this.storeSearch({ otherStores: true, fromLocation: false });
       case 'STORE_SEARCH':
-        return this.storeSearch({ otherStores: false, fromLocation: rule.fromLocation });
+        return this.storeSearch({ otherStores: false, fromLocation: rule.fromLocation, variantId: rule.variantId });
       case 'EDUCATE':
         return this.educate();
       case 'COMPARE':
@@ -285,11 +285,12 @@ class MockRun {
     otherStores: boolean;
     fromLocation: boolean;
     areaOnly?: boolean;
+    variantId?: string;
   }): Promise<AgentDecision> {
     const intentType: IntentType = URGENT.test(this.text)
       ? 'URGENT_PURCHASE'
       : (this.ctx.intent?.intent_type ?? 'STORE_ORIENTED');
-    const { variantId, ask } = await this.resolveVariant();
+    const { variantId, ask } = opts.variantId ? { variantId: opts.variantId, ask: null } : await this.resolveVariant();
     if (!variantId) {
       return this.decision({
         action: 'NO_ACTION',

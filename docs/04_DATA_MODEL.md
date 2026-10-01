@@ -106,7 +106,10 @@ allowed_storefront_origins
 messaging
 follow_up_policy
 online_store
+outcome_policy
 ```
+
+`outcome_policy.attribution_window_days` (default 7; the local demo sets `attribution_window_minutes`) is how long a journey stays open for online-order attribution and before it closes as `NONE` (`00` §11.8 Change 13, F5).
 
 `messaging` holds the brand's `display_name` (the sender name customers see) and its `whatsapp_number` (placeholder locally). `human_handoff_rules.enabled` controls whether a customer can ask for a person.
 
@@ -687,6 +690,7 @@ Conversation
 - last_inbound_at        (used for the customer-service window policy; applied to every channel)
 - human_handoff
 - pending_proposal       (M5: the hold currently offered to the customer, or null)
+- handoff_at             (M6: when the conversation was handed to a person)
 ```
 
 `pending_proposal` (`00` §11.8 Change 12, E4):
@@ -719,7 +723,7 @@ ConversationMessage
 - external_message_id
 - timestamp
 - delivery_status
-- origin               (CUSTOMER | AUTOMATED_REPLY | PROACTIVE_FOLLOW_UP)
+- origin               (CUSTOMER | AUTOMATED_REPLY | PROACTIVE_FOLLOW_UP | RESERVATION_UPDATE | HUMAN_AGENT)
 - message_kind         (SESSION | TEMPLATE; outbound only)
 - template_name        (TEMPLATE only)
 ```
@@ -830,8 +834,11 @@ Reservation
 - cancelled_at
 - pickup_code            (M5: 6 random digits, unique among the store's active reservations)
 - customer_eta           (M5/M6: optional expected arrival time)
-- cancelled_by           (M5: CUSTOMER; M6: RETAILER | SYSTEM)
-- cancel_reason          (M5/M6: e.g. a retailer refusal reason)
+- cancelled_by           (CUSTOMER | RETAILER)
+- cancel_reason          (CUSTOMER_REQUEST; retailer refusal: NOT_ACTUALLY_IN_STOCK | DAMAGED | STORE_CLOSING_EARLY | OTHER)
+- cancel_note            (M6: internal note for OTHER, ≤ 140 chars; never shown to the customer)
+- pickup_code_attempts   (M6: wrong codes entered at completion; locked from 5)
+- last_notification      (M6: { status: SENT | NOT_SENT_OPTED_OUT | NOT_SENT_NO_CONVERSATION, kind, event, at })
 ```
 
 Status:
@@ -885,7 +892,11 @@ Outcome
 - order_reference        (ONLINE / online ALTERNATIVE: Shopify order ID)
 - value
 - timestamp
+- journey_key            (M6: int:<intent_id> or conv:<conversation_id>; the document ID derives from it)
+- conversation_id, variant_id, currency, evidence (RESERVATION_COMPLETED | ORDER | WINDOW_CLOSED)
 ```
+
+M6 rules (`00` §11.8 Change 13, F5): one Outcome per engaged journey (a conversation exists or a follow-up was sent); created only if absent, so the **first verified purchase wins** and replays are no-ops — a later purchase in the same journey is recorded only as its CommerceEvent. `NONE` is written only by the process-due sweep once the attribution window (`outcome_policy`, §3) has passed since the journey's last recommendation with no active reservation. Each Outcome links the journey's last `ai_recommendation_id` and is announced by an `OUTCOME_RECORDED` CommerceEvent and an AuditEvent.
 
 `purchase_type` is the **canonical business outcome**:
 
@@ -978,6 +989,7 @@ STORE_RECOMMENDATION
 RESERVATION_CREATED
 RESERVATION_CONFIRMED
 PICKUP_COMPLETED
+OUTCOME_RECORDED
 ONLINE_PURCHASE
 OFFLINE_PURCHASE
 HUMAN_HANDOFF
@@ -1184,6 +1196,7 @@ brands/{brand_id}/conversations/{conversation_id}/messages/{message_id}
 brands/{brand_id}/aiRecommendations/{recommendation_id}
 brands/{brand_id}/reservations/{reservation_id}
 brands/{brand_id}/outcomes/{outcome_id}
+brands/{brand_id}/attributionRefs/{ref_hash}   (M6: bw_ref → journey link; hash only, TTL = attribution window)
 brands/{brand_id}/commerceEvents/{event_id}
 brands/{brand_id}/auditEvents/{audit_id}
 ```
@@ -1223,6 +1236,7 @@ Entity → collection:
 | Reservation | `reservations` |
 | PageAccessToken | `pageAccessTokens` |
 | Outcome | `outcomes` |
+| AttributionRef | `attributionRefs` |
 | CommerceEvent | `commerceEvents` |
 | AuditEvent | `auditEvents` |
 | PlatformAuditEvent | `platformAuditEvents` |

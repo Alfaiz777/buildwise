@@ -30,6 +30,9 @@
  * proactive message. Demo shoppers (mock commerce customers 3002 opted in, 3003 not) are
  * linked when "Sign in as demo shopper" is used on /demo-store.
  *
+ * M6: 4 weeks of synthetic history (scripts/demoHistory.ts, every document marked
+ * demo_history: true) and a 10-minute local attribution window.
+ *
  * M5: reservations are enabled (hold 120 min, max 2), and "Buy online" links to the demo
  * storefront product page. The MockAgentRuntime answers in the simulator.
  *
@@ -44,6 +47,7 @@ import { buildContainer } from '../src/composition/container.js';
 import { loadConfig } from '../src/config/env.js';
 import { initFirebase } from '../src/firebase/admin.js';
 import { silentLogger } from '../src/lib/logger.js';
+import { writeDemoHistory } from './demoHistory.js';
 
 const PASSWORD = 'buildwise-demo-1';
 const SEED_ACTOR = { type: 'SYSTEM' as const, id: 'seed-demo' };
@@ -67,6 +71,8 @@ const settings = (displayName: string, whatsappNumber: string) => ({
   messaging: { display_name: displayName, whatsapp_number: whatsappNumber }, // placeholder number
   // M5: the "Buy online" link opens the product on the local demo storefront.
   online_store: { product_url_template: 'http://localhost:5173/demo-store#product={product_id}' },
+  // M6: short local attribution window so a NONE outcome can be seen during a demo (default 7 days).
+  outcome_policy: { attribution_window_minutes: 10 },
   follow_up_policy: {
     inactivity_minutes: 1,
     frequency_hours: 24,
@@ -190,4 +196,13 @@ await db.doc('brands/brd_demo').update({ brand_admin_user_id: demoAdmin });
 await db.doc('brands/brd_other').update({ brand_admin_user_id: otherAdmin });
 await db.doc('brands/brd_demo/stores/st_north_1').update({ retail_admin_user_id: north1 });
 await db.doc('brands/brd_demo/stores/st_north_2').update({ retail_admin_user_id: north2 });
+
+// M6: 4 weeks of deterministic, clearly flagged synthetic history for the Outcomes screen.
+const history = await writeDemoHistory(db, { brandId: 'brd_demo', now: new Date() });
+console.log('Synthetic demo history (demo_history: true):');
+console.log(
+  `  ${Object.entries(history.counts)
+    .map(([k, v]) => `${k} ${v}`)
+    .join(', ')}`,
+);
 process.exit(0);

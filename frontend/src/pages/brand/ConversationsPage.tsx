@@ -13,6 +13,7 @@ import {
   type SimulatorResponse,
 } from './conversationTypes';
 import { DecisionTrace } from './DecisionTrace';
+import { HandoffPanel, waitingFor } from './HandoffPanel';
 import { IntentPanel } from './IntentPanel';
 import { ReservationsPanel } from './ReservationsPanel';
 import { SimulatorPhone, type SimulatorSend } from './SimulatorPhone';
@@ -232,7 +233,11 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
                       }}
                     >
                       <strong>{r.customer_ref}</strong> <span className="muted small">{humanize(r.channel)}</span>
-                      {r.human_handoff && <span className="badge">needs a person</span>}
+                      {r.human_handoff && (
+                        <span className="badge warn">
+                          needs a person{r.handoff_at ? ` · ${waitingFor(r.handoff_at, Date.now())}` : ''}
+                        </span>
+                      )}
                       <div className="small">
                         {r.intent ? (
                           <>
@@ -270,6 +275,16 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
             busy={busy}
             onSend={(m) => void send(m)}
           />
+          {detail?.human_handoff && (
+            <HandoffPanel
+              conversationId={detail.conversation_id}
+              handoffAt={detail.handoff_at}
+              onChanged={() => {
+                list.reload();
+                void loadDetail(detail.conversation_id);
+              }}
+            />
+          )}
           {detail && <IntentPanel intent={detail.intent} events={detail.web_events} conversation={detail} />}
           {detail && <DecisionTrace recommendations={detail.recommendations} />}
         </Section>

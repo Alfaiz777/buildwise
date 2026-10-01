@@ -500,3 +500,47 @@ code {
   background: #fde8e8;
   color: #8a1c1c;
 }
+
+/* M6: store queue, handoff, outcomes */
+.queue-list {
+  list-style: none;
+  padding: 0;
+}
+.queue-card {
+  border: 1px solid var(--border, #d8dde3);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.5rem;
+}
+.queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.badge.new {
+  background: #e6f4ea;
+  color: #1e6b34;
+}
+.warn-text {
+  color: #8a1c1c;
+}
+.week-strip {
+  margin: 0 0 0.5rem;
+}
+.handoff-panel {
+  border: 1px solid #f0c36d;
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  margin: 0.75rem 0;
+}
+.handoff-panel h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+.reading {
+  font-weight: 600;
+}
+.suggestions li {
+  margin-bottom: 0.5rem;
+}

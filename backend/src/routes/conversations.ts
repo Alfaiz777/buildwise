@@ -1,10 +1,12 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import type {
   ConversationDetail,
   ConversationQueryService,
   IntentView,
 } from '../application/conversationQueryService.js';
 import type { FollowUpService } from '../application/followUpService.js';
+import { HUMAN_REPLY_MAX, type HandoffService } from '../application/handoffService.js';
 import { messageJson, type SimulatorService } from '../application/simulatorService.js';
 import { getBrandPrincipal } from '../auth/authorize.js';
 import { AppError, Errors } from '../lib/errors.js';
@@ -20,6 +22,8 @@ import type { FollowUpState } from '../ports/conversationRepositories.js';
  */
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
+const HumanReply = z.object({ text: z.string().trim().min(1).max(HUMAN_REPLY_MAX) }).strict();
+
 const idParam = (value: unknown) => {
   if (typeof value !== 'string' || !ID.test(value)) throw Errors.notFound();
   return value;
@@ -110,7 +114,11 @@ const MESSAGE_ID = /^msg_[0-9a-z]{9,40}$/;
 const simulatorEnabled = (s: SimulatorService) => s.enabled;
 const simulatorDisabled = () => new AppError(404, 'CHANNEL_DISABLED', 'The simulator channel is not enabled.');
 
-export function brandConversationsRouter(queries: ConversationQueryService, followUps: FollowUpService): Router {
+export function brandConversationsRouter(
+  queries: ConversationQueryService,
+  followUps: FollowUpService,
+  handoff: HandoffService,
+): Router {
   const router = Router();
 
   /**
@@ -125,6 +133,7 @@ export function brandConversationsRouter(queries: ConversationQueryService, foll
       sent: result.sent,
       suppressed: result.suppressed,
       reservations_expired: result.reservationsExpired,
+      outcomes_closed: result.outcomesClosed,
       results: result.results.map((r) => ({ intent_id: r.intentId, outcome: r.outcome, reason: r.reason })),
     });
   });
@@ -138,6 +147,7 @@ export function brandConversationsRouter(queries: ConversationQueryService, foll
         channel: r.conversation.channel,
         status: r.conversation.status,
         human_handoff: r.conversation.humanHandoff,
+        handoff_at: r.conversation.handoffAt,
         last_message_at: r.conversation.lastMessageAt,
         last_inbound_at: r.conversation.lastInboundAt,
         intent: r.intent ? intentJson(r.intent) : null,
@@ -153,6 +163,7 @@ export function brandConversationsRouter(queries: ConversationQueryService, foll
       channel: d.conversation.channel,
       status: d.conversation.status,
       human_handoff: d.conversation.humanHandoff,
+      handoff_at: d.conversation.handoffAt,
       last_inbound_at: d.conversation.lastInboundAt,
       brand_display_name: d.brandDisplayName,
       intent: d.intent ? intentJson(d.intent) : null,
@@ -160,6 +171,20 @@ export function brandConversationsRouter(queries: ConversationQueryService, foll
       messages: d.messages.map(messageJson),
       recommendations: d.recommendations.map(recommendationJson),
     });
+  });
+
+  /** M6 handoff queue: reply as a person (origin HUMAN_AGENT; opt-out and the 24 h window still apply). */
+  router.post('/conversations/:conversationId/replies', async (req, res) => {
+    const body = HumanReply.safeParse(req.body);
+    if (!body.success) throw Errors.invalidRequest('Write a reply of up to 1,000 characters.');
+    const message = await handoff.reply(getBrandPrincipal(res), idParam(req.params.conversationId), body.data.text);
+    res.status(201).json(messageJson(message));
+  });
+
+  /** M6: "Resolve and return to assistant" — the next customer message gets automated replies again. */
+  router.post('/conversations/:conversationId/resolve', async (req, res) => {
+    await handoff.resolve(getBrandPrincipal(res), idParam(req.params.conversationId));
+    res.json({ human_handoff: false });
   });
 
   router.get('/intents', async (req, res) => {

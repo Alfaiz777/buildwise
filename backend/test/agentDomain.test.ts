@@ -512,6 +512,8 @@ describe('unmet demand payload (Change 12, E7)', () => {
       local_weekday: 'wednesday',
       local_hour: 12,
       timezone: 'Asia/Kolkata',
+      nearest_store_id: 'st_3',
+      nearest_reason: 'OUT_OF_STOCK',
     });
     expect(JSON.stringify(payload)).not.toMatch(/19\.12|72\.9/);
     expect(unmetDemandPayload({ ...find, excluded: [] }, NOW).area).toEqual({ type: 'GRID_5KM', value: 'g5:424:1620' });

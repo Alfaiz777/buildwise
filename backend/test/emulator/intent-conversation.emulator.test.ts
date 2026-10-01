@@ -267,7 +267,7 @@ describe('M4 local E2E: intent → follow-up → conversation', () => {
     const tab = storefront('brd_m4', 'order');
     await tab.signInShopper(ASHA);
     await tab.event('ADD_TO_CART', { shopify_variant_id: SERUM_30 });
-    expect((await tab.order()).body).toEqual({ order_recorded: true, intent_converted: true });
+    expect((await tab.order()).body).toMatchObject({ order_recorded: true, intent_converted: true, attributed: false });
     const intent = await intentOf('brd_m4', tab.ids.web_session_id);
     expect(intent).toMatchObject({
       status: 'CONVERTED',

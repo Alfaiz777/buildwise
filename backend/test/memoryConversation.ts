@@ -25,6 +25,13 @@ import type {
   WebhookReceiptRepository,
 } from '../src/ports/conversationRepositories.js';
 
+import type {
+  AttributionRefRecord,
+  AttributionRefRepository,
+  OutcomeRecord,
+  OutcomeRepository,
+} from '../src/ports/outcomes.js';
+
 const clone = <T>(v: T): T => structuredClone(v);
 
 export class MemoryCustomers implements CustomerRepository {
@@ -120,6 +127,14 @@ export class MemoryIntents implements IntentRepository {
   async listIdleActive(brandId: string, beforeIso: string) {
     return clone(
       this.intents.filter((x) => x.brandId === brandId && x.status === 'ACTIVE' && x.lastEventAt <= beforeIso),
+    );
+  }
+  async listFollowUpsSentBetween(brandId: string, fromIso: string, toIso: string) {
+    return clone(
+      this.intents.filter(
+        (x) =>
+          x.brandId === brandId && !!x.followUp?.sentAt && x.followUp.sentAt >= fromIso && x.followUp.sentAt < toIso,
+      ),
     );
   }
   async listDueFollowUps(brandId: string, nowIso: string) {
@@ -219,8 +234,29 @@ export class MemoryRecommendations implements RecommendationRepository {
   async create(r: RecommendationRecord) {
     this.recommendations.push(clone(r));
   }
+  private sorted(rows: RecommendationRecord[]) {
+    return clone(
+      [...rows].sort(
+        (a, b) => a.proposedAt.localeCompare(b.proposedAt) || a.recommendationId.localeCompare(b.recommendationId),
+      ),
+    );
+  }
+  async get(brandId: string, id: string) {
+    const r = this.recommendations.find((x) => x.brandId === brandId && x.recommendationId === id);
+    return r ? clone(r) : null;
+  }
   async listByConversation(brandId: string, conversationId: string) {
-    return clone(this.recommendations.filter((r) => r.brandId === brandId && r.conversationId === conversationId));
+    return this.sorted(
+      this.recommendations.filter((r) => r.brandId === brandId && r.conversationId === conversationId),
+    );
+  }
+  async listByIntent(brandId: string, intentId: string) {
+    return this.sorted(this.recommendations.filter((r) => r.brandId === brandId && r.intentId === intentId));
+  }
+  async listProposedBetween(brandId: string, fromIso: string, toIso: string) {
+    return this.sorted(
+      this.recommendations.filter((r) => r.brandId === brandId && r.proposedAt >= fromIso && r.proposedAt < toIso),
+    );
   }
 }
 
@@ -254,5 +290,29 @@ export class MemoryReceipts implements WebhookReceiptRepository {
   async fail(key: string) {
     const r = this.receipts.get(key);
     if (r) r.status = 'FAILED';
+  }
+}
+
+export class MemoryOutcomes implements OutcomeRepository {
+  readonly outcomes: OutcomeRecord[] = [];
+  async createIfAbsent(o: OutcomeRecord) {
+    if (this.outcomes.some((x) => x.brandId === o.brandId && x.outcomeId === o.outcomeId)) return false;
+    this.outcomes.push(clone(o));
+    return true;
+  }
+  async get(brandId: string, id: string) {
+    const o = this.outcomes.find((x) => x.brandId === brandId && x.outcomeId === id);
+    return o ? clone(o) : null;
+  }
+}
+
+export class MemoryAttributionRefs implements AttributionRefRepository {
+  readonly refs: AttributionRefRecord[] = [];
+  async create(r: AttributionRefRecord) {
+    this.refs.push(clone(r));
+  }
+  async get(brandId: string, refHash: string) {
+    const r = this.refs.find((x) => x.brandId === brandId && x.refHash === refHash);
+    return r ? clone(r) : null;
   }
 }

@@ -3,6 +3,7 @@ import { MeGate, ScopeHome, ScopeRoute } from './account/meContext';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 import { BrandHome } from './pages/brand/BrandHome';
 import { ConversationsPage } from './pages/brand/ConversationsPage';
+import { OutcomesPage } from './pages/brand/OutcomesPage';
 import { DemoStorePage } from './pages/demo/DemoStorePage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -29,6 +30,7 @@ export function AppRoutes({ profile = 'local' }: { profile?: FrontendProfile }) 
           <Route element={<ScopeRoute scope="BRAND" />}>
             <Route path="/brand" element={<BrandHome />} />
             <Route path="/brand/conversations" element={<ConversationsPage autoPoll={profile === 'local'} />} />
+            <Route path="/brand/outcomes" element={<OutcomesPage />} />
           </Route>
           <Route element={<ScopeRoute scope="RETAIL" />}>
             <Route path="/retailer" element={<RetailerHome autoPoll={profile === 'local'} />} />

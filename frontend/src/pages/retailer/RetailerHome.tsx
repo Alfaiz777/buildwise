@@ -1,9 +1,10 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useMe } from '../../account/meContext';
 import { useApi, type Store } from '../../api/apiContext';
 import { ConsoleShell, Section, useLoad } from '../../components/ConsoleShell';
 import { formatDateTime } from '../brand/types';
+import { RetailerQueue, WeekStrip } from './RetailerQueue';
 
 const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -29,9 +30,9 @@ interface StockItem {
  * Retailer Console for RETAIL_ADMIN: exactly ONE physical store, the one the backend
  * verified at sign-in (docs/11_INTERFACE_CONTRACT.md). There is no store picker and no
  * list of the retailer's other stores: a Retail Admin never operates another store.
- * M3 adds the read-only stock of this store. M5: "Reserved" rises when a customer holds a
- * product and falls when the hold is cancelled or expires (refresh, or a 15 s poll locally);
- * the reservation queue with status actions arrives in M6.
+ * M3: the read-only stock of this store. M5: "Reserved" rises when a customer holds a
+ * product and falls when the hold is cancelled or expires. M6: the reservation queue —
+ * confirm, ready, customer arrived, complete with the pickup code, or refuse with a reason.
  */
 export function RetailerHome({ autoPoll = false }: { autoPoll?: boolean }) {
   const me = useMe();
@@ -48,6 +49,7 @@ function RetailerStore({ retailerName, store, autoPoll }: { retailerName: string
     ),
   );
   const { reload } = stock;
+  const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => {
     if (!autoPoll) return;
     const id = setInterval(reload, 15_000);
@@ -73,6 +75,16 @@ function RetailerStore({ retailerName, store, autoPoll }: { retailerName: string
           <dt>Hours</dt>
           <dd>{hoursText(store.store_hours) ?? <span className="muted">not provided</span>}</dd>
         </dl>
+      </Section>
+      <Section title="Reservations">
+        <WeekStrip storeId={store.store_id} reloadKey={reloadKey} />
+        <RetailerQueue
+          autoPoll={autoPoll}
+          onChanged={() => {
+            reload();
+            setReloadKey((k) => k + 1);
+          }}
+        />
       </Section>
       <Section title="Store stock">
         <button type="button" className="secondary" onClick={reload}>

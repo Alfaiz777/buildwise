@@ -30,6 +30,8 @@ const Order = z
     brand_id: BRAND_ID,
     web_session_id: z.string().regex(OPAQUE_ID),
     shopify_variant_id: z.string().min(1).max(200).optional(),
+    /** M6: the attribution reference from the "Buy online" link (opaque; validated server-side). */
+    bw_ref: z.string().min(1).max(64).optional(),
   })
   .strict();
 
@@ -77,8 +79,14 @@ export function demoStorefrontRouter(demo: DemoStorefrontService, intents: Inten
     const result = await demo.placeOrder(brand.brandId, {
       webSessionId: body.web_session_id,
       shopifyVariantId: body.shopify_variant_id ?? null,
+      attributionRef: body.bw_ref ?? null,
     });
-    res.status(201).json({ order_recorded: true, intent_converted: result.intentConverted });
+    res.status(201).json({
+      order_recorded: true,
+      intent_converted: result.intentConverted,
+      attributed: result.attributed,
+      outcome_recorded: result.outcomeRecorded,
+    });
   });
 
   return router;

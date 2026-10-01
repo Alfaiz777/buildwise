@@ -30,6 +30,7 @@ export type ParsedOption =
   | { kind: 'OTHER_STORES' }
   | { kind: 'BUY_ONLINE' }
   | { kind: 'CANCEL'; reservationId: string }
+  | { kind: 'RECHECK'; variantId: string }
   | { kind: 'UNKNOWN' };
 
 export function parseOption(optionId: string): ParsedOption {
@@ -38,6 +39,7 @@ export function parseOption(optionId: string): ParsedOption {
   if (optionId.startsWith('hold:') && optionId.length > 5) return { kind: 'HOLD', storeId: optionId.slice(5) };
   if (optionId.startsWith('cancel:') && optionId.length > 7)
     return { kind: 'CANCEL', reservationId: optionId.slice(7) };
+  if (optionId.startsWith('recheck:') && optionId.length > 8) return { kind: 'RECHECK', variantId: optionId.slice(8) };
   return { kind: 'UNKNOWN' };
 }
 

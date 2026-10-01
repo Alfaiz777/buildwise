@@ -16,6 +16,10 @@ import {
 } from '../adapters/firestore/repositories.js';
 import { SimulatorMessagingProvider } from '../adapters/messaging/simulatorMessagingProvider.js';
 import { FirestoreReservationRepository } from '../adapters/firestore/reservationRepository.js';
+import {
+  FirestoreAttributionRefRepository,
+  FirestoreOutcomeRepository,
+} from '../adapters/firestore/outcomeRepository.js';
 import { CsvRetailFileParser } from '../adapters/retail/csvRetailFileParser.js';
 import {
   FirestoreCommerceEventRepository,
@@ -28,6 +32,8 @@ import {
   FirestoreWebhookReceiptRepository,
 } from '../adapters/firestore/conversationRepositories.js';
 import { createConversationModule } from '../application/conversationModule.js';
+import { InsightsService } from '../application/insightsService.js';
+import { FirestoreInsightsReader } from '../adapters/firestore/insightsReader.js';
 import { LocalFileStorageProvider } from '../adapters/storage/localFileStorageProvider.js';
 import { AccountService } from '../application/accountService.js';
 import { CatalogService } from '../application/catalogService.js';
@@ -137,6 +143,8 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     stores,
     inventory,
     reservations: new FirestoreReservationRepository(db),
+    outcomes: new FirestoreOutcomeRepository(db),
+    attributionRefs: new FirestoreAttributionRefRepository(db),
     agent: providers.agent,
     logger,
     now: options.now,
@@ -175,6 +183,15 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         conversations: conversation.queries,
         followUps: conversation.followUps,
         reservations: conversation.reservations,
+        fulfilment: conversation.fulfilment,
+        handoff: conversation.handoff,
+        insights: new InsightsService({
+          reader: new FirestoreInsightsReader(db),
+          stores,
+          retailers,
+          products,
+          now: options.now ?? (() => new Date()),
+        }),
         demoStorefront: conversation.demoStorefront,
       },
       localUploads: providers.files instanceof LocalFileStorageProvider ? providers.files : undefined,

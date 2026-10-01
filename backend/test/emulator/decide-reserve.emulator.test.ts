@@ -17,7 +17,7 @@ import { createApp } from '../../src/app.js';
 import type { ReservationService } from '../../src/application/reservationService.js';
 import { buildContainer } from '../../src/composition/container.js';
 import { loadConfig } from '../../src/config/env.js';
-import { canTransition, inventoryEffect, type ReservationStatus } from '../../src/domain/reservationStatus.js';
+import { decideRetailerTransition, type ReservationStatus } from '../../src/domain/reservationStatus.js';
 import { initFirebase } from '../../src/firebase/admin.js';
 import { silentLogger } from '../../src/lib/logger.js';
 
@@ -428,17 +428,20 @@ describe('docs/08 §8 reservation tests (real Firestore transactions)', () => {
     const made = await create('to_complete');
     if (made.status === 'REJECTED') throw new Error('expected a reservation');
     const repo = new FirestoreReservationRepository(db);
+    const code = made.reservation.pickupCode;
     const move = (to: ReservationStatus) =>
-      repo.transition(B1, made.reservation.reservationId, to, {
-        allowed: (from) => canTransition(from, to),
-        effect: (q) => inventoryEffect(to, q),
-        patch: {},
-      });
-    expect((await move('COMPLETED')).status).toBe('INVALID_TRANSITION'); // PENDING → COMPLETED is not allowed
+      repo.transition(B1, made.reservation.reservationId, (current) =>
+        decideRetailerTransition(
+          current,
+          { to, expectedCurrentStatus: current.status, pickupCode: code, cancelReason: 'DAMAGED' },
+          new Date().toISOString(),
+        ),
+      );
+    expect(await move('COMPLETED')).toMatchObject({ status: 'REJECTED', reason: 'INVALID_TRANSITION' }); // PENDING → COMPLETED
     for (const to of ['CONFIRMED', 'READY', 'CUSTOMER_ARRIVED', 'COMPLETED'] as const)
       expect((await move(to)).status).toBe('OK');
     expect(await stock(B1, 'sc_B', 'DBC-VCSERUM-50')).toMatchObject({ quantity: 4, reserved_quantity: 0 });
-    expect((await move('CANCELLED')).status).toBe('INVALID_TRANSITION');
+    expect(await move('CANCELLED')).toMatchObject({ status: 'REJECTED', reason: 'INVALID_TRANSITION' });
   });
 
   it('retail re-upload overwrites quantity and preserves reserved_quantity', async () => {
@@ -550,7 +553,8 @@ describe('demo story (demo-retail.csv)', () => {
     expect(textOf(fifty)).toContain(
       "Vitamin C Glow Serum 50 ml isn't available for pickup at a store near you right now.",
     );
-    expect(textOf(fifty)).toContain('http://localhost:5173/demo-store#product=prd_1001');
+    // M6: the link carries a bw_ref (before the #fragment) that links a later order to this journey.
+    expect(textOf(fifty)).toMatch(/http:\/\/localhost:5173\/demo-store\?bw_ref=[0-9A-Z]{26}#product=prd_1001/);
     const events = await db
       .collection(`brands/${DEMO}/commerceEvents`)
       .where('event_type', '==', 'STORE_RECOMMENDATION')

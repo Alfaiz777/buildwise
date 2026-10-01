@@ -13,7 +13,7 @@ export type MockRule =
   | { rule: 'HOLD'; storeId: string | null }
   | { rule: 'BUY_ONLINE' }
   | { rule: 'OTHER_STORES' }
-  | { rule: 'STORE_SEARCH'; fromLocation: boolean }
+  | { rule: 'STORE_SEARCH'; fromLocation: boolean; variantId?: string }
   | { rule: 'EDUCATE' }
   | { rule: 'COMPARE' }
   | { rule: 'CLARIFY' };
@@ -44,6 +44,8 @@ export function classifyMessage(input: {
     if (option.kind === 'CANCEL') return { rule: 'CANCEL', reservationId: option.reservationId };
     if (option.kind === 'BUY_ONLINE') return { rule: 'BUY_ONLINE' };
     if (option.kind === 'OTHER_STORES') return { rule: 'OTHER_STORES' };
+    // M6: "Check stores again" after an expired hold — a fresh search for that variant.
+    if (option.kind === 'RECHECK') return { rule: 'STORE_SEARCH', fromLocation: true, variantId: option.variantId };
     return { rule: 'CLARIFY' };
   }
   const text = input.text ?? '';

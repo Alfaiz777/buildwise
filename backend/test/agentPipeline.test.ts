@@ -279,7 +279,10 @@ describe('forward dispatch when no store is eligible (Change 12, E3 / E7)', () =
     await s.share('c1');
     const res = await s.tap('c1', 'buy_online');
     expect(res.body.decision.action).toBe('ONLINE_PURCHASE');
-    expect(replyText(res)).toBe('You can order Vitamin C Glow Serum online here: http://shop.test/products/prd_1001');
+    // M6: the link carries an attribution reference (bw_ref) that links a later order to this journey.
+    expect(replyText(res)).toMatch(
+      /^You can order Vitamin C Glow Serum online here: http:\/\/shop\.test\/products\/prd_1001\?bw_ref=[0-9A-HJKMNP-TV-Z]{26}$/,
+    );
   });
 
   it('reservations switched off for the brand → stores are shown without a Hold option', async () => {

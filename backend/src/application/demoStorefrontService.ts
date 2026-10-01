@@ -5,6 +5,7 @@ import type { CustomerRepository, IntentRepository, VisitorLinkRepository } from
 import type { ProductRepository } from '../ports/repositories.js';
 import type { FollowUpService } from './followUpService.js';
 import { intentIdFor, visitorHashOf } from './intentService.js';
+import { variantIdFor } from './commerceSyncService.js';
 import type { OrderService } from './orderService.js';
 
 /** The synthetic shoppers the local demo storefront offers (mock commerce fixture). */
@@ -119,13 +120,18 @@ export class DemoStorefrontService {
     };
   }
 
-  placeOrder(brandId: string, input: { webSessionId: string; shopifyVariantId: string | null }) {
+  placeOrder(
+    brandId: string,
+    input: { webSessionId: string; shopifyVariantId: string | null; attributionRef?: string | null },
+  ) {
     return this.deps.orders.recordOrder({
       brandId,
       webSessionId: input.webSessionId,
       externalOrderId: `demo_order_${randomUUID()}`,
-      variantId: input.shopifyVariantId,
+      // The same normalisation as catalogue sync: Shopify variant GID → Buildwise variant ID.
+      variantId: input.shopifyVariantId ? variantIdFor(input.shopifyVariantId) : null,
       source: 'WEBSITE',
+      attributionRef: input.attributionRef ?? null,
     });
   }
 }
