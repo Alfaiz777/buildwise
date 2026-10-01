@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { AccountService } from '../application/accountService.js';
+import type { ReservationService } from '../application/reservationService.js';
 import { getRetailPrincipal } from '../auth/authorize.js';
 import { isValidTenantId } from '../domain/principal.js';
 import { Errors } from '../lib/errors.js';
@@ -11,7 +12,7 @@ import { storeJson } from './me.js';
  * anything else is 404 (docs/07_SECURITY_SPEC.md §4.1). Store stock is read-only (M3);
  * reservations for the store arrive in later milestones.
  */
-export function retailRouter(account: AccountService): Router {
+export function retailRouter(account: AccountService, reservations: ReservationService): Router {
   const router = Router();
 
   router.get('/stores/:storeId', async (req, res) => {
@@ -42,6 +43,14 @@ export function retailRouter(account: AccountService): Router {
         last_updated_at: l.lastUpdatedAt,
       })),
     });
+  });
+
+  /** M6 "This week" strip: the own store's reservations (any other store → 404). */
+  router.get('/stores/:storeId/summary', async (req, res) => {
+    const storeId = req.params.storeId;
+    const principal = getRetailPrincipal(res);
+    if (typeof storeId !== 'string' || storeId !== principal.storeId) throw Errors.notFound();
+    res.json(await reservations.weekSummary(principal));
   });
 
   return router;

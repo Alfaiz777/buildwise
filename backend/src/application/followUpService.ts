@@ -31,6 +31,8 @@ export interface FollowUpDeps extends OutboundDeps {
   intents: IntentRepository;
   /** M5: expires overdue reservation holds as part of the due-work run. */
   expireReservations?: (brandId: string) => Promise<number>;
+  /** M6: closes engaged journeys whose attribution window passed with no purchase (NONE outcomes). */
+  closeJourneys?: (brandId: string) => Promise<number>;
 }
 
 export interface ProcessDueResult {
@@ -39,6 +41,8 @@ export interface ProcessDueResult {
   suppressed: number;
   /** M5: overdue reservation holds expired (and released) in this run. */
   reservationsExpired: number;
+  /** M6: NONE outcomes recorded in this run. */
+  outcomesClosed: number;
   results: { intentId: string; outcome: 'SENT' | 'SUPPRESSED'; reason: string | null }[];
 }
 
@@ -151,7 +155,14 @@ export class FollowUpService {
 
   async processDue(brandId: string): Promise<ProcessDueResult> {
     const brand = await this.deps.brands.getById(brandId);
-    const result: ProcessDueResult = { abandoned: 0, sent: 0, suppressed: 0, reservationsExpired: 0, results: [] };
+    const result: ProcessDueResult = {
+      abandoned: 0,
+      sent: 0,
+      suppressed: 0,
+      reservationsExpired: 0,
+      outcomesClosed: 0,
+      results: [],
+    };
     if (!brand) return result;
     // M5: the same due-work run expires overdue reservation holds (docs/03 §15).
     if (this.deps.expireReservations) result.reservationsExpired = await this.deps.expireReservations(brandId);
@@ -185,6 +196,8 @@ export class FollowUpService {
       if (outcome.outcome === 'SENT') result.sent += 1;
       else result.suppressed += 1;
     }
+    // M6: NONE only after the attribution window, and only from this sweep (Change 13, F5).
+    if (this.deps.closeJourneys) result.outcomesClosed = await this.deps.closeJourneys(brandId);
     return result;
   }
 
@@ -320,6 +333,7 @@ export class FollowUpService {
       humanHandoff: false,
       aiWindow: { windowStart: null, count: 0, noticeSent: false },
       pendingProposal: null,
+      handoffAt: null,
     };
     await this.deps.conversations.create(conversation);
     return conversation;

@@ -106,3 +106,133 @@ export function maskCustomerRef(customerId: string): string {
   const digits = customerId.replace(/[^0-9a-f]/gi, '');
   return `Customer •••• ${digits.slice(-4).toUpperCase() || '0000'}`;
 }
+
+// ---------------------------------------------------------------- M6: store fulfilment (Change 13, F1–F3)
+
+export const REFUSAL_REASONS = ['NOT_ACTUALLY_IN_STOCK', 'DAMAGED', 'STORE_CLOSING_EARLY', 'OTHER'] as const;
+export type RefusalReason = (typeof REFUSAL_REASONS)[number];
+export const CANCEL_NOTE_MAX = 140;
+export const PICKUP_CODE_MAX_ATTEMPTS = 5;
+
+/** The statuses a RETAIL_ADMIN may move a reservation to (expiry is SYSTEM-only). */
+export const RETAILER_TARGETS: readonly ReservationStatus[] = [
+  'CONFIRMED',
+  'READY',
+  'CUSTOMER_ARRIVED',
+  'COMPLETED',
+  'CANCELLED',
+];
+
+/** The actions shown on a store's queue card for the current status. */
+export function retailerActionsFor(status: ReservationStatus, pickupCodeLocked = false): ReservationStatus[] {
+  return TRANSITIONS[status].filter((to) => RETAILER_TARGETS.includes(to) && !(to === 'COMPLETED' && pickupCodeLocked));
+}
+
+export type PickupCodeCheck = 'OK' | 'MISMATCH' | 'LOCKED';
+
+/** Locked from the 5th wrong attempt; the comparison ignores spaces. */
+export function checkPickupCode(stored: string, entered: string | null | undefined, attempts: number): PickupCodeCheck {
+  if (attempts >= PICKUP_CODE_MAX_ATTEMPTS) return 'LOCKED';
+  return (entered ?? '').replace(/\s/g, '') === stored ? 'OK' : 'MISMATCH';
+}
+
+export interface RetailerTransitionRequest {
+  to: ReservationStatus;
+  expectedCurrentStatus: ReservationStatus;
+  cancelReason?: RefusalReason | null;
+  cancelNote?: string | null;
+  pickupCode?: string | null;
+}
+
+export type TransitionRejection =
+  'STALE_STATUS' | 'INVALID_TRANSITION' | 'PICKUP_CODE_MISMATCH' | 'PICKUP_CODE_LOCKED' | 'REASON_REQUIRED';
+
+export interface TransitionPlan {
+  to: ReservationStatus;
+  effect: { reserved: number; onHand: number };
+  /** NOT_ACTUALLY_IN_STOCK: after the release, quantity is set to the remaining reserved quantity. */
+  correctQuantityToReserved: boolean;
+  patch: Record<string, string | number | null>;
+}
+
+export type TransitionDecision =
+  | { kind: 'APPLY'; plan: TransitionPlan }
+  | { kind: 'REJECT'; reason: TransitionRejection; pickupCodeAttempts?: number };
+
+const TIMESTAMP_FIELD: Partial<Record<ReservationStatus, string>> = {
+  CONFIRMED: 'confirmedAt',
+  READY: 'readyAt',
+  CUSTOMER_ARRIVED: 'customerArrivedAt',
+  COMPLETED: 'completedAt',
+  CANCELLED: 'cancelledAt',
+};
+
+/**
+ * A store's transition request against the CURRENT reservation (read inside the
+ * transaction): optimistic concurrency first, then the §15 table, then the extra rules
+ * (refusal reason, pickup code). Pure.
+ */
+export function decideRetailerTransition(
+  current: { status: ReservationStatus; quantity: number; pickupCode: string; pickupCodeAttempts: number },
+  request: RetailerTransitionRequest,
+  nowIso: string,
+): TransitionDecision {
+  if (current.status !== request.expectedCurrentStatus) return { kind: 'REJECT', reason: 'STALE_STATUS' };
+  if (!RETAILER_TARGETS.includes(request.to) || !canTransition(current.status, request.to)) {
+    return { kind: 'REJECT', reason: 'INVALID_TRANSITION' };
+  }
+  const patch: Record<string, string | number | null> = { [TIMESTAMP_FIELD[request.to]!]: nowIso };
+  if (request.to === 'CANCELLED') {
+    if (!request.cancelReason || !REFUSAL_REASONS.includes(request.cancelReason)) {
+      return { kind: 'REJECT', reason: 'REASON_REQUIRED' };
+    }
+    patch.cancelledBy = 'RETAILER';
+    patch.cancelReason = request.cancelReason;
+    patch.cancelNote =
+      request.cancelReason === 'OTHER' ? (request.cancelNote ?? '').trim().slice(0, CANCEL_NOTE_MAX) || null : null;
+  }
+  if (request.to === 'COMPLETED') {
+    const check = checkPickupCode(current.pickupCode, request.pickupCode, current.pickupCodeAttempts);
+    if (check === 'LOCKED') return { kind: 'REJECT', reason: 'PICKUP_CODE_LOCKED' };
+    if (check === 'MISMATCH') {
+      return { kind: 'REJECT', reason: 'PICKUP_CODE_MISMATCH', pickupCodeAttempts: current.pickupCodeAttempts + 1 };
+    }
+  }
+  return {
+    kind: 'APPLY',
+    plan: {
+      to: request.to,
+      effect: inventoryEffect(request.to, current.quantity),
+      correctQuantityToReserved: request.to === 'CANCELLED' && request.cancelReason === 'NOT_ACTUALLY_IN_STOCK',
+      patch,
+    },
+  };
+}
+
+/** Customer cancel (chat) and system expiry use the same plan shape. */
+export function decideSimpleTransition(
+  current: { status: ReservationStatus; quantity: number },
+  to: 'CANCELLED' | 'EXPIRED',
+  patch: Record<string, string | number | null>,
+): TransitionDecision {
+  if (!canTransition(current.status, to)) return { kind: 'REJECT', reason: 'INVALID_TRANSITION' };
+  return {
+    kind: 'APPLY',
+    plan: { to, effect: inventoryEffect(to, current.quantity), correctQuantityToReserved: false, patch },
+  };
+}
+
+/**
+ * The inventory numbers after a plan (always 0 ≤ reserved ≤ quantity). With a stock
+ * correction the remaining reserved units become the whole quantity → available 0.
+ */
+export function applyInventoryPlan(
+  inventory: { quantity: number; reservedQuantity: number },
+  plan: Pick<TransitionPlan, 'effect' | 'correctQuantityToReserved'>,
+): { quantity: number; reservedQuantity: number } {
+  let quantity = Math.max(0, inventory.quantity + plan.effect.onHand);
+  let reserved = Math.max(0, inventory.reservedQuantity + plan.effect.reserved);
+  if (plan.correctQuantityToReserved) quantity = reserved;
+  reserved = Math.min(reserved, quantity);
+  return { quantity, reservedQuantity: reserved };
+}

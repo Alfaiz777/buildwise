@@ -143,6 +143,8 @@ export interface IntentRepository {
   listIdleActive(brandId: string, beforeIso: string): Promise<IntentRecord[]>;
   /** follow_up.status = SCHEDULED and follow_up.due_at ≤ `nowIso`. */
   listDueFollowUps(brandId: string, nowIso: string): Promise<IntentRecord[]>;
+  /** M6: follow_up.sent_at in [fromIso, toIso) (journeys engaged by a proactive message). */
+  listFollowUpsSentBetween(brandId: string, fromIso: string, toIso: string): Promise<IntentRecord[]>;
 }
 
 export interface IntentTokenRecord {
@@ -187,9 +189,18 @@ export interface ConversationRecord {
   aiWindow: AiWindow;
   /** M5: the hold currently offered to the customer (docs/04 §12). */
   pendingProposal: PendingProposal | null;
+  /** M6: when the conversation was handed to a person (null when automated). */
+  handoffAt: string | null;
 }
 
-export type MessageOrigin = 'CUSTOMER' | 'AUTOMATED_REPLY' | 'PROACTIVE_FOLLOW_UP';
+export type MessageOrigin =
+  | 'CUSTOMER'
+  | 'AUTOMATED_REPLY'
+  | 'PROACTIVE_FOLLOW_UP'
+  /** M6: a store update about the customer's reservation (Change 13, F4). */
+  | 'RESERVATION_UPDATE'
+  /** M6: a Brand Admin replying as a person during a handoff (Change 13, F7). */
+  | 'HUMAN_AGENT';
 
 export interface MessageRecord {
   messageId: string;
@@ -219,7 +230,13 @@ export interface ConversationRepository {
     patch: Partial<
       Pick<
         ConversationRecord,
-        'currentIntentId' | 'lastInboundAt' | 'lastMessageAt' | 'humanHandoff' | 'updatedAt' | 'pendingProposal'
+        | 'currentIntentId'
+        | 'lastInboundAt'
+        | 'lastMessageAt'
+        | 'humanHandoff'
+        | 'updatedAt'
+        | 'pendingProposal'
+        | 'handoffAt'
       >
     >,
   ): Promise<void>;
@@ -282,7 +299,13 @@ export interface DecisionTrace {
 
 export interface RecommendationRepository {
   create(recommendation: RecommendationRecord): Promise<void>;
+  get(brandId: string, recommendationId: string): Promise<RecommendationRecord | null>;
+  /** Oldest first. */
   listByConversation(brandId: string, conversationId: string): Promise<RecommendationRecord[]>;
+  /** M6: oldest first. */
+  listByIntent(brandId: string, intentId: string): Promise<RecommendationRecord[]>;
+  /** M6: proposed_at in [fromIso, toIso). */
+  listProposedBetween(brandId: string, fromIso: string, toIso: string): Promise<RecommendationRecord[]>;
 }
 
 export interface CommerceEventRecord {

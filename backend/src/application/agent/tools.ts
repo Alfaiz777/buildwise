@@ -438,7 +438,7 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
         };
       }
       const r = result.reservation;
-      if (result.status === 'INVALID_TRANSITION') {
+      if (result.status === 'REJECTED') {
         return {
           status: 'FAILED',
           reasonCode: 'INVALID_TRANSITION',
@@ -457,7 +457,11 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
 
     async request_human_handoff(input: ToolInput<'request_human_handoff'>, scope: ToolScope) {
       const at = deps.now().toISOString();
-      await deps.conversations.update(scope.brandId, scope.conversationId, { humanHandoff: true, updatedAt: at });
+      await deps.conversations.update(scope.brandId, scope.conversationId, {
+        humanHandoff: true,
+        handoffAt: at,
+        updatedAt: at,
+      });
       await deps.events.record({
         brandId: scope.brandId,
         customerId: scope.customerId,

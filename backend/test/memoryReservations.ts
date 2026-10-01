@@ -1,10 +1,16 @@
 /** In-memory ReservationRepository with the same transactional semantics as Firestore (serialized). */
-import { ACTIVE_RESERVATION_STATUSES, type ReservationStatus } from '../src/domain/reservationStatus.js';
+import {
+  ACTIVE_RESERVATION_STATUSES,
+  applyInventoryPlan,
+  type ReservationStatus,
+  type TransitionDecision,
+} from '../src/domain/reservationStatus.js';
 import { deriveAvailabilityStatus } from '../src/domain/storeTruth.js';
 import type {
   CreateReservationRequest,
   CreateReservationResult,
   CreateReservationRules,
+  ReservationNotification,
   ReservationRecord,
   ReservationRepository,
   TransitionResult,
@@ -88,6 +94,9 @@ export class MemoryReservations implements ReservationRepository {
         cancelledAt: null,
         cancelledBy: null,
         cancelReason: null,
+        cancelNote: null,
+        pickupCodeAttempts: 0,
+        lastNotification: null,
       };
       this.reservations.push(reservation);
       inv!.reservedQuantity += req.quantity;
@@ -104,25 +113,35 @@ export class MemoryReservations implements ReservationRepository {
   transition(
     brandId: string,
     reservationId: string,
-    to: ReservationStatus,
-    rules: Parameters<ReservationRepository['transition']>[3],
+    decide: (current: ReservationRecord) => TransitionDecision,
   ): Promise<TransitionResult> {
     return this.tx(async () => {
       const r = this.reservations.find((x) => x.brandId === brandId && x.reservationId === reservationId);
       if (!r) return { status: 'NOT_FOUND' };
-      if (!rules.allowed(r.status)) return { status: 'INVALID_TRANSITION', reservation: clone(r) };
+      const before = clone(r);
+      const decision = decide(clone(r));
+      if (decision.kind === 'REJECT') {
+        if (decision.pickupCodeAttempts !== undefined) r.pickupCodeAttempts = decision.pickupCodeAttempts;
+        return { status: 'REJECTED', reason: decision.reason, reservation: clone(r) };
+      }
       const inv = this.source.inventory.rows.find(
         (x) => x.brandId === brandId && x.inventoryId === `${r.storeId}__${r.canonicalSku}`,
       );
-      const effect = rules.effect(r.quantity);
+      let inventory: { quantity: number; reservedQuantity: number } | null = null;
       if (inv) {
-        inv.quantity = Math.max(0, inv.quantity + effect.onHand);
-        inv.reservedQuantity = Math.min(inv.quantity, Math.max(0, inv.reservedQuantity + effect.reserved));
+        inventory = applyInventoryPlan(inv, decision.plan);
+        inv.quantity = inventory.quantity;
+        inv.reservedQuantity = inventory.reservedQuantity;
         inv.availabilityStatus = deriveAvailabilityStatus(inv.quantity, inv.reservedQuantity);
       }
-      Object.assign(r, rules.patch, { status: to });
-      return { status: 'OK', reservation: clone(r) };
+      Object.assign(r, decision.plan.patch, { status: decision.plan.to });
+      return { status: 'OK', reservation: clone(r), before, inventory };
     });
+  }
+
+  async setNotification(brandId: string, reservationId: string, notification: ReservationNotification) {
+    const r = this.reservations.find((x) => x.brandId === brandId && x.reservationId === reservationId);
+    if (r) r.lastNotification = clone(notification);
   }
 
   async list(

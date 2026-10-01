@@ -12,12 +12,37 @@
  * Privacy: only two opaque random IDs are kept — web_session_id (per tab, sessionStorage)
  * and visitor_id (per browser, localStorage). Neither contains personal data, and the
  * snippet never sends names, phone numbers, emails or locations.
+ *
+ * Attribution (M6): when a "Buy online" link from the conversation brings the shopper here
+ * with `?bw_ref=…`, the opaque reference is kept for this tab's session (sessionStorage) and
+ * returned by attributionRef(), so checkout can pass it on (locally: the demo order call; in
+ * L2: a Shopify cart attribute). It only links the order to the conversation.
  */
 (function () {
   'use strict';
 
   var SESSION_KEY = 'bw_web_session_id';
   var VISITOR_KEY = 'bw_visitor_id';
+  var REF_KEY = 'bw_ref';
+  var REF_PATTERN = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+
+  /** Keeps a valid bw_ref from the landing URL for this tab's session. */
+  function captureRef() {
+    try {
+      var ref = new URLSearchParams(window.location.search).get(REF_KEY);
+      if (ref && REF_PATTERN.test(ref)) window.sessionStorage.setItem(REF_KEY, ref);
+    } catch (e) {
+      /* storage blocked: no attribution */
+    }
+  }
+
+  function attributionRef() {
+    try {
+      return window.sessionStorage.getItem(REF_KEY);
+    } catch (e) {
+      return null;
+    }
+  }
   var config = null;
 
   function randomId(prefix) {
@@ -98,9 +123,11 @@
             if (link) window.open(link, '_blank', 'noopener');
           },
       };
+      captureRef();
       return window.BuildwiseIntent;
     },
     ids: ids,
+    attributionRef: attributionRef,
     track: track,
     whatsapp: whatsapp,
     /** Starts a new browsing session in this tab (the visitor is kept). */

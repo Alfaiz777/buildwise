@@ -312,6 +312,12 @@ export class FirestoreIntentRepository implements IntentRepository {
       this.col(brandId).where('follow_up.status', '==', 'SCHEDULED').where('follow_up.due_at', '<=', nowIso),
     );
   }
+
+  listFollowUpsSentBetween(brandId: string, fromIso: string, toIso: string) {
+    return this.query(
+      this.col(brandId).where('follow_up.sent_at', '>=', fromIso).where('follow_up.sent_at', '<', toIso),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------- intent tokens
@@ -421,6 +427,7 @@ const toConversation = (id: string, d: FirebaseFirestore.DocumentData): Conversa
   lastMessageAt: d.last_message_at ?? null,
   humanHandoff: d.human_handoff === true,
   pendingProposal: proposalFromDoc(d.pending_proposal),
+  handoffAt: d.handoff_at ?? null,
   aiWindow: {
     windowStart: d.ai_window?.window_start ?? null,
     count: d.ai_window?.count ?? 0,
@@ -487,19 +494,11 @@ export class FirestoreConversationRepository implements ConversationRepository {
         human_handoff: c.humanHandoff,
         ai_window: windowToDoc(c.aiWindow),
         pending_proposal: proposalToDoc(c.pendingProposal),
+        handoff_at: c.handoffAt,
       });
   }
 
-  async update(
-    brandId: string,
-    conversationId: string,
-    patch: Partial<
-      Pick<
-        ConversationRecord,
-        'currentIntentId' | 'lastInboundAt' | 'lastMessageAt' | 'humanHandoff' | 'updatedAt' | 'pendingProposal'
-      >
-    >,
-  ) {
+  async update(brandId: string, conversationId: string, patch: Parameters<ConversationRepository['update']>[2]) {
     const doc: Record<string, unknown> = {};
     if (patch.currentIntentId !== undefined) doc.current_intent_id = patch.currentIntentId;
     if (patch.lastInboundAt !== undefined) doc.last_inbound_at = patch.lastInboundAt;
@@ -507,6 +506,7 @@ export class FirestoreConversationRepository implements ConversationRepository {
     if (patch.humanHandoff !== undefined) doc.human_handoff = patch.humanHandoff;
     if (patch.updatedAt !== undefined) doc.updated_at = patch.updatedAt;
     if (patch.pendingProposal !== undefined) doc.pending_proposal = proposalToDoc(patch.pendingProposal);
+    if (patch.handoffAt !== undefined) doc.handoff_at = patch.handoffAt;
     await this.col(brandId).doc(conversationId).update(doc);
   }
 
@@ -590,36 +590,54 @@ export class FirestoreRecommendationRepository implements RecommendationReposito
       });
   }
 
-  async listByConversation(brandId: string, conversationId: string) {
-    const snap = await brandCol(this.db, brandId, 'aiRecommendations')
-      .where('conversation_id', '==', conversationId)
-      .get();
+  private col(brandId: string) {
+    return brandCol(this.db, brandId, 'aiRecommendations');
+  }
+
+  private async query(brandId: string, q: FirebaseFirestore.Query) {
+    const snap = await q.get();
     return snap.docs
-      .map((doc): RecommendationRecord => {
-        const d = doc.data();
-        return {
-          recommendationId: doc.id,
-          brandId,
-          customerId: d.customer_id,
-          conversationId: d.conversation_id,
-          intentId: d.intent_id ?? null,
-          action: d.action,
-          targetStoreId: d.target_store_id ?? null,
-          targetVariantId: d.target_variant_id ?? null,
-          confidence: d.confidence,
-          rationaleSummary: d.rationale_summary,
-          evidenceReferences: d.evidence_references ?? [],
-          runtime: d.runtime,
-          decisionSource: d.decision_source,
-          guardrailStatus: d.guardrail_status,
-          guardrailReason: d.guardrail_reason ?? null,
-          proposedAt: d.proposed_at,
-          trace: d.trace ?? null,
-        };
-      })
+      .map((doc) => toRecommendation(brandId, doc.id, doc.data()))
       .sort((a, b) => a.proposedAt.localeCompare(b.proposedAt) || a.recommendationId.localeCompare(b.recommendationId));
   }
+
+  async get(brandId: string, recommendationId: string) {
+    const snap = await this.col(brandId).doc(recommendationId).get();
+    return snap.exists ? toRecommendation(brandId, snap.id, snap.data()!) : null;
+  }
+
+  listByConversation(brandId: string, conversationId: string) {
+    return this.query(brandId, this.col(brandId).where('conversation_id', '==', conversationId));
+  }
+
+  listByIntent(brandId: string, intentId: string) {
+    return this.query(brandId, this.col(brandId).where('intent_id', '==', intentId));
+  }
+
+  listProposedBetween(brandId: string, fromIso: string, toIso: string) {
+    return this.query(brandId, this.col(brandId).where('proposed_at', '>=', fromIso).where('proposed_at', '<', toIso));
+  }
 }
+
+const toRecommendation = (brandId: string, id: string, d: FirebaseFirestore.DocumentData): RecommendationRecord => ({
+  recommendationId: id,
+  brandId,
+  customerId: d.customer_id,
+  conversationId: d.conversation_id,
+  intentId: d.intent_id ?? null,
+  action: d.action,
+  targetStoreId: d.target_store_id ?? null,
+  targetVariantId: d.target_variant_id ?? null,
+  confidence: d.confidence,
+  rationaleSummary: d.rationale_summary,
+  evidenceReferences: d.evidence_references ?? [],
+  runtime: d.runtime,
+  decisionSource: d.decision_source,
+  guardrailStatus: d.guardrail_status,
+  guardrailReason: d.guardrail_reason ?? null,
+  proposedAt: d.proposed_at,
+  trace: d.trace ?? null,
+});
 
 // ---------------------------------------------------------------------------- commerce events
 

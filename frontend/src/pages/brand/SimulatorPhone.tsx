@@ -6,6 +6,8 @@ const ORIGIN_LABEL: Record<string, string> = {
   CUSTOMER: 'Customer',
   AUTOMATED_REPLY: 'Automated reply',
   PROACTIVE_FOLLOW_UP: 'Proactive follow-up',
+  RESERVATION_UPDATE: 'Store update',
+  HUMAN_AGENT: 'Team member',
 };
 
 /** "Mock AI, deterministic" for a MOCK agent decision; "Fallback" for the deterministic fallback. */

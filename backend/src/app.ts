@@ -10,6 +10,10 @@ import type { FollowUpService } from './application/followUpService.js';
 import type { IntentService } from './application/intentService.js';
 import type { PlatformAdminService } from './application/platformAdminService.js';
 import type { ReservationService } from './application/reservationService.js';
+import type { FulfilmentService } from './application/fulfilmentService.js';
+import type { HandoffService } from './application/handoffService.js';
+import type { InsightsService } from './application/insightsService.js';
+import { insightsRouter } from './routes/insights.js';
 import type { RetailImportService } from './application/retailImportService.js';
 import type { SimulatorService } from './application/simulatorService.js';
 import type { TenantAdminService } from './application/tenantAdminService.js';
@@ -58,6 +62,9 @@ export interface AppDeps {
     conversations: ConversationQueryService;
     followUps: FollowUpService;
     reservations: ReservationService;
+    fulfilment: FulfilmentService;
+    handoff: HandoffService;
+    insights: InsightsService;
     /** LOCAL PROFILE ONLY: the demo storefront (never wired in gcp). */
     demoStorefront?: DemoStorefrontService;
   };
@@ -115,12 +122,17 @@ export function createApp(deps: AppDeps): Express {
   tenant.use('/brand/retail-imports', requireScope('BRAND'), retailImportsRouter(services.retailImports));
   tenant.use('/integrations', requireScope('BRAND'), integrationsRouter(services.commerceSync));
   tenant.use('/products', requireScope('BRAND'), productsRouter(services.catalog));
-  tenant.use('/brand', requireScope('BRAND'), brandConversationsRouter(services.conversations, services.followUps));
+  tenant.use(
+    '/brand',
+    requireScope('BRAND'),
+    brandConversationsRouter(services.conversations, services.followUps, services.handoff),
+  );
+  tenant.use('/brand', requireScope('BRAND'), insightsRouter(services.insights));
   tenant.use('/channels/simulator', requireScope('BRAND'), simulatorRouter(services.simulator, services.conversations));
   if (localUploads) tenant.use('/local-files', requireScope('BRAND'), localFilesRouter(localUploads));
   // Retailer Console: store-scoped, RETAIL_ADMIN only.
-  tenant.use('/retail', requireScope('RETAIL'), retailRouter(services.account));
-  tenant.use('/reservations', reservationsRouter(services.reservations));
+  tenant.use('/retail', requireScope('RETAIL'), retailRouter(services.account, services.reservations));
+  tenant.use('/reservations', reservationsRouter(services.reservations, services.fulfilment));
   api.use(tenant);
 
   app.use('/api', api);

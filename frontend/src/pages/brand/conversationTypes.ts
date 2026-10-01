@@ -1,6 +1,6 @@
 /** Response shapes of the conversation routes (docs/06 §14.2, docs/11 §4). */
 
-export type Origin = 'CUSTOMER' | 'AUTOMATED_REPLY' | 'PROACTIVE_FOLLOW_UP';
+export type Origin = 'CUSTOMER' | 'AUTOMATED_REPLY' | 'PROACTIVE_FOLLOW_UP' | 'RESERVATION_UPDATE' | 'HUMAN_AGENT';
 
 export interface ChatMessage {
   message_id: string;
@@ -52,6 +52,8 @@ export interface ConversationRow {
   channel: string;
   status: string;
   human_handoff: boolean;
+  /** M6: when a person took over (null while the assistant owns the conversation). */
+  handoff_at?: string | null;
   last_message_at: string | null;
   last_inbound_at: string | null;
   intent: IntentSummary | null;

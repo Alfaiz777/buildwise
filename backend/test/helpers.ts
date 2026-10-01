@@ -4,6 +4,8 @@ import { MockAgentRuntime } from '../src/adapters/agent/mockAgentRuntime.js';
 import { MockCommerceProvider } from '../src/adapters/commerce/mockCommerceProvider.js';
 import type { AgentRuntime } from '../src/ports/agent.js';
 import { MemoryReservations } from './memoryReservations.js';
+import { MemoryInsightsReader } from './memoryInsights.js';
+import { InsightsService } from '../src/application/insightsService.js';
 import { CsvRetailFileParser } from '../src/adapters/retail/csvRetailFileParser.js';
 import { SimulatorMessagingProvider } from '../src/adapters/messaging/simulatorMessagingProvider.js';
 import { createConversationModule } from '../src/application/conversationModule.js';
@@ -14,7 +16,9 @@ import {
   MemoryConversations,
   MemoryCustomers,
   MemoryEvents,
+  MemoryAttributionRefs,
   MemoryIntents,
+  MemoryOutcomes,
   MemoryReceipts,
   MemoryRecommendations,
   MemoryTokens,
@@ -616,6 +620,8 @@ export function buildTestWorld(
   const receipts = new MemoryReceipts();
   const events = new MemoryEvents();
   const reservations = new MemoryReservations({ brands, stores, inventory });
+  const outcomes = new MemoryOutcomes();
+  const attributionRefs = new MemoryAttributionRefs();
   const sunk: CommerceEvent[] = [];
   const messaging = new Map<Channel, MessagingProvider>();
   if ((options.channels ?? ['SIMULATOR']).includes('SIMULATOR'))
@@ -637,6 +643,8 @@ export function buildTestWorld(
     stores,
     inventory,
     reservations,
+    outcomes,
+    attributionRefs,
     agent: options.agent ?? new MockAgentRuntime(),
     aiBudgetMs: options.aiBudgetMs,
     pickupCode: options.pickupCode,
@@ -662,6 +670,15 @@ export function buildTestWorld(
       conversations: conversation.queries,
       followUps: conversation.followUps,
       reservations: conversation.reservations,
+      fulfilment: conversation.fulfilment,
+      handoff: conversation.handoff,
+      insights: new InsightsService({
+        reader: new MemoryInsightsReader({ intents, conversations, recommendations, events, reservations, outcomes }),
+        stores,
+        retailers,
+        products,
+        now: options.now ?? (() => new Date()),
+      }),
       demoStorefront: conversation.demoStorefront,
     },
     localUploads: options.localUploads === false ? undefined : files,
@@ -695,6 +712,8 @@ export function buildTestWorld(
     sunk,
     conversation,
     reservations,
+    outcomes,
+    attributionRefs,
   };
 }
 

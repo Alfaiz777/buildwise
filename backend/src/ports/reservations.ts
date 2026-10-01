@@ -4,6 +4,8 @@
  * rules themselves are pure domain functions passed in (domain/reservationStatus.ts).
  */
 import type {
+  TransitionDecision,
+  TransitionRejection,
   ReservationPolicy,
   ReservationRejection,
   ReservableState,
@@ -34,6 +36,19 @@ export interface ReservationRecord {
   cancelledAt: string | null;
   cancelledBy: 'CUSTOMER' | 'RETAILER' | 'SYSTEM' | null;
   cancelReason: string | null;
+  /** M6: internal note for a refusal with reason OTHER (never shown to the customer). */
+  cancelNote: string | null;
+  /** M6: wrong pickup codes entered at completion (locked from 5). */
+  pickupCodeAttempts: number;
+  /** M6: what the customer was told about the last store update. */
+  lastNotification: ReservationNotification | null;
+}
+
+export interface ReservationNotification {
+  status: 'SENT' | 'NOT_SENT_OPTED_OUT' | 'NOT_SENT_NO_CONVERSATION';
+  event: string;
+  messageKind: 'SESSION' | 'TEMPLATE' | null;
+  at: string;
 }
 
 export interface CreateReservationRequest {
@@ -64,28 +79,32 @@ export type CreateReservationResult =
   | { status: 'REJECTED'; reason: ReservationRejection | 'PICKUP_CODE_UNAVAILABLE' };
 
 export type TransitionResult =
-  | { status: 'OK'; reservation: ReservationRecord }
+  | {
+      status: 'OK';
+      reservation: ReservationRecord;
+      before: ReservationRecord;
+      /** The store's stock row after the change (null when the store has no row for the SKU). */
+      inventory: { quantity: number; reservedQuantity: number } | null;
+    }
   | { status: 'NOT_FOUND' }
-  | { status: 'INVALID_TRANSITION'; reservation: ReservationRecord };
+  | { status: 'REJECTED'; reason: TransitionRejection; reservation: ReservationRecord };
 
 export interface ReservationRepository {
   /** docs/03 §15 in one transaction: replay → store → stock → policy → pickup code → write + reserve. */
   create(request: CreateReservationRequest, rules: CreateReservationRules): Promise<CreateReservationResult>;
   get(brandId: string, reservationId: string): Promise<ReservationRecord | null>;
   /**
-   * In one transaction: re-read the reservation, require `allowed(from)`, apply the
-   * inventory effect to reserved_quantity / quantity (never below 0), write the new status.
+   * In ONE transaction: re-read the reservation, ask `decide` (a pure domain rule) what to
+   * do, then either write the new status + timestamps and apply the inventory plan
+   * (domain/reservationStatus.applyInventoryPlan), or write only the rejection's
+   * pickup_code_attempts. Nothing else changes on a rejection.
    */
   transition(
     brandId: string,
     reservationId: string,
-    to: ReservationStatus,
-    rules: {
-      allowed: (from: ReservationStatus) => boolean;
-      effect: (quantity: number) => { reserved: number; onHand: number };
-      patch: Partial<Pick<ReservationRecord, 'cancelledAt' | 'cancelledBy' | 'cancelReason'>>;
-    },
+    decide: (current: ReservationRecord) => TransitionDecision,
   ): Promise<TransitionResult>;
+  setNotification(brandId: string, reservationId: string, notification: ReservationNotification): Promise<void>;
   /** Newest first. */
   list(
     brandId: string,

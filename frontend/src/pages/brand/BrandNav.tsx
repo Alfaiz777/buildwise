@@ -8,6 +8,7 @@ export function BrandNav() {
         Overview
       </NavLink>
       <NavLink to="/brand/conversations">Conversations & intents</NavLink>
+      <NavLink to="/brand/outcomes">Outcomes & insights</NavLink>
     </nav>
   );
 }

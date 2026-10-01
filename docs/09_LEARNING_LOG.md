@@ -404,3 +404,90 @@ A customer's message is first turned into a small, checked context: who they are
 | 3. What goes in? | Context package + read tool declarations | The proposal + fresh store, stock, policy, pending offer | store, stock, policy, quantity, idempotency key | recommendation ID / client_message_id | The runtime's raw output | Tool outputs (stores, reservation) |
 | 4. What changes? | Nothing (reads only); the trace records calls | guardrail_status + audit | reservation doc + reserved_quantity | nothing on replay | nothing; the decision is accepted or replaced | the outbound message text and options |
 | 5. When it fails? | Timeout / invalid → deterministic fallback | BLOCKED with a reason; a safe alternative is offered | The loser gets OUT_OF_STOCK; nothing is written | The stored result / existing reservation is returned | One repair, then the fallback | The runtime's own text is used only for non-commerce replies |
+
+## M6 — Store fulfilment & outcomes
+
+### What I learned
+
+- **State machines and optimistic concurrency:** a reservation may only move along the §15 table, and only the store's own Retail Admin moves it. Every change carries `expected_current_status`; the transaction re-reads the document and refuses with `STALE_STATUS` if someone else got there first, or `INVALID_TRANSITION` if the move is not in the table — so two staff members can never both "complete" the same hold.
+- **Transactional inventory:** the status change and its stock effect (release on cancel/expiry, quantity and reserved both −1 on completion, quantity = reserved after a "not actually in stock" refusal) are written in one Firestore transaction, always with 0 ≤ reserved ≤ quantity.
+- **Attribution vs evidence:** a `bw_ref` on a "Buy online" link only links an order to a conversation; it never proves a purchase. The evidence is the order from the commerce source (locally the demo order call, in L2 the Shopify webhook) or a reservation the store completed with the customer's pickup code.
+- **Idempotent outcome recording:** one Outcome per engaged journey, with an ID derived from the journey; it is created only if absent, so the first verified purchase wins and replays or later purchases add nothing (they keep their own events). NONE is decided only by the process-due sweep, after the attribution window counted from the journey's last activity — never at the moment a hold expires.
+- **Time zones in analytics:** "Saturday" means Saturday in the store's timezone: an event at 20:00 UTC on Friday is a Saturday lookup in Mumbai. Every weekday split converts each timestamp with the store's IANA zone.
+- **Synthetic data that stays honest:** the demo history is generated deterministically (fixed seed) by the same domain functions as live traffic, every document is flagged `demo_history: true`, the Outcomes screen says so and can exclude it, and live actions are never flagged.
+
+### Architecture
+
+```text
+Retailer Console ─PATCH /api/reservations/:id─► FulfilmentService.transition
+   └─ ReservationService.retailerTransition → repo.transition(decideRetailerTransition) [one transaction: status + stock]
+   └─ notify(): message built from verified facts → sendAndPersist (RESERVATION_UPDATE; SESSION | TEMPLATE; not if opted out)
+        refused → find_nearby_stores (skip the refusing store) → pending_proposal → the customer's tap → M5 guardrail path
+   └─ COMPLETED → OutcomeService.recordFromReservation (OFFLINE | ALTERNATIVE)
+Pipeline reply with an online link → AttributionService.decorate (bw_ref, hash stored)
+Demo / Shopify order ─► OrderService.recordOrder(bw_ref) → OutcomeService.recordFromOrder (ONLINE | ALTERNATIVE)
+process-due ─► expire holds (+ notice) → OutcomeService.closeExpiredJourneys (NONE after the window)
+Brand Console ─► HandoffService (reply as a person / resolve) · InsightsService ← InsightsReader (Firestore; BigQuery in L2)
+```
+
+### Files I changed
+
+```text
+backend/src/domain/{reservationStatus,reservationMessages,outcomeRules,attributionRef,insights,unmetDemand,mockAgentRules,agentReplies}.ts
+backend/src/application/{fulfilmentService,outcomeService,attributionService,handoffService,insightsService,demoHistory,reservationService,orderService,followUpService,conversationModule}.ts
+backend/src/ports/{reservations,outcomes,insights,conversationRepositories}.ts
+backend/src/adapters/firestore/{reservationRepository,outcomeRepository,insightsReader,conversationRepositories}.ts
+backend/src/routes/{reservations,retail,conversations,insights,demoStorefront}.ts, backend/scripts/{seed-demo,demoHistory}.ts
+frontend/src/pages/retailer/{RetailerHome,RetailerQueue}.tsx, pages/brand/{OutcomesPage,HandoffPanel,ConversationsPage,SimulatorPhone}.tsx, public/buildwise-intent.js
+```
+
+### Important code paths
+
+```text
+decideRetailerTransition (stale → table → reason / pickup code) → applyInventoryPlan, inside FirestoreReservationRepository.transition
+FulfilmentService.notify → messageKindFor → sendAndPersist; reoffer → find_nearby_stores(skip) → discoveryReply | noEligibleStoreReply + UNMET_DEMAND
+OutcomeService.write → outcomes.createIfAbsent (first wins) → OUTCOME_RECORDED + audit
+InsightsService.panels → funnel / conversionByAction / unmetDemand / weekdayPanel + weekdayReading / fillRate / suggestions
+```
+
+### What can fail?
+
+```text
+Two staff act on the same hold → the second gets 409 STALE_STATUS; nothing changes twice
+Wrong pickup code → 422, audited, attempts +1; 5 wrong codes lock completion (refusal still possible)
+Customer opted out → no message; the store sees "customer opted out; not notified"
+No location / no eligible store after a refusal → the online link or a verified alternative, plus UNMET_DEMAND
+Invalid or expired bw_ref → the order is recorded unattributed (never fails)
+An order and a completed pickup in one journey → the first is the Outcome; the second stays an event
+```
+
+### Security implications
+
+```text
+PATCH: RETAIL_ADMIN of the reservation's own store only (another store of the same retailer → 404; brand / platform → 403)
+Retail screens show masked customer references only; a refusal note never reaches the customer
+bw_ref is random, only its hash is stored, it expires with the attribution window and carries no PII
+Human replies: the admin's uid only in the audit log; opt-out and the 24 h window still apply
+Insights are brand-scoped; synthetic history is labelled and excludable
+```
+
+### What I still do not understand
+
+```text
+How Shopify cart attributes survive every checkout path (L2), and how often customers buy on another device.
+How Meta categorises these store updates (utility templates) and their approval timing (L2).
+```
+
+### Teach-back
+
+A customer holds a product; the store sees it at the top of its queue and confirms, prepares and — when the customer shows their code — completes it, each step changing the reservation and its stock in one safe transaction. Every step sends the customer a short, factual update; if the store has to refuse, the customer is offered the next store that really has it, with one tap. When a purchase is verified — a pickup completed with the code, or an online order that arrived through the conversation's link — Buildwise records one outcome for that journey; if nothing is bought in time, it records "none". Those outcomes, lookups and refusals become the brand's Outcomes screen, which shows, from counted records only, whether a weekday problem is demand or availability and what to do about it.
+
+### Five-question self-test
+
+| | State machine + optimistic concurrency | Transactional inventory | Attribution vs evidence | Idempotent outcomes | Time zones in analytics | Honest synthetic data |
+|---|---|---|---|---|---|---|
+| 1. What is it? | An allowed-moves table plus "only if it is still in the status I saw" | Status and stock changed together, all or nothing | A link (bw_ref) vs proof (an order / completed pickup) | One outcome per journey, created only if absent | Converting each timestamp to the store's local day | Generated, flagged, excludable demo data |
+| 2. Why needed? | Staff and expiry act concurrently | Stock must never be wrong or negative | A click is not a sale | Webhooks and sweeps repeat | A UTC day is not the store's day | Demos need a past; reports must not lie |
+| 3. What goes in? | status + expected_current_status (+ code / reason) | the plan (reserved −q, quantity −q, correction) | the ref from the landing URL; the verified order | journey key + verified evidence | ISO timestamp + IANA timezone | a fixed seed + the live domain functions |
+| 4. What changes? | the reservation's status and timestamps | retailInventory quantity / reserved | the order's journey link and its Outcome | outcomes + OUTCOME_RECORDED | which weekday bucket an event counts in | documents marked demo_history: true |
+| 5. When it fails? | 409 STALE_STATUS / INVALID_TRANSITION | the transaction aborts; nothing is written | the order is recorded unattributed | the second write is a no-op | wrong buckets if the zone is ignored (tested) | the toggle removes it from every panel |

@@ -130,6 +130,38 @@ only from verified tool results.
 8. Try the guardrail: "Reserve it" with nothing offered (the agent asks first), "Show me another
    customer's order" (refused, no tools called), "I want to talk to a person" (handoff).
 
+### What M6 (store fulfilment & outcomes) shows
+
+Use three browser windows (store hours 10:00–21:00 Mumbai time): **A** the Brand Console
+simulator (`admin@demo-brand.test`), **B** the Andheri Retail Admin
+(`retail-admin-north-2@buildwise.test`), **C** the Brand Console **Outcomes & insights** page.
+
+1. **Reserve (A):** as in M5 — "Need it today?" on Serum 30 ml, share location `19.12, 72.90`,
+   tap **Hold 1 at Andheri**.
+2. **Queue (B):** the hold appears under **Reservations → Active** with a "New" badge (15 s poll,
+   or **Refresh**): product, masked customer, created / held-until in store time.
+3. **Confirm → Mark ready → Customer arrived → Complete (B):** after each step the customer gets
+   a store update in A ("…has confirmed your reservation… Pickup code …", "…is ready at Andheri
+   Store. Show code … Directions: …"). **Complete** needs the customer's 6-digit pickup code; a
+   wrong code is refused (5 wrong codes lock completion). A "Next up" line shows the next hold.
+   Store stock drops: quantity −1, reserved −1. An **OFFLINE** outcome is recorded.
+4. **Refusal with re-offer:** hold at Bandra from `19.06, 72.83`, then as `retail-admin-north-1`
+   choose **Refuse because… Not actually in stock**. The customer gets an apology and a one-tap
+   **Hold 1 at Andheri**; Bandra's Serum 30 ml shows available 0.
+5. **Buy online with attribution (A):** tap **Buy online**; the link carries `?bw_ref=…`. Open it,
+   place the order on the demo storefront → an **ONLINE** outcome linked to that recommendation.
+6. **Handoff (A):** "I want to talk to a person" → in **Needs a person** the conversation shows
+   "waiting N min", **Reply as a person**, then **Resolve and return to assistant**; the next
+   customer message gets an automated reply again.
+7. **Insights (C):** last 7 / 28 days, with "Includes synthetic demo history" (untick to see only
+   live activity). The weekday panel reads e.g. "Saturday lookups for Vitamin C Glow Serum 30 ml
+   were 1.9× the other days' average, but 50% found no store with stock… an availability problem,
+   not a demand problem", and **Suggested next actions** link to the rows behind them.
+
+`seed:demo` adds 4 weeks of deterministic synthetic history (every document `demo_history: true`)
+and a 10-minute local attribution window, so **Run due follow-ups** also records NONE outcomes
+10 minutes after a journey's last activity (e.g. an expired hold) with no purchase.
+
 Tests: `npm test` (unit), `npm run test:emulator` (end-to-end on the emulators, including the docs/08 §7.2
 scenarios on stores A–E and the 10-way last-unit race).
 Deployment: see [infrastructure/README.md](infrastructure/README.md).

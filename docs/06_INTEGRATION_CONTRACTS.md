@@ -296,6 +296,17 @@ brand_id
 
 as part of idempotency handling.
 
+## 8.1 Online-order attribution (M6 local, L2 Shopify)
+
+When a reply offers "Buy online", the backend creates an AttributionRef (`00` §11.8 Change 13, F6) and adds it to the product URL as `bw_ref`. The storefront keeps it for the browsing session and hands it to checkout.
+
+```text
+local (M6):  demo storefront → POST /api/demo-storefront/orders { ..., bw_ref } → OrderService.recordOrder
+L2:          bw_ref as a Shopify cart attribute → orders/create webhook (verified) → OrderService.recordOrder
+```
+
+`OrderService.recordOrder({ brand_id, web_session_id, external_order_id, variant_id, source, attribution_ref })` validates the ref (exists by hash, same brand, not expired) and links the order to the ref's journey; the Outcome service then records ONLINE (or ALTERNATIVE for another variant). An invalid, expired or other-brand ref never fails the order: it is recorded unattributed. The ref only links; the purchase evidence is the order from the commerce source.
+
 ---
 
 # 9. Shopify authentication boundary
@@ -806,7 +817,7 @@ When a customer confirms a reservation in a conversation (WhatsApp or simulator 
 
 ### GET /api/reservations
 
-Built in M5 (read-only). `PATCH /api/reservations/:id` and `GET /api/reservations/:id` are M6.
+Built in M5 (read-only); M6 adds `view=active|history`, `GET /api/reservations/:id` and `PATCH /api/reservations/:id`. Each row also carries `store_timezone`, `customer_eta`, `allowed_actions`, `pickup_code_locked` and `last_notification` (`{status: SENT | NOT_SENT_OPTED_OUT | NOT_SENT_NO_CONVERSATION, event, at}`).
 
 Lists reservations for the Retailer Console and the Brand Console.
 
@@ -855,15 +866,18 @@ Request:
 ```json
 {
   "status": "CONFIRMED",
-  "expected_current_status": "PENDING"
+  "expected_current_status": "PENDING",
+  "cancel_reason": "NOT_ACTUALLY_IN_STOCK | DAMAGED | STORE_CLOSING_EARLY | OTHER",
+  "cancel_note": "≤ 140 chars, OTHER only, internal",
+  "pickup_code": "123456"
 }
 ```
 
-Allowed transitions: `04_DATA_MODEL.md` §15. Inventory-affecting transitions run in a transaction (`03_TECH_ARCHITECTURE.md` §15).
+`cancel_reason` is required for `CANCELLED` (refusal, `cancelled_by = RETAILER`); `pickup_code` is required for `COMPLETED` (from `CUSTOMER_ARRIVED`). Allowed transitions: `04_DATA_MODEL.md` §15. Inventory-affecting transitions run in a transaction (`03_TECH_ARCHITECTURE.md` §15); `NOT_ACTUALLY_IN_STOCK` also corrects the store's quantity to the reserved quantity (`00` §11.8 Change 13, F3).
 
-Response `200`: the updated reservation. Moving to `COMPLETED` also records an `Outcome`, as defined in `04_DATA_MODEL.md` §16.
+Response `200`: the updated reservation plus `notification` (what was sent to the customer, `00` §11.8 Change 13, F4). Moving to `COMPLETED` also records an `Outcome`, as defined in `04_DATA_MODEL.md` §16.
 
-Errors: `409 INVALID_TRANSITION`, `409 STALE_STATUS`, `403 FORBIDDEN`.
+Errors: `409 INVALID_TRANSITION`, `409 STALE_STATUS`, `422 PICKUP_CODE_MISMATCH`, `429 PICKUP_CODE_LOCKED`, `400 INVALID_REQUEST` (missing reason / code), `404 NOT_FOUND` (another store or brand), `403 FORBIDDEN` (`BRAND_ADMIN`, `PLATFORM_ADMIN`).
 
 ## 14.5 GET /api/page/context
 
@@ -989,6 +1003,14 @@ Retail import semantics: an import is an **upsert** (stores and SKUs absent from
 
 Errors: `409 RETAIL_ADMIN_ALREADY_PROVISIONED`, `409 STORE_HAS_NO_RETAILER`, `409 STORE_ALREADY_ASSIGNED`, `409 STORE_HAS_ADMIN`, `409 USER_EXISTS_IN_OTHER_BRAND`, `409 USER_ALREADY_PROVISIONED`, `404 NOT_FOUND` for another brand's retailer or store.
 
+M6 brand routes (`BRAND_ADMIN`, own brand; another brand's conversation → `404`; other scopes → `403`):
+
+| Route | Result |
+|---|---|
+| `POST /api/brand/conversations/:conversationId/replies` `{ text }` | a person's reply in a handed-off conversation (`origin = HUMAN_AGENT`; the sender's uid only in the AuditEvent). `409 NOT_IN_HANDOFF`, `409 CUSTOMER_OPTED_OUT`, `409 OUTSIDE_SERVICE_WINDOW` |
+| `POST /api/brand/conversations/:conversationId/resolve` | `human_handoff = false` (audited); the next customer message gets automated replies again |
+| `GET /api/brand/insights?days=7\|28&include_history=true\|false` | the Outcomes & insights panels (`00` §11.8 Change 13, F8), computed from stored records |
+
 ## 14.8 GET /api/me
 
 Returns the verified console principal. Each scope returns only its own fields; obsolete roles are never returned (a user document carrying one is refused with 403). Customers never call this route.
@@ -1022,7 +1044,9 @@ Auth: `FIREBASE`, role `RETAIL_ADMIN`, for every route in this section. Scope is
 
 | `GET /api/retail/stores/:storeId/inventory` | the own store's stock, read-only: `items[] { sku, canonical_sku, variant_id, product_title, variant_title, quantity, reserved_quantity, available_quantity, availability_status, offline_price, last_updated_at }`. Any other store — including another store of the same retailer — → `404`. |
 
-Other scopes calling `/api/retail/*` → `403 FORBIDDEN`. Reservations for the store are added in later milestones under the same store-level rule.
+| `GET /api/retail/stores/:storeId/summary` | M6 "This week" for the own store: `{ days: 7, reservations, completed, refused, expired }`. Any other store → `404`. |
+
+Other scopes calling `/api/retail/*` → `403 FORBIDDEN`. The store's reservation queue uses `GET /api/reservations` and `PATCH /api/reservations/:id` (§14.4) under the same store-level rule.
 
 ---
 
