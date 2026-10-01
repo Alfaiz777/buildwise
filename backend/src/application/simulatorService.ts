@@ -16,7 +16,9 @@ export interface SimulatorResult {
     guardrail_status: string | null;
     runtime: string;
     decision_source: string | null;
-    executed_action: null;
+    guardrail_reason: string | null;
+    /** Non-null only when a backend action actually ran (docs/06 §14.2). */
+    executed_action: { type: string; reservation_id: string | null } | null;
     policy_reason: string | null;
   };
 }
@@ -98,7 +100,11 @@ export class SimulatorService {
         guardrail_status: context.guardrailStatus,
         runtime: decision?.runtime ?? this.deps.runtimeName,
         decision_source: context.decisionSource,
-        executed_action: null,
+        guardrail_reason: context.data.guardrail?.reason ?? null,
+        executed_action:
+          context.data.executedAction && context.data.executedAction.type !== 'NONE'
+            ? { type: context.data.executedAction.type, reservation_id: context.data.executedAction.reservationId }
+            : null,
         policy_reason: policy && policy.reply !== 'AUTOMATED' ? policy.reason : null,
       },
     };

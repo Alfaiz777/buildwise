@@ -131,7 +131,7 @@ describe('follow-up engine (docs/00 §11.8 Change 11)', () => {
     expect(proactive(world)[0]!.text).toContain('checking out with Vitamin C Glow Serum');
   });
 
-  it('the customer replies → normal pipeline, follow-up REPLIED, the fallback reply stays on the product', async () => {
+  it('the customer replies → normal pipeline, follow-up REPLIED, the agent reply stays on the product', async () => {
     const { world, advance } = await setup();
     await signIn(world, 'reply', OPTED_IN);
     await event(world, 'reply', { event_type: 'ADD_TO_CART', shopify_variant_id: SERUM_30 });

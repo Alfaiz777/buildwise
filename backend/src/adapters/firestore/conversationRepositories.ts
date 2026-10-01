@@ -9,6 +9,7 @@ import type {
   ConsentState,
   ConversationRecord,
   ConversationRepository,
+  CustomerLocation,
   CustomerRecord,
   CustomerRepository,
   FollowUpState,
@@ -25,6 +26,7 @@ import type {
   WebhookReceiptRepository,
 } from '../../ports/conversationRepositories.js';
 import type { TokenRejection } from '../../domain/intentToken.js';
+import type { PendingProposal } from '../../domain/guardrail.js';
 import { newId } from '../../lib/ids.js';
 
 /**
@@ -40,6 +42,11 @@ const identityKey = (i: ChannelIdentity) => `${i.channel}:${i.externalRef}`;
 
 // ---------------------------------------------------------------------------- customers
 
+const locationFromDoc = (d: FirebaseFirestore.DocumentData | null | undefined): CustomerLocation | null =>
+  d && typeof d.latitude === 'number' && typeof d.longitude === 'number'
+    ? { latitude: d.latitude, longitude: d.longitude, source: d.source, locality: d.locality ?? null, at: d.at }
+    : null;
+
 const toCustomer = (id: string, d: FirebaseFirestore.DocumentData): CustomerRecord => ({
   customerId: id,
   brandId: d.brand_id,
@@ -52,6 +59,7 @@ const toCustomer = (id: string, d: FirebaseFirestore.DocumentData): CustomerReco
   optedOutAt: d.opted_out_at ?? null,
   displayRef: d.display_ref ?? 'customer',
   lastProactiveAt: d.last_proactive_at ?? null,
+  lastLocation: locationFromDoc(d.last_location),
   createdAt: d.created_at,
   updatedAt: d.updated_at,
 });
@@ -94,6 +102,7 @@ export class FirestoreCustomerRepository implements CustomerRepository {
         optedOutAt: null,
         displayRef: create.displayRef,
         lastProactiveAt: null,
+        lastLocation: null,
         createdAt: now,
         updatedAt: now,
       };
@@ -120,12 +129,13 @@ export class FirestoreCustomerRepository implements CustomerRepository {
   async update(
     brandId: string,
     customerId: string,
-    patch: Partial<Pick<CustomerRecord, 'consentState' | 'optedOutAt' | 'lastProactiveAt'>>,
+    patch: Partial<Pick<CustomerRecord, 'consentState' | 'optedOutAt' | 'lastProactiveAt' | 'lastLocation'>>,
   ) {
     const doc: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (patch.consentState !== undefined) doc.consent_state = patch.consentState;
     if (patch.optedOutAt !== undefined) doc.opted_out_at = patch.optedOutAt;
     if (patch.lastProactiveAt !== undefined) doc.last_proactive_at = patch.lastProactiveAt;
+    if (patch.lastLocation !== undefined) doc.last_location = patch.lastLocation ? { ...patch.lastLocation } : null;
     await brandCol(this.db, brandId, 'customers').doc(customerId).update(doc);
   }
 }
@@ -374,6 +384,30 @@ export class FirestoreIntentTokenRepository implements IntentTokenRepository {
 
 // ---------------------------------------------------------------------------- conversations
 
+const proposalToDoc = (p: PendingProposal | null) =>
+  p
+    ? {
+        store_id: p.storeId,
+        variant_id: p.variantId,
+        quantity: p.quantity,
+        proposed_at: p.proposedAt,
+        expires_at: p.expiresAt,
+        offered_stores: p.offeredStores,
+      }
+    : null;
+
+const proposalFromDoc = (d: FirebaseFirestore.DocumentData | null | undefined): PendingProposal | null =>
+  d
+    ? {
+        storeId: d.store_id,
+        variantId: d.variant_id,
+        quantity: d.quantity,
+        proposedAt: d.proposed_at,
+        expiresAt: d.expires_at,
+        offeredStores: d.offered_stores ?? [],
+      }
+    : null;
+
 const toConversation = (id: string, d: FirebaseFirestore.DocumentData): ConversationRecord => ({
   conversationId: id,
   brandId: d.brand_id,
@@ -386,6 +420,7 @@ const toConversation = (id: string, d: FirebaseFirestore.DocumentData): Conversa
   lastInboundAt: d.last_inbound_at ?? null,
   lastMessageAt: d.last_message_at ?? null,
   humanHandoff: d.human_handoff === true,
+  pendingProposal: proposalFromDoc(d.pending_proposal),
   aiWindow: {
     windowStart: d.ai_window?.window_start ?? null,
     count: d.ai_window?.count ?? 0,
@@ -451,6 +486,7 @@ export class FirestoreConversationRepository implements ConversationRepository {
         last_message_at: c.lastMessageAt,
         human_handoff: c.humanHandoff,
         ai_window: windowToDoc(c.aiWindow),
+        pending_proposal: proposalToDoc(c.pendingProposal),
       });
   }
 
@@ -458,7 +494,10 @@ export class FirestoreConversationRepository implements ConversationRepository {
     brandId: string,
     conversationId: string,
     patch: Partial<
-      Pick<ConversationRecord, 'currentIntentId' | 'lastInboundAt' | 'lastMessageAt' | 'humanHandoff' | 'updatedAt'>
+      Pick<
+        ConversationRecord,
+        'currentIntentId' | 'lastInboundAt' | 'lastMessageAt' | 'humanHandoff' | 'updatedAt' | 'pendingProposal'
+      >
     >,
   ) {
     const doc: Record<string, unknown> = {};
@@ -467,6 +506,7 @@ export class FirestoreConversationRepository implements ConversationRepository {
     if (patch.lastMessageAt !== undefined) doc.last_message_at = patch.lastMessageAt;
     if (patch.humanHandoff !== undefined) doc.human_handoff = patch.humanHandoff;
     if (patch.updatedAt !== undefined) doc.updated_at = patch.updatedAt;
+    if (patch.pendingProposal !== undefined) doc.pending_proposal = proposalToDoc(patch.pendingProposal);
     await this.col(brandId).doc(conversationId).update(doc);
   }
 
@@ -526,23 +566,28 @@ export class FirestoreRecommendationRepository implements RecommendationReposito
   constructor(private readonly db: Firestore) {}
 
   async create(r: RecommendationRecord) {
-    await brandCol(this.db, r.brandId, 'aiRecommendations').doc(r.recommendationId).create({
-      recommendation_id: r.recommendationId,
-      brand_id: r.brandId,
-      customer_id: r.customerId,
-      conversation_id: r.conversationId,
-      intent_id: r.intentId,
-      action: r.action,
-      target_store_id: r.targetStoreId,
-      target_variant_id: r.targetVariantId,
-      confidence: r.confidence,
-      rationale_summary: r.rationaleSummary,
-      evidence_references: r.evidenceReferences,
-      runtime: r.runtime,
-      decision_source: r.decisionSource,
-      guardrail_status: r.guardrailStatus,
-      proposed_at: r.proposedAt,
-    });
+    await brandCol(this.db, r.brandId, 'aiRecommendations')
+      .doc(r.recommendationId)
+      .create({
+        recommendation_id: r.recommendationId,
+        brand_id: r.brandId,
+        customer_id: r.customerId,
+        conversation_id: r.conversationId,
+        intent_id: r.intentId,
+        action: r.action,
+        target_store_id: r.targetStoreId,
+        target_variant_id: r.targetVariantId,
+        confidence: r.confidence,
+        rationale_summary: r.rationaleSummary,
+        evidence_references: r.evidenceReferences,
+        runtime: r.runtime,
+        decision_source: r.decisionSource,
+        guardrail_status: r.guardrailStatus,
+        guardrail_reason: r.guardrailReason,
+        proposed_at: r.proposedAt,
+        // JSON round-trip: the trace is plain data and never contains undefined
+        trace: r.trace ? JSON.parse(JSON.stringify(r.trace)) : null,
+      });
   }
 
   async listByConversation(brandId: string, conversationId: string) {
@@ -567,10 +612,12 @@ export class FirestoreRecommendationRepository implements RecommendationReposito
           runtime: d.runtime,
           decisionSource: d.decision_source,
           guardrailStatus: d.guardrail_status,
+          guardrailReason: d.guardrail_reason ?? null,
           proposedAt: d.proposed_at,
+          trace: d.trace ?? null,
         };
       })
-      .sort((a, b) => a.proposedAt.localeCompare(b.proposedAt));
+      .sort((a, b) => a.proposedAt.localeCompare(b.proposedAt) || a.recommendationId.localeCompare(b.recommendationId));
   }
 }
 
@@ -581,19 +628,21 @@ export class FirestoreCommerceEventRepository implements CommerceEventRepository
 
   async record(e: CommerceEventRecord) {
     try {
-      await brandCol(this.db, e.brandId, 'commerceEvents').doc(e.eventId).create({
-        event_id: e.eventId,
-        brand_id: e.brandId,
-        customer_id: e.customerId,
-        web_session_id: e.webSessionId,
-        event_type: e.eventType,
-        source: e.source,
-        entity_reference: e.entityReference,
-        event_payload_reference: null,
-        payload: e.payload,
-        timestamp: e.timestamp,
-        idempotency_key: e.idempotencyKey,
-      });
+      await brandCol(this.db, e.brandId, 'commerceEvents')
+        .doc(e.eventId)
+        .create({
+          event_id: e.eventId,
+          brand_id: e.brandId,
+          customer_id: e.customerId,
+          web_session_id: e.webSessionId,
+          event_type: e.eventType,
+          source: e.source,
+          entity_reference: e.entityReference,
+          event_payload_reference: null,
+          payload: JSON.parse(JSON.stringify(e.payload)),
+          timestamp: e.timestamp,
+          idempotency_key: e.idempotencyKey,
+        });
       return true;
     } catch (err) {
       if ((err as { code?: unknown }).code === 6) return false; // ALREADY_EXISTS: a replay

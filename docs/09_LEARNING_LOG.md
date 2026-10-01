@@ -314,3 +314,93 @@ A click on the storefront becomes an event; the event moves the session's intent
 | 3. What goes in? | brand, session / visitor IDs, event type, variant | client_event_id / client_message_id | 16 random bytes → 26 characters | a channel-neutral inbound message | the storefront events of one session | intents with `follow_up.due_at` | `last_inbound_at`, consent |
 | 4. What changes? | commerceEvents, customerIntents, intentTokens | receipts / processed IDs | the token hash and the intent binding | customers, conversations, messages, recommendations, events | the intent's stage, type, strength | follow_up status, messages, `last_proactive_at` | the message kind (SESSION / TEMPLATE) |
 | 5. When it fails? | 403 / 400 / 429; nothing recorded | the stored result is returned | silent failure + audit | a FAILED receipt can be retried | invalid events are rejected before classification | claimed follow-ups are never re-sent | outside the window only a template; no consent → nothing sent |
+
+## M5 — Decide & reserve
+
+### What I learned
+
+- **Agent loop and tool calling:** the runtime gets a small, backend-built context package and a list of tool declarations (JSON Schema). It asks for tools; the backend runs them and returns verified data; the runtime then returns one structured decision. It never writes anything itself and never chooses the brand or customer — those are injected by the pipeline.
+- **Guardrail re-verification:** a decision is only a proposal. Before anything is written, the pipeline re-reads the store, the stock, the brand policy and the pending offer (fresh, not from the agent's context) and blocks with one reason: out of stock, store closed, not eligible, outside scope, or ambiguous (then the agent asks first).
+- **Transactions and races:** a reservation reads and writes the same inventory document inside one Firestore transaction, so two customers racing for the last unit are serialised: the loser's transaction retries, sees the new `reserved_quantity` and gets a verified `OUT_OF_STOCK`. Tested with 10 concurrent requests → exactly one success.
+- **Idempotency:** the reservation ID is derived from its idempotency key (the recommendation ID), so a replay returns the same reservation; a replayed simulator message returns the stored original response and runs nothing twice.
+- **Structured output validation:** every decision is validated against one schema; invalid output gets one repair attempt, then the deterministic fallback; a runtime slower than the 20 s budget also falls back. The runtime name is set by the implementation and checked, so a mock can never pose as Gemini.
+- **Forward dispatch:** the customer's reply for store options, confirmations, "no store has it" and blocks is rebuilt from this run's tool results (distance, closing time, "only 1 left" only when exactly one is available, pickup code, maps link from the store's own coordinates) — never from free text.
+
+### Architecture
+
+```text
+Simulator ─► ConversationPipeline
+  4 CONVERSATION_STATE  shared location → customer.last_location (rounded ~1 km)
+  6 AGENT      buildAgentContext (brand, customer, intent, product sheets, last 10 messages, pending offer)
+               → runAgentRuntime(MockAgentRuntime, read tools via AgentToolExecutor, 20 s budget, 1 repair) → AgentDecision
+               (failure → deterministic fallback: handoff when enabled, else "try again")
+  7 GUARDRAIL  fresh store / stock / policy / pending_proposal → ALLOWED | BLOCKED(reason) + audit
+  8 TOOLS      create_reservation → ReservationService → Firestore transaction (stock, policy, pickup code, reserved += q)
+               cancel_reservation · request_human_handoff · record_customer_intent
+               → composeReply (verified results only)
+  9 PERSISTENCE  AIRecommendation + trace, pending_proposal, STORE_RECOMMENDATION (PROPOSED / UNMET_DEMAND), events
+process-due ─► FollowUpService.processDue ─► ReservationService.expireDue (each hold released in its own transaction)
+```
+
+### Files I changed
+
+```text
+backend/src/domain/{agentTools,agentReplies,guardrail,locality,mockAgentRules,reservationStatus,unmetDemand,fallbackDecision,storeHours,brandSettings}.ts
+backend/src/ports/{agent,agentTools,reservations,conversationRepositories}.ts
+backend/src/application/agent/{contextBuilder,toolExecutor,tools,replyComposer}.ts
+backend/src/application/{reservationService,conversationModule,conversationQueryService,followUpService,simulatorService}.ts
+backend/src/application/conversation/{stages,agentStage,pipeline}.ts   (toolRegistry.ts removed)
+backend/src/adapters/agent/mockAgentRuntime.ts, adapters/firestore/{reservationRepository,conversationRepositories}.ts
+backend/src/routes/{reservations,conversations}.ts, backend/fixtures/retail/scenario-stores.csv
+frontend/src/pages/brand/{DecisionTrace,ReservationsPanel,ConversationsPage,SimulatorPhone}.tsx, pages/retailer/RetailerHome.tsx
+```
+
+### Important code paths
+
+```text
+stages.ts AGENT → buildAgentContext → runAgentRuntime → MockAgentRuntime.decide → AgentToolExecutor.execute (exists → scope → input → allowed)
+stages.ts GUARDRAIL → checkReservationProposal / checkCancelProposal / checkOfferedStores (pure, fresh data)
+stages.ts TOOLS → create_reservation → ReservationService.create → FirestoreReservationRepository.create (one transaction)
+replyComposer.composeReply → confirmationReply / discoveryReply / noEligibleStoreReply / safeAlternative
+```
+
+### What can fail?
+
+```text
+Runtime timeout / invalid output twice → deterministic fallback (recorded with decision_source DETERMINISTIC_FALLBACK)
+Agent passes a customer or brand ID → the tool call is BLOCKED (SCOPE_VIOLATION) and audited
+Stock changed since the offer → guardrail OUT_OF_STOCK, or the transaction rejects (lost race) → another store / online
+"Reserve it" with nothing offered, or the offer expired → nothing is written; the agent asks
+Firestore contention → the SDK retries the transaction; the emulator is slower than production (re-run in L3)
+A crash between reservation commit and reply → the hold exists and expires on schedule; a message replay returns the same reservation
+```
+
+### Security implications
+
+```text
+Scope comes from the pipeline's resolved customer, never from agent arguments; writes never run during the decide step
+The context package holds only this customer's data; the trace stores a hash and a PII-free summary
+Retail Admins see reservations of their own store only, with a masked customer reference
+No coordinates in unmet-demand events; customer locations kept at ~1 km
+```
+
+### What I still do not understand
+
+```text
+How ADK for TypeScript exposes tool calls and structured output with Vertex AI (spike S3, L1).
+How strongly Firestore serialises contended transactions in production (L3 re-run of the race test).
+```
+
+### Teach-back
+
+A customer's message is first turned into a small, checked context: who they are, what they looked at, what we already offered. The agent then asks for tools — "which stores near this customer have it open and in stock?" — and gets real answers with reasons for every excluded store, and returns one structured decision. That decision is only a proposal: the guardrail re-reads stock, hours and policy fresh and either lets it through or blocks it with a reason. An approved hold runs in a single Firestore transaction that re-checks the stock and reserves the unit, so two people can never get the last one. Finally the reply is written from those verified results — store, distance, pickup code, hold time, maps link — and the whole path is shown to the brand as "Why Buildwise did this".
+
+### Five-question self-test
+
+| | Agent loop + tool calling | Guardrail re-verification | Transactions + races | Idempotency | Structured output validation | Forward dispatch |
+|---|---|---|---|---|---|---|
+| 1. What is it? | Context → tool requests → verified results → one decision | A fresh check of a proposed action before any write | Read-check-write as one atomic unit | Same request twice → same effect once | Checking the AI's decision against one schema | Replies built only from this run's tool results |
+| 2. Why needed? | The AI must reason over real data, not guesses | Data changes between proposal and execution | Two customers can race for the last unit | Retries and double taps | A model can return malformed or unsafe output | So no reply states an unverified fact |
+| 3. What goes in? | Context package + read tool declarations | The proposal + fresh store, stock, policy, pending offer | store, stock, policy, quantity, idempotency key | recommendation ID / client_message_id | The runtime's raw output | Tool outputs (stores, reservation) |
+| 4. What changes? | Nothing (reads only); the trace records calls | guardrail_status + audit | reservation doc + reserved_quantity | nothing on replay | nothing; the decision is accepted or replaced | the outbound message text and options |
+| 5. When it fails? | Timeout / invalid → deterministic fallback | BLOCKED with a reason; a safe alternative is offered | The loser gets OUT_OF_STOCK; nothing is written | The stored result / existing reservation is returned | One repair, then the fallback | The runtime's own text is used only for non-commerce replies |

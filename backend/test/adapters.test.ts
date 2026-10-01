@@ -12,7 +12,7 @@ import { MockCommerceProvider } from '../src/adapters/commerce/mockCommerceProvi
 import { LocalEventSink } from '../src/adapters/events/localEventSink.js';
 import { SimulatorMessagingProvider } from '../src/adapters/messaging/simulatorMessagingProvider.js';
 import { LocalFileStorageProvider } from '../src/adapters/storage/localFileStorageProvider.js';
-import { ToolRegistry } from '../src/application/conversation/toolRegistry.js';
+import { decisionInput, stubExecutor } from './agentFixtures.js';
 import type { CommerceEvent } from '../src/domain/events.js';
 import { AgentDecisionSchema, type AgentRuntime, type DecisionInput } from '../src/ports/agent.js';
 import type { CommerceProvider } from '../src/ports/commerce.js';
@@ -103,31 +103,17 @@ function messagingContract(name: string, make: () => MessagingProvider, validRaw
 }
 
 function agentContract(name: string, make: () => AgentRuntime) {
-  const input = (text: string): DecisionInput => ({
-    brandId: 'b',
-    customerId: 'c',
-    conversationId: 'conv',
-    message: {
-      channel: 'SIMULATOR',
-      brandId: 'b',
-      externalCustomerRef: 'sim:c',
-      externalMessageId: 'm1',
-      receivedAt: new Date().toISOString(),
-      content: { type: 'TEXT', text },
-    },
-    context: {},
-    history: [],
-  });
+  const input = (text: string): DecisionInput => decisionInput({ type: 'TEXT', text });
 
   describe(`AgentRuntime contract — ${name}`, () => {
     it('returns a valid AgentDecision tagged with its own runtime', async () => {
       const runtime = make();
-      const decision = AgentDecisionSchema.parse(await runtime.decide(input('hello'), new ToolRegistry()));
+      const decision = AgentDecisionSchema.parse(await runtime.decide(input('hello'), stubExecutor()));
       expect(decision.runtime).toBe(runtime.runtime);
     });
 
     it('hands off when the customer explicitly asks for a person', async () => {
-      const decision = await make().decide(input('I want to talk to a person'), new ToolRegistry());
+      const decision = await make().decide(input('I want to talk to a person'), stubExecutor());
       expect(decision.next_best_action.action).toBe('HUMAN_HANDOFF');
     });
   });

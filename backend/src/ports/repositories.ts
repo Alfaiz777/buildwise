@@ -309,7 +309,7 @@ export interface RetailImportRepository {
 /** docs/04_DATA_MODEL.md §18 */
 export interface BrandAuditInput {
   brandId: string;
-  actorType: 'PLATFORM_ADMIN' | 'USER' | 'SYSTEM' | 'AGENT';
+  actorType: 'PLATFORM_ADMIN' | 'USER' | 'SYSTEM' | 'AGENT' | 'CUSTOMER';
   actorId: string;
   action: string;
   targetType: string;

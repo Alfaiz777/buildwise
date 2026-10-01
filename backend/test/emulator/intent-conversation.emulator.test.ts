@@ -233,7 +233,7 @@ describe('M4 local E2E: intent → follow-up → conversation', () => {
 
     const reply = await say('brandAdmin', 'shopper_3002', 'Is it good for oily skin?');
     expect(reply.body.outbound_messages[0].text).toContain('Vitamin C Glow Serum');
-    expect(reply.body.decision).toMatchObject({ runtime: 'MOCK', decision_source: 'DETERMINISTIC_FALLBACK' });
+    expect(reply.body.decision).toMatchObject({ runtime: 'MOCK', decision_source: 'AGENT' });
     expect((await intentOf('brd_m4', tab.ids.web_session_id)).follow_up.status).toBe('REPLIED');
 
     const detail = await as('brandAdmin').get(`/api/brand/conversations/${reply.body.conversation_id}`);

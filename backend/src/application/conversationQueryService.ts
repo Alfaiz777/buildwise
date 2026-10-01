@@ -1,6 +1,7 @@
 import { resolveMessagingSettings } from '../domain/brandSettings.js';
 import { Errors } from '../lib/errors.js';
 import type {
+  JsonValue,
   CommerceEventRepository,
   ConversationRecord,
   ConversationRepository,
@@ -12,7 +13,8 @@ import type {
   RecommendationRecord,
   RecommendationRepository,
 } from '../ports/conversationRepositories.js';
-import type { BrandRepository, ProductRepository } from '../ports/repositories.js';
+import type { BrandRepository, ProductRepository, StoreRepository } from '../ports/repositories.js';
+import type { ReservationRepository } from '../ports/reservations.js';
 
 export interface IntentView {
   intent: IntentRecord;
@@ -33,7 +35,17 @@ export interface ConversationDetail extends ConversationSummary {
   brandDisplayName: string;
   messages: MessageRecord[];
   webEvents: { eventType: string; at: string; payload: Record<string, string | number | null> }[];
-  recommendations: RecommendationRecord[];
+  recommendations: (RecommendationRecord & { reservation: ReservationSummary | null })[];
+}
+
+/** The reservation a decision created, for the "Why Buildwise did this" trace. */
+export interface ReservationSummary {
+  reservationId: string;
+  status: string;
+  storeId: string;
+  storeName: string;
+  pickupCode: string;
+  expiresAt: string;
 }
 
 /** Opaque, non-reversible reference for an anonymous session (never the raw session ID). */
@@ -53,6 +65,9 @@ export class ConversationQueryService {
       conversations: ConversationRepository;
       recommendations: RecommendationRepository;
       events: CommerceEventRepository;
+      /** M5: reservations referenced by a decision trace. */
+      reservations?: ReservationRepository;
+      stores?: StoreRepository;
     },
   ) {}
 
@@ -131,8 +146,31 @@ export class ConversationQueryService {
         )
         .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
         .map((e) => ({ eventType: e.eventType, at: e.timestamp, payload: displayPayload(e.payload) })),
-      recommendations,
+      recommendations: await this.withReservations(brandId, recommendations),
     };
+  }
+
+  private async withReservations(brandId: string, recommendations: RecommendationRecord[]) {
+    const stores = this.deps.stores ? await this.deps.stores.list(brandId) : [];
+    return Promise.all(
+      recommendations.map(async (r) => {
+        const id = r.trace?.executed_action?.reservation_id;
+        const reservation = id && this.deps.reservations ? await this.deps.reservations.get(brandId, id) : null;
+        return {
+          ...r,
+          reservation: reservation
+            ? {
+                reservationId: reservation.reservationId,
+                status: reservation.status,
+                storeId: reservation.storeId,
+                storeName: stores.find((s) => s.storeId === reservation.storeId)?.storeName ?? reservation.storeId,
+                pickupCode: reservation.pickupCode,
+                expiresAt: reservation.expiresAt,
+              }
+            : null,
+        };
+      }),
+    );
   }
 
   async listIntents(brandId: string, filter: { type?: string; followUpStatus?: string }): Promise<IntentView[]> {
@@ -158,7 +196,12 @@ export class ConversationQueryService {
 }
 
 /** The event trail shown in the console: never internal IDs beyond the product. */
-function displayPayload(payload: Record<string, string | number | null>) {
+function displayPayload(payload: { [key: string]: JsonValue }): Record<string, string | number | null> {
   const allowed = ['matched_category', 'search_term', 'entry', 'reason', 'template_name', 'message_kind'];
-  return Object.fromEntries(Object.entries(payload).filter(([k]) => allowed.includes(k)));
+  return Object.fromEntries(
+    Object.entries(payload).filter(
+      (entry): entry is [string, string | number | null] =>
+        allowed.includes(entry[0]) && (entry[1] === null || ['string', 'number'].includes(typeof entry[1])),
+    ),
+  );
 }

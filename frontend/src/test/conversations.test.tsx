@@ -223,3 +223,165 @@ describe('Brand Console — Conversations & intents', () => {
     expect(parseSimulatorFragment('')).toEqual({ customer: null, text: null });
   });
 });
+
+const TRACED = {
+  ...DETAIL,
+  messages: [
+    ...DETAIL.messages,
+    {
+      message_id: 'msg_4',
+      direction: 'OUTBOUND',
+      message_type: 'INTERACTIVE',
+      text: 'Done — 1 × Vitamin C Glow Serum 30 ml is on hold for you at Andheri Store.\nPickup code: 004271\nDirections: https://www.google.com/maps/search/?api=1&query=19.1364,72.8296',
+      options: [{ option_id: 'cancel:res_1', label: 'Cancel reservation' }],
+      location: null,
+      origin: 'AUTOMATED_REPLY',
+      message_kind: 'SESSION',
+      template_name: null,
+      delivery_status: 'DELIVERED',
+      timestamp: '2026-10-05T10:05:00.000Z',
+    },
+  ],
+  recommendations: [
+    {
+      recommendation_id: 'rec_1',
+      action: 'STORE_DISCOVERY',
+      runtime: 'MOCK',
+      decision_source: 'AGENT',
+      guardrail_status: 'ALLOWED',
+      guardrail_reason: null,
+      rationale_summary: 'Nearest eligible store is Andheri Store; 2 store(s) excluded by verified reasons.',
+      proposed_at: '2026-10-05T10:04:00.000Z',
+      reservation: null,
+      trace: {
+        context_hash: 'a'.repeat(64),
+        context_summary: { intent_type: 'STORE_ORIENTED', location: 'SHARED', messages: 3, pending_proposal: false },
+        tool_calls: [
+          {
+            call_id: 'tc_1',
+            tool: 'find_nearby_stores',
+            kind: 'READ',
+            phase: 'DECIDE',
+            input: { variant_id: 'var_2001' },
+            output_summary: { status: 'OK', eligible: 1, excluded: 2 },
+            status: 'EXECUTED',
+            reason_code: null,
+            duration_ms: 3.2,
+          },
+        ],
+        eligible: [{ store_id: 'st_north_2', store_name: 'Andheri Store', distance_km: 7.6, variant_id: 'var_2001' }],
+        excluded: [
+          {
+            store_id: 'st_north_3',
+            store_name: 'Powai Store',
+            reason: 'OUT_OF_STOCK',
+            distance_km: 0.7,
+            variant_id: 'var_2001',
+          },
+          {
+            store_id: 'st_north_1',
+            store_name: 'Bandra Store',
+            reason: 'TOO_FAR',
+            distance_km: 10.6,
+            variant_id: 'var_2001',
+          },
+        ],
+        guardrail: { status: 'ALLOWED', reason_code: null, checked: 'OFFERED_STORES' },
+        executed_action: null,
+        repaired: false,
+        fallback_reason: null,
+      },
+    },
+    {
+      recommendation_id: 'rec_2',
+      action: 'STORE_RESERVATION',
+      runtime: 'MOCK',
+      decision_source: 'AGENT',
+      guardrail_status: 'ALLOWED',
+      guardrail_reason: null,
+      rationale_summary: 'Customer confirmed the offered hold.',
+      proposed_at: '2026-10-05T10:05:00.000Z',
+      reservation: {
+        reservation_id: 'res_1',
+        status: 'PENDING',
+        store_id: 'st_north_2',
+        store_name: 'Andheri Store',
+        pickup_code: '004271',
+        expires_at: '2026-10-05T12:05:00.000Z',
+      },
+      trace: {
+        context_hash: 'b'.repeat(64),
+        context_summary: { intent_type: 'STORE_ORIENTED', location: 'SHARED', messages: 4, pending_proposal: true },
+        tool_calls: [],
+        eligible: [],
+        excluded: [],
+        guardrail: { status: 'ALLOWED', reason_code: null, checked: 'CREATE_RESERVATION' },
+        executed_action: { tool: 'create_reservation', status: 'EXECUTED', reason_code: null, reservation_id: 'res_1' },
+        repaired: false,
+        fallback_reason: null,
+      },
+    },
+  ],
+};
+
+describe('Brand Console — M5 decision trace and reservations', () => {
+  function api5(): ApiClient {
+    const api = apiFor();
+    const base = api.get as (path: string) => Promise<unknown>;
+    const get = vi.fn(async (path: string) => {
+      if (path === '/api/brand/conversations/conv_1') return TRACED;
+      if (path === '/api/reservations')
+        return {
+          reservations: [
+            {
+              reservation_id: 'res_1',
+              store_id: 'st_north_2',
+              store_name: 'Andheri Store',
+              product_title: 'Vitamin C Glow Serum',
+              variant_title: '30 ml',
+              sku: 'DBC-VCSERUM-30',
+              quantity: 1,
+              status: 'PENDING',
+              active: true,
+              customer_display: 'Customer •••• 4821',
+              created_at: '2026-10-05T10:05:00.000Z',
+              expires_at: '2026-10-05T12:05:00.000Z',
+            },
+          ],
+        };
+      return base(path);
+    });
+    return { ...api, get: get as ApiClient['get'] };
+  }
+
+  it('"Why Buildwise did this": guardrail, runtime, source, stores with reasons, tool calls, reservation', async () => {
+    renderAt('/brand/conversations', api5());
+    fireEvent.click(await screen.findByRole('button', { name: /sim:shopper_3002/ }));
+    expect(await screen.findByText('Why Buildwise did this')).toBeInTheDocument();
+    expect(screen.getByText('store reservation')).toBeInTheDocument();
+    expect(screen.getByText(/Allowed after re-checking create reservation on fresh data/)).toBeInTheDocument();
+    expect(screen.getByText(/Andheri Store · pending · pickup code/)).toBeInTheDocument();
+    expect(screen.getAllByText('004271').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Mock AI, deterministic').length).toBeGreaterThan(1);
+    expect(screen.getAllByText('agent').length).toBe(2);
+
+    fireEvent.click(screen.getByText('store discovery'));
+    expect(await screen.findByText('excluded: out of stock')).toBeInTheDocument();
+    expect(screen.getByText('excluded: too far')).toBeInTheDocument();
+    expect(screen.getByText('Tool calls (1)')).toBeInTheDocument();
+
+    const link = screen.getByRole('link', { name: /google\.com\/maps/ });
+    expect(link).toHaveAttribute('href', 'https://www.google.com/maps/search/?api=1&query=19.1364,72.8296');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it('the Reservations tab lists status, store, product, masked customer, created and expires', async () => {
+    renderAt('/brand/conversations', api5());
+    fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
+    expect(await screen.findByText('Customer •••• 4821')).toBeInTheDocument();
+    const row = screen.getByText('Customer •••• 4821').closest('tr')!;
+    expect(within(row).getByText('pending')).toBeInTheDocument();
+    expect(within(row).getByText('Andheri Store')).toBeInTheDocument();
+    expect(within(row).getByText(/Vitamin C Glow Serum/)).toBeInTheDocument();
+  });
+});

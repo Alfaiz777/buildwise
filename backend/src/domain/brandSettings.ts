@@ -34,3 +34,10 @@ export function allowedStorefrontOrigins(settings: Record<string, unknown>): str
   const list = settings.allowed_storefront_origins;
   return Array.isArray(list) ? list.filter((o): o is string => typeof o === 'string') : [];
 }
+
+/** brand.settings.online_store.product_url_template → the "Buy online" link (Change 12, E10). */
+export function onlineProductUrl(settings: Record<string, unknown>, productId: string): string | null {
+  const template = record(settings.online_store).product_url_template;
+  if (typeof template !== 'string' || !/^https?:\/\//.test(template) || !template.includes('{product_id}')) return null;
+  return template.replace('{product_id}', encodeURIComponent(productId));
+}

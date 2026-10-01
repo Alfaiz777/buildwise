@@ -74,3 +74,19 @@ export function isOpenNow(hours: StoreHours | null, now: Date): boolean {
   const range = parseDayHours(hours[day] ?? '');
   return !!range && range.opens <= minutes && minutes < range.closes;
 }
+
+/** The store's local weekday (lower-case), hour and "HH:MM" time for `now`. */
+export function storeLocalTime(timezone: string, now: Date): { weekday: string; hour: number; time: string } {
+  const { day, minutes } = localParts(timezone, now);
+  const hour = Math.floor(minutes / 60);
+  return { weekday: day, hour, time: `${String(hour).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}` };
+}
+
+/** Today's closing time ("21:00") in the store's timezone, or null when closed today / invalid hours. */
+export function closingTimeToday(hours: StoreHours | null, now: Date): string | null {
+  if (!hours || validateStoreHours(hours)) return null;
+  const { day } = localParts(hours.timezone!, now);
+  const range = parseDayHours(hours[day] ?? '');
+  if (!range) return null;
+  return `${String(Math.floor(range.closes / 60)).padStart(2, '0')}:${String(range.closes % 60).padStart(2, '0')}`;
+}

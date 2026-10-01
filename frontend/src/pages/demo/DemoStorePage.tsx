@@ -154,6 +154,14 @@ export function DemoStorePage({ tracker: injected }: { tracker?: IntentTracker }
 
   const product = view.page === 'product' ? products?.find((p) => p.product_id === view.productId) : null;
 
+  // "Buy online" links from the chat open a product directly: /demo-store#product=<product_id>.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('product');
+    const match = wanted ? products?.find((p) => p.product_id === wanted) : undefined;
+    if (match && tracker) openProduct(match);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, tracker]);
+
   const openProduct = (p: Product) => {
     setView({ page: 'product', productId: p.product_id });
     setSelectedVariant(p.variants[0]?.shopify_variant_id ?? null);

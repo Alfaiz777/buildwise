@@ -9,6 +9,7 @@ import type { DemoStorefrontService } from './application/demoStorefrontService.
 import type { FollowUpService } from './application/followUpService.js';
 import type { IntentService } from './application/intentService.js';
 import type { PlatformAdminService } from './application/platformAdminService.js';
+import type { ReservationService } from './application/reservationService.js';
 import type { RetailImportService } from './application/retailImportService.js';
 import type { SimulatorService } from './application/simulatorService.js';
 import type { TenantAdminService } from './application/tenantAdminService.js';
@@ -33,6 +34,7 @@ import { meRouter } from './routes/me.js';
 import { platformRouter } from './routes/platform.js';
 import { retailRouter } from './routes/retail.js';
 import { retailImportsRouter } from './routes/retailImports.js';
+import { reservationsRouter } from './routes/reservations.js';
 
 export interface AppDeps {
   config: Pick<Config, 'corsAllowedOrigins'>;
@@ -55,6 +57,7 @@ export interface AppDeps {
     simulator: SimulatorService;
     conversations: ConversationQueryService;
     followUps: FollowUpService;
+    reservations: ReservationService;
     /** LOCAL PROFILE ONLY: the demo storefront (never wired in gcp). */
     demoStorefront?: DemoStorefrontService;
   };
@@ -117,6 +120,7 @@ export function createApp(deps: AppDeps): Express {
   if (localUploads) tenant.use('/local-files', requireScope('BRAND'), localFilesRouter(localUploads));
   // Retailer Console: store-scoped, RETAIL_ADMIN only.
   tenant.use('/retail', requireScope('RETAIL'), retailRouter(services.account));
+  tenant.use('/reservations', reservationsRouter(services.reservations));
   api.use(tenant);
 
   app.use('/api', api);

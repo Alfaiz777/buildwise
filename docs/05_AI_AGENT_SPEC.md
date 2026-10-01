@@ -131,6 +131,10 @@ record_customer_intent()
 
 Tool responses must contain verified application data.
 
+**Read and write tools** (`00` §11.8 Change 12, E1). During the decide step the runtime can call only the read tools: `get_customer_context()` (the context package itself), `get_product_context()`, `get_brand_policy()`, `find_nearby_stores()`, `check_store_inventory()`, `get_store_hours()`, `get_customer_history()`. The write tools `create_reservation()`, `cancel_reservation()`, `request_human_handoff()` and `record_customer_intent()` are proposed through `next_best_action` and executed by pipeline step 8 only after the guardrail (step 7) has re-verified the proposal against fresh data. `prepare_customer_response()` is realised by the pipeline's deterministic reply builders for commerce replies (store options, confirmation, no eligible store).
+
+The `ToolExecutor` checks every call: the tool exists (`UNKNOWN_TOOL`), no scope keys are passed (`SCOPE_VIOLATION`, audited), the input is valid (`INVALID_INPUT`), the action is allowed in this step (`WRITE_NOT_ALLOWED_IN_DECIDE`). Brand, customer and conversation scope are injected by the pipeline. Every call is recorded in the decision trace (`04` §14).
+
 - `prepare_customer_response()` is channel-neutral (formerly `prepare_whatsapp_response()`). The pipeline sends the result through the conversation's `MessagingProvider`, and channel policy is applied by the pipeline.
 - `record_customer_intent()` may only propose or refine `intent_type`. It never sets `intent_stage` (§8).
 - There is **no** `record_outcome()` agent tool. Outcomes are recorded only by deterministic backend code from verified evidence (`04_DATA_MODEL.md` §16; §9 below). An earlier draft listed this tool, which contradicted that rule, so it was removed (`00_M0_SPECIFICATION_FREEZE.md` §11.8).
@@ -257,6 +261,8 @@ The agent is reached only through the `ConversationPipeline` (`03_TECH_ARCHITECT
 - It calls tools **only** through the same `ToolExecutor`, so the guardrail, tools, persistence and outcome recording are exercised exactly as in production. It is not a separate AI flow.
 - It must never be presented as Gemini intelligence. Every console or simulator view of a mock decision shows its runtime ("Mock AI — deterministic").
 - The `gcp` profile refuses to start with `MockAgentRuntime` (`07_SECURITY_SPEC.md` §19).
+- M5 rule set (checked in order; `00` §11.8 Change 12): (1) prompt-injection, other-customer or private-data requests → `NO_ACTION` refusal, no tool calls; (2) a request for a person → `HUMAN_HANDOFF`; (3) "cancel" / a "Cancel reservation" tap → `cancel_reservation` for the customer's own active reservation; (4) "reserve it" / a "Hold" tap → `STORE_RESERVATION` against the pending proposal, otherwise a clarification (`AMBIGUOUS`); (5) "Buy online" → `ONLINE_PURCHASE`; (6) urgency, "nearby", "another store", a shared location or an area name → `find_nearby_stores` with the customer's location (ask for the area when there is none) → `STORE_DISCOVERY` with a hold offer, or `ALTERNATIVE_PRODUCT` / `ONLINE_PURCHASE` when no store is eligible; (7) a product question → `EDUCATE` from verified attributes, or "no verified information"; (8) "which one" / "compare" → `COMPARE` on verified attributes and prices plus a clarifying question; (9) otherwise `NO_ACTION` with a clarifying question.
+- Test hooks (constructor options only, never reachable from customer input) simulate a slow runtime (the 20 s budget → fallback) and invalid output (one repair attempt → fallback).
 - Mock results are never used as evidence of AI quality. The final AI evaluation (§16, `08_TEST_PLAN.md` §7) runs on `AdkGeminiAgentRuntime`.
 
 ---

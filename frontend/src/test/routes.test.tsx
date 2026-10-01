@@ -350,7 +350,7 @@ describe('scope routing — each of the three roles lands in its own console are
     expect(screen.getByText('North Retail')).toBeInTheDocument();
     expect(screen.getByText('Hill Road, Bandra')).toBeInTheDocument();
     expect(screen.getByText('mon 10:00-21:00 (Asia/Kolkata)')).toBeInTheDocument();
-    expect(screen.getByText(/Customer reservations for this store appear here/)).toBeInTheDocument();
+    expect(screen.getByText(/Reserved = units held for customers at this store/)).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.queryByText('Andheri Store')).not.toBeInTheDocument();
   });
