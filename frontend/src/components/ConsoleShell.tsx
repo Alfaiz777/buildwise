@@ -15,13 +15,13 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
       ? `${me.retailer_name} · ${me.brand_name}`
       : me.scope === 'BRAND'
         ? me.brand_name
-        : 'Buildwise platform';
+        : 'Qwikspot platform';
 
   return (
     <div className="shell">
       <header className="shell-header">
         <div>
-          <strong>Buildwise</strong> <span className="muted">· {AREA_TITLE[me.scope]}</span>
+          <strong>Qwikspot</strong> <span className="muted">· {AREA_TITLE[me.scope]}</span>
           <div className="muted small">{context}</div>
         </div>
         <div className="shell-user">

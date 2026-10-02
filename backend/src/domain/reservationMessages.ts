@@ -9,10 +9,10 @@ export type ReservationUpdateEvent = 'CONFIRMED' | 'READY' | 'REFUSED' | 'EXPIRE
 
 /** Named templates used outside the 24-hour window (registry kept in code until L2). */
 export const RESERVATION_TEMPLATES: Record<ReservationUpdateEvent, string> = {
-  CONFIRMED: 'buildwise_reservation_confirmed_v1',
-  READY: 'buildwise_reservation_ready_v1',
-  REFUSED: 'buildwise_reservation_refused_v1',
-  EXPIRED: 'buildwise_reservation_expired_v1',
+  CONFIRMED: 'qwikspot_reservation_confirmed_v1',
+  READY: 'qwikspot_reservation_ready_v1',
+  REFUSED: 'qwikspot_reservation_refused_v1',
+  EXPIRED: 'qwikspot_reservation_expired_v1',
 };
 
 export interface ReservationFacts {

@@ -1,7 +1,7 @@
 {
-  "name": "buildwise",
+  "name": "qwikspot",
   "private": true,
-  "description": "Buildwise — AI-powered omnichannel commerce intelligence for D2C brands",
+  "description": "Qwikspot — AI-powered omnichannel commerce intelligence for D2C brands",
   "engines": {
     "node": ">=24"
   },
@@ -12,7 +12,7 @@
   "scripts": {
     "dev:backend": "npm run dev --workspace backend",
     "dev:frontend": "npm run dev --workspace frontend",
-    "emulators": "firebase emulators:start --project demo-buildwise --only auth,firestore",
+    "emulators": "firebase emulators:start --project demo-qwikspot --only auth,firestore",
     "seed:platform-admin": "npm run seed:platform-admin --workspace backend --",
     "seed:demo": "npm run seed:demo --workspace backend",
     "demo:check": "npm run demo:check --workspace backend",
@@ -23,7 +23,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "npm run test --workspaces",
-    "test:emulator": "firebase emulators:exec --project demo-buildwise --only auth,firestore \"npm run test:emulator --workspace backend\""
+    "test:emulator": "firebase emulators:exec --project demo-qwikspot --only auth,firestore \"npm run test:emulator --workspace backend\""
   },
   "devDependencies": {
     "firebase-tools": "^15.31.0",

@@ -153,7 +153,7 @@ describe('intent token (docs/06 §10.1)', () => {
       text: 'Hello I need it today',
     });
     expect(extractIntentToken(prefilledText(token))).toEqual({ token, text: '' });
-    expect(extractIntentToken('START_BUILDWISE_TOOSHORT')).toEqual({ token: null, text: 'START_BUILDWISE_TOOSHORT' });
+    expect(extractIntentToken('START_QWIKSPOT_TOOSHORT')).toEqual({ token: null, text: 'START_QWIKSPOT_TOOSHORT' });
   });
 
   it('validation: unknown, other brand, expired, already used', () => {

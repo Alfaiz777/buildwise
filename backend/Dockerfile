@@ -1,6 +1,6 @@
-# Buildwise API — Cloud Run image.
+# Qwikspot API — Cloud Run image.
 # Build from the REPO ROOT (the npm workspace lockfile lives there):
-#   docker build -f backend/Dockerfile -t buildwise-api .
+#   docker build -f backend/Dockerfile -t qwikspot-api .
 
 FROM node:24-slim AS build
 WORKDIR /app

@@ -91,7 +91,7 @@ export class ReservationService {
         brandId: r.brandId,
         customerId: r.customerId,
         eventType: 'RESERVATION_CREATED',
-        source: 'BUILDWISE',
+        source: 'QWIKSPOT',
         entityReference: r.reservationId,
         payload: {
           store_id: r.storeId,
@@ -106,7 +106,7 @@ export class ReservationService {
         action: 'RESERVATION_CREATED',
         targetType: 'RESERVATION',
         targetId: r.reservationId,
-        actor: { type: 'AGENT', id: r.aiRecommendationId ?? 'buildwise' },
+        actor: { type: 'AGENT', id: r.aiRecommendationId ?? 'qwikspot' },
       });
     } else if (result.status === 'REJECTED') {
       await this.deps.events.audit(input.brandId, {
@@ -222,7 +222,7 @@ export class ReservationService {
     const base = {
       brandId: r.brandId,
       customerId: r.customerId,
-      source: 'BUILDWISE' as const,
+      source: 'QWIKSPOT' as const,
       entityReference: r.reservationId,
       at: nowIso,
     };

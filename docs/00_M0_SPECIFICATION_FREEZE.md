@@ -1,8 +1,8 @@
-# Buildwise — M0 Specification Freeze
+# Qwikspot — M0 Specification Freeze
 
 **Status:** M0 frozen at tag `m0-spec-freeze`; approved post-M0 changes are recorded in §11.8  
 **Prototype target:** Working, judge-testable prototype by **13 October 2026**  
-**Product name:** Buildwise  
+**Product name:** Qwikspot  
 **Primary customer channel:** WhatsApp  
 **Primary online commerce system:** Shopify  
 **Primary physical-retail input:** Brand-provided retail store/inventory data (CSV for the prototype; XLSX deferred, §11.8 Change 10)  
@@ -37,7 +37,7 @@ The eight core specification files are:
 
 `09_LEARNING_LOG.md` is the companion learning file.
 
-`10_EXECUTION_PLAN.md` (added post-M0, §11.8) defines execution profiles, the milestone sequence and spike rules. It governs **how** Buildwise is built, never **what** it is.
+`10_EXECUTION_PLAN.md` (added post-M0, §11.8) defines execution profiles, the milestone sequence and spike rules. It governs **how** Qwikspot is built, never **what** it is.
 
 `11_INTERFACE_CONTRACT.md` (added in M2.1, updated in M2.2; §11.8 Changes 8–9) states, per interface, the role, scope, purpose, current data and actions, out-of-scope items and empty / unauthorized / loading / error states.
 
@@ -47,7 +47,7 @@ The PDFs and research documents remain reference material. The Markdown specific
 
 # 2. Product in one sentence
 
-> **Buildwise connects a D2C brand's online customer intent with its physical retail availability through an AI-powered WhatsApp commerce agent, helping customers take the most relevant next step—online purchase, local store purchase/reservation, assistance, or human handoff—while giving the brand and retailer a connected view of the resulting outcome.**
+> **Qwikspot connects a D2C brand's online customer intent with its physical retail availability through an AI-powered WhatsApp commerce agent, helping customers take the most relevant next step—online purchase, local store purchase/reservation, assistance, or human handoff—while giving the brand and retailer a connected view of the resulting outcome.**
 
 ---
 
@@ -105,13 +105,13 @@ The product IS:
 
 ## Platform
 
-The Buildwise operator (`PLATFORM_ADMIN`). They onboard brands and see platform-level metadata, but have no default access to customer data.
+The Qwikspot operator (`PLATFORM_ADMIN`). They onboard brands and see platform-level metadata, but have no default access to customer data.
 
 ## Brand
 
 The D2C brand is the primary buyer/operator.
 
-Typical Buildwise brand users:
+Typical Qwikspot brand users:
 
 - Brand Admin (`BRAND_ADMIN`), the only brand role in the MVP. It also covers the commerce/growth/marketing and operations needs.
 
@@ -131,7 +131,7 @@ Their goal is to receive actionable customer requests and fulfill them correctly
 
 A shopper who has demonstrated meaningful product intent and interacts with the brand through WhatsApp.
 
-The customer does **not** need a Buildwise account or customer dashboard for the MVP.
+The customer does **not** need a Qwikspot account or customer dashboard for the MVP.
 
 The customer experience is **WhatsApp-first**, with small contextual web pages used only when a richer task genuinely requires a web interface.
 
@@ -139,7 +139,7 @@ The customer experience is **WhatsApp-first**, with small contextual web pages u
 
 # 6. Atomic product decision
 
-> **When a customer has meaningful purchase intent but has not completed the online purchase, should Buildwise intervene, and what is the most helpful next action given the customer's intent, product, location, timing, and current physical retail availability?**
+> **When a customer has meaningful purchase intent but has not completed the online purchase, should Qwikspot intervene, and what is the most helpful next action given the customer's intent, product, location, timing, and current physical retail availability?**
 
 Possible AI actions (`AIRecommendation.action`):
 
@@ -184,11 +184,11 @@ A small contextual web page may be opened when WhatsApp is not the best interfac
 
 ### Principle 5 — Shopify is online-commerce source of truth
 
-Buildwise may normalize relevant Shopify data into Firestore for application use, but does not replace Shopify as the merchant's online commerce system.
+Qwikspot may normalize relevant Shopify data into Firestore for application use, but does not replace Shopify as the merchant's online commerce system.
 
 ### Principle 6 — Retail data is separate from Shopify
 
-Physical retail inventory and store information are maintained in Buildwise for the MVP.
+Physical retail inventory and store information are maintained in Qwikspot for the MVP.
 
 ### Principle 7 — AI cannot bypass business controls
 
@@ -210,7 +210,7 @@ The AI should receive enough context to be useful, not unrestricted access to th
 
 ### Principle 10 — One continuous customer relationship
 
-The customer should experience Buildwise as a brand assistant that remembers relevant context within the authorized journey, not as a sequence of disconnected automations.
+The customer should experience Qwikspot as a brand assistant that remembers relevant context within the authorized journey, not as a sequence of disconnected automations.
 
 ---
 
@@ -229,9 +229,9 @@ Retail store/inventory data imported
         ↓
 Products mapped across online + retail
         ↓
-Customer intent enters Buildwise
+Customer intent enters Qwikspot
         ↓
-Buildwise constructs customer/product/retail context
+Qwikspot constructs customer/product/retail context
         ↓
 Gemini + ADK determines next-best action
         ↓
@@ -268,7 +268,7 @@ Brand sees the resulting intelligence
 
 If Meta/WhatsApp cannot be used reliably during prototype testing, the fallback customer channel is:
 
-> **Buildwise Web Conversation Simulator**
+> **Qwikspot Web Conversation Simulator**
 
 The simulator must use the **same Cloud Run → ADK → Gemini → tools → next-best-action backend path** as WhatsApp. It is a testing interface, not a second product direction.
 
@@ -292,7 +292,7 @@ Node.js + TypeScript + Express
 = primary backend implementation stack
 
 Firestore
-= Buildwise operational state
+= Qwikspot operational state
 
 Google ADK for TypeScript
 = agent orchestration/tools
@@ -425,7 +425,7 @@ Primary customer channel:
 
 Prototype fallback:
 
-> Buildwise Web Conversation Simulator
+> Qwikspot Web Conversation Simulator
 
 Do not add Instagram, SMS, email, or another customer messaging channel to the MVP merely as a fallback.
 
@@ -433,7 +433,7 @@ Do not add Instagram, SMS, email, or another customer messaging channel to the M
 
 Shopify is not assumed to provide a perfect native “high intent” label.
 
-For the prototype, customer-intent events are produced by controlled Buildwise instrumentation and deterministic rules.
+For the prototype, customer-intent events are produced by controlled Qwikspot instrumentation and deterministic rules.
 
 Prototype events (canonical `CommerceEvent.event_type`):
 
@@ -464,7 +464,7 @@ Both are defined in `04_DATA_MODEL.md` §11.
 
 The exact thresholds are deterministic prototype logic (`04_DATA_MODEL.md` §11.2). Gemini must not invent the underlying behavioral facts, and it never sets `intent_stage`.
 
-Web intent reaches the WhatsApp conversation through a short-lived opaque token in the prefilled message `START_BUILDWISE_<INTENT_TOKEN>`. The token contains no PII (`06_INTEGRATION_CONTRACTS.md` §10.1).
+Web intent reaches the WhatsApp conversation through a short-lived opaque token in the prefilled message `START_QWIKSPOT_<INTENT_TOKEN>`. The token contains no PII (`06_INTEGRATION_CONTRACTS.md` §10.1).
 
 ## 11.4 Retail upload boundary
 
@@ -510,7 +510,7 @@ These decisions are approved. Each one has a single canonical home:
 | AI action (`AIRecommendation.action`) separate from business outcome (`Outcome.purchase_type`), with a documented mapping | `04_DATA_MODEL.md` §14, §16 |
 | `intent_type` (what) vs `intent_stage` (how strong; deterministic) | `04_DATA_MODEL.md` §11 |
 | Firestore collection layout covering every persisted entity | `04_DATA_MODEL.md` §21, `03_TECH_ARCHITECTURE.md` §7 |
-| Web → WhatsApp handshake `START_BUILDWISE_<INTENT_TOKEN>` (opaque, no PII, 30 min, single use) | `06_INTEGRATION_CONTRACTS.md` §10.1 |
+| Web → WhatsApp handshake `START_QWIKSPOT_<INTENT_TOKEN>` (opaque, no PII, 30 min, single use) | `06_INTEGRATION_CONTRACTS.md` §10.1 |
 | Reservation creation in a Firestore transaction (`reserved_quantity`) | `03_TECH_ARCHITECTURE.md` §15 |
 | Contextual page token lifecycle (15-min view, single-use mutation) | `07_SECURITY_SPEC.md` §16 |
 | Stateless, request-scoped ADK in Cloud Run; state in Firestore | `03_TECH_ARCHITECTURE.md` §8.1 |
@@ -543,7 +543,7 @@ M0 was frozen at tag `m0-spec-freeze`. The changes below were approved **after**
 
 **What changed:**
 
-- Buildwise has exactly **four interfaces**: Platform Admin Console, Brand Console, Retailer Console, Customer AI Channel (`01` §8b).
+- Qwikspot has exactly **four interfaces**: Platform Admin Console, Brand Console, Retailer Console, Customer AI Channel (`01` §8b).
 - The customer remains WhatsApp-first, with contextual pages only when needed and no dashboard.
 - A five-role model with platform, brand and retailer scopes replaced the M0 brand/retail roles. *Superseded by Change 6* (three internal roles).
 - Scopes: platform / brand / retail / customer.
@@ -680,7 +680,7 @@ Brand
 - **D3 — `intent_type` additions:** `VISIT_ONLY`, `SEARCH_EXPLORATION`, `PRODUCT_CONSIDERATION`, `CHECKOUT_ABANDONMENT`. A "Need it today?" WhatsApp click sets `STORE_ORIENTED` at any stage (overrides the type, not the stage). "Abandonment" is a conclusion: `CustomerIntent.status` is `ACTIVE` while the session is live, `ABANDONED` only after inactivity, `CONVERTED` on a completed order, or `EXPIRED`.
 - **D4 — Storefront events** (`06` §14.1): `STOREFRONT_VISIT`, `SEARCH` (`search_term`: ≤ 80 chars, trimmed, lower-cased, never echoed to the customer), `PRODUCT_VIEW`, `PRODUCT_DETAIL_VIEW`, `VARIANT_SELECTED`, `ADD_TO_CART`, `CHECKOUT_STARTED`, `WHATSAPP_CLICK` (`entry: STORE_NEED | CHAT`). There is no browser "left the site" event (exit = server-side inactivity) and no compare event. A completed purchase is **not** a public browser event: locally the demo storefront's "Place order" calls a local-only endpoint that goes through the same order-recording path as the L2 Shopify orders webhook. It writes the existing `ORDER_CREATED` CommerceEvent and marks the session's open intents `CONVERTED`.
 - **D5 — Deterministic, per-brand follow-up policy** (`brand.settings.follow_up_policy`, `04` §3, §11.3): a pure `evaluateFollowUp` returns `FOLLOW_UP_ELIGIBLE` (with `due_at`) or `FOLLOW_UP_NOT_ELIGIBLE` with one reason: `ALREADY_CONVERTED, ALREADY_FOLLOWED_UP, WEAK_INTENT, INTENT_TYPE_DISABLED, CUSTOMER_NOT_REACHABLE, CHANNEL_DISABLED, OPTED_OUT, NO_CONSENT, HUMAN_HANDOFF, CUSTOMER_ALREADY_IN_CONVERSATION, FREQUENCY_LIMIT` (checked in that order). `VISIT_ONLY`, `PRODUCT_EXPLORATION` and a search that matched no catalogue category or tag are `WEAK_INTENT`; `INTENT_TYPE_DISABLED` means the brand switched off a normally-on type. At most 1 follow-up per intent and 1 proactive message per customer per 24 h. The policy is re-checked at send time; a change in between (converted, opted out, handed off, started chatting) makes the follow-up `SUPPRESSED` with the reason. Due work is processed by `POST /api/brand/follow-ups/process-due` (Brand Console button, optional local auto-poll); in `gcp` the same endpoint will be called by Cloud Scheduler with an OIDC service identity (L-phase; not built in M4).
-- **D6 — Message kind follows the WhatsApp window:** inside 24 h of the customer's last inbound message a `SESSION` message (free text); outside it only a named, parameterised `TEMPLATE` (e.g. `buildwise_cart_reminder_v1`) with parameters limited to the brand name and verified product data. The simulator labels the kind. Template approval with Meta is an L2 task; M4 keeps the template registry in code. Every proactive message says how to opt out.
+- **D6 — Message kind follows the WhatsApp window:** inside 24 h of the customer's last inbound message a `SESSION` message (free text); outside it only a named, parameterised `TEMPLATE` (e.g. `qwikspot_cart_reminder_v1`) with parameters limited to the brand name and verified product data. The simulator labels the kind. Template approval with Meta is an L2 task; M4 keeps the template registry in code. Every proactive message says how to opt out.
 - **Also:** `ConversationMessage` gains `origin` (`CUSTOMER | AUTOMATED_REPLY | PROACTIVE_FOLLOW_UP`) and `message_kind`; CommerceEvent names gain `STOREFRONT_VISIT, SEARCH, VARIANT_SELECTED, FOLLOW_UP_SCHEDULED, FOLLOW_UP_SUPPRESSED, FOLLOW_UP_SENT` (`04` §17). In M4 the agent stage is not built: every reply is the deterministic fallback (`03` §16.2), recorded with the configured `runtime` and `decision_source = DETERMINISTIC_FALLBACK`.
 
 ### Change 12 — Decide & reserve (approved, start of M5)
@@ -692,7 +692,7 @@ Brand
 - **E5 — Customer location sources:** (a) a shared location message (stored on the Customer as `last_location`, rounded to 2 decimal places, ~1 km); (b) an area name in the text that matches exactly one store **locality** (derived from the store name and its address segments), which gives an *approximate* origin at that store's coordinates and is labelled approximate in the reply. With neither, the agent asks for the area and lists no stores. It never guesses.
 - **E6 — Reservation:** created in the single transaction of `03` §15 with `reservation_id` derived from `idempotency_key` (agent path: `idempotency_key = recommendation_id`), `retailer_id` copied from the store, `ai_recommendation_id`, `expires_at = now + hold_minutes`, optional `customer_eta`, and `pickup_code` = 6 random digits, unique among the store's active (PENDING / CONFIRMED / READY / CUSTOMER_ARRIVED) reservations, checked inside the transaction. Cancel (by the customer, in the conversation) and expiry release `reserved_quantity` transactionally. Expiry runs through the existing `POST /api/brand/follow-ups/process-due` (Brand Console button and local auto-poll). Cancellation and expiry are AuditEvents (`RESERVATION_CANCELLED`, `RESERVATION_EXPIRED`); no CommerceEvent names are added. In M5 the only status transitions are create, cancel (`cancelled_by = CUSTOMER`) and expire (`cancelled_by` unset, status `EXPIRED`); retailer transitions are M6.
 - **E7 — Unmet local demand** is a `STORE_RECOMMENDATION` CommerceEvent with payload `{kind: "UNMET_DEMAND", variant_id, sku, area: {type: "LOCALITY" | "GRID_5KM", value}, excluded: [{store_id, reason}], local_weekday, local_hour, timezone}`. `area` is the nearest store's locality, or a ~5 km grid cell (`g5:<floor(lat/0.045)>:<floor(lng/0.045)>`); weekday and hour are in the nearest store's timezone. The payload contains no coordinates. A successful proposal records `STORE_RECOMMENDATION` with `{kind: "PROPOSED", variant_id, stores}`.
-- **E8 — Decision trace:** the `AIRecommendation` also stores `context_hash` (SHA-256 of the context package), a `context_summary` (no message text, no PII), the tool calls, eligible and excluded stores, the guardrail result and the executed action (with any `reservation_id`). The Brand Console shows it as "Why Buildwise did this".
+- **E8 — Decision trace:** the `AIRecommendation` also stores `context_hash` (SHA-256 of the context package), a `context_summary` (no message text, no PII), the tool calls, eligible and excluded stores, the guardrail result and the executed action (with any `reservation_id`). The Brand Console shows it as "Why Qwikspot did this".
 - **E9 — Runtime failure** (the 20 s budget elapsed, or the output still invalid after one repair attempt) uses the deterministic fallback of `03` §16.2 exactly: `HUMAN_HANDOFF` when the brand has handoff enabled, otherwise `NO_ACTION` with a "please try again" reply; `decision_source = DETERMINISTIC_FALLBACK`, the configured `runtime` is kept.
 - **E10 — Brand settings:** `online_store.product_url_template` (e.g. `https://<shop>/products/{handle}`; locally the demo storefront `…/demo-store#product={product_id}`) provides the "Buy online" link; without it the reply names the online store without a link.
 - **Deferred (unchanged):** contextual pages and page tokens, retailer status transitions, `PATCH /api/reservations/:id`, Outcomes, the handoff queue and the scheduled expiry sweep in `gcp`.
@@ -706,14 +706,14 @@ Brand
 
   | Event | Template | Content |
   |---|---|---|
-  | CONFIRMED | `buildwise_reservation_confirmed_v1` | store confirmed · product · pickup code · held until (store time) · Cancel option |
-  | READY | `buildwise_reservation_ready_v1` | ready at store · code · maps link |
-  | Refused | `buildwise_reservation_refused_v1` | apology (no reason note, never blames the customer) + re-offer |
-  | EXPIRED | `buildwise_reservation_expired_v1` | hold expired · "Check stores again" |
+  | CONFIRMED | `qwikspot_reservation_confirmed_v1` | store confirmed · product · pickup code · held until (store time) · Cancel option |
+  | READY | `qwikspot_reservation_ready_v1` | ready at store · code · maps link |
+  | Refused | `qwikspot_reservation_refused_v1` | apology (no reason note, never blames the customer) + re-offer |
+  | EXPIRED | `qwikspot_reservation_expired_v1` | hold expired · "Check stores again" |
 
   Not sent when the customer opted out; the reservation records `last_notification.status = NOT_SENT_OPTED_OUT` and the Retailer Console shows "customer opted out; not notified". **Refusal forward dispatch:** the backend re-runs the eligible-store search for the same variant from the customer's last location, excluding the refusing store, and offers the best remaining store as a one-tap Hold (through `pending_proposal` + the guardrail, so nothing is reserved without the tap) plus Buy online; with no eligible store it offers the verified alternative or online and records `UNMET_DEMAND` (Change 12, E7). The automated re-offer is skipped while a person owns the conversation; the factual updates are still sent.
 - **F5 — Outcomes.** One Outcome per **engaged journey** (a conversation exists or a follow-up was sent); the journey key is the bound intent (`int:<intent_id>`) or, without one, the conversation (`conv:<conversation_id>`). Anonymous browse-only intents never get an Outcome. The Outcome document ID derives from the journey key and is created only if absent, so **the first verified purchase wins**; a later purchase in the same journey is recorded only as its CommerceEvent. Evidence: reservation → COMPLETED (OFFLINE, or ALTERNATIVE for a different variant than the intent's); an order attributed to the journey (ONLINE or ALTERNATIVE). `NONE` is decided only by the process-due sweep, after `outcome_policy.attribution_window` (default 7 days; local demo override in minutes) has passed since the journey's last recommendation with no active reservation — never at the moment a hold expires. Value = catalogue price × quantity. Each Outcome links the journey's last `ai_recommendation_id`. New CommerceEvent `OUTCOME_RECORDED` (added to `04` §17) plus an AuditEvent. Reservation completion also emits `PICKUP_COMPLETED` and `OFFLINE_PURCHASE`. Pipeline step 11 re-checks stored evidence for the conversation's journey; the AI never writes an Outcome.
-- **F6 — AttributionRef (`bw_ref`).** When a reply offers Buy online, the backend creates an opaque reference (16 random bytes, Crockford Base32; only its SHA-256 is stored, `attributionRefs`), linking brand, intent, conversation and recommendation, with TTL = the attribution window and no PII, and adds it to the product URL as `bw_ref`. The storefront keeps it for the session and sends it with the order; `OrderService.recordOrder` validates it (exists, same brand, not expired) and links the order to the journey. An invalid or expired ref never fails the order — it is recorded unattributed. In L2 the ref travels as a Shopify cart attribute and the orders webhook calls the same method (`06` §8.1). The ref only links; the purchase evidence is the order from the commerce source.
+- **F6 — AttributionRef (`qs_ref`).** When a reply offers Buy online, the backend creates an opaque reference (16 random bytes, Crockford Base32; only its SHA-256 is stored, `attributionRefs`), linking brand, intent, conversation and recommendation, with TTL = the attribution window and no PII, and adds it to the product URL as `qs_ref`. The storefront keeps it for the session and sends it with the order; `OrderService.recordOrder` validates it (exists, same brand, not expired) and links the order to the journey. An invalid or expired ref never fails the order — it is recorded unattributed. In L2 the ref travels as a Shopify cart attribute and the orders webhook calls the same method (`06` §8.1). The ref only links; the purchase evidence is the order from the commerce source.
 - **F7 — Handoff queue.** A Brand Admin can reply as a person to a conversation in handoff (`origin = HUMAN_AGENT`; the sender's uid only in the AuditEvent; opt-out and the 24 h window still apply) and "Resolve and return to assistant" (`human_handoff = false`, audited). `Conversation.handoff_at` shows the waiting time.
 - **F8 — Insights.** The Brand Console Outcomes screen (funnel, conversion by action, unmet demand, demand vs availability by weekday, fill rate, suggested actions) is computed deterministically by the application from raw records read through an `InsightsReader` port (Firestore now; BigQuery can serve the same port in L2). Weekdays use the store's timezone. Readings and suggestions are rule-based text built only from the numbers; nothing is sent. `STORE_RECOMMENDATION` payloads gain `nearest_store_id` and `nearest_reason` for fill rate.
 - **F9 — Synthetic demo history.** `seed:demo` (emulator-only) adds 4 weeks of deterministic synthetic history built with the live domain functions; every such document carries `demo_history: true`, and the Outcomes screen shows and can exclude it. Live actions are never flagged.
@@ -731,6 +731,10 @@ Brand
 - **G9 — `demo:check`.** A script that walks the judged journey against a `BASE_URL` through the public API only and prints a pass/fail line per step; in L3 it is the production smoke test (`08` §14).
 - **Also:** the docs/07 §15 cases for webhook signatures and contextual page tokens have no local surface (WhatsApp/Shopify webhooks are L2; contextual pages are deferred by Change 10). The messaging contract suite carries the invalid-signature case for every adapter that verifies signatures.
 
+### Change 15 — Product renamed to Qwikspot (2 Oct 2026)
+
+The product name changed from Buildwise to Qwikspot everywhere in the repository (code, UI, customer messages, tests, fixtures, docs and infrastructure names); nothing else changed — no data shape, route, rule or behaviour. Externally visible renames: intent token prefix `START_BUILDWISE_` → `START_QWIKSPOT_`; env vars `BUILDWISE_PROFILE` / `VITE_BUILDWISE_PROFILE` → `QWIKSPOT_PROFILE` / `VITE_QWIKSPOT_PROFILE`; storefront snippet `buildwise-intent.js` → `qwikspot-intent.js` and its global `BuildwiseIntent` → `QwikspotIntent`; header `X-Buildwise-Page-Token` → `X-Qwikspot-Page-Token`; attribution reference `bw_ref` → `qs_ref` (and the browser keys `bw_*` → `qs_*`); stored event source `BUILDWISE` → `QWIKSPOT`; WhatsApp templates `buildwise_*_v1` → `qwikspot_*_v1`; emulator project `demo-buildwise` → `demo-qwikspot`; demo logins `@buildwise.test` → `@qwikspot.test` with the local password `buildwise-demo-1` → `qwikspot-demo-1`.
+
 ### Supporting additions
 
 - `RetailImport` entity for the ingestion report (`04` §10.1). This closes a pre-existing gap.
@@ -745,9 +749,9 @@ Brand
 
 # 12. Shopify integration boundary
 
-Shopify is the source of truth for Buildwise's **online commerce context**.
+Shopify is the source of truth for Qwikspot's **online commerce context**.
 
-The Buildwise integration should conceptually provide the canonical `CommerceProvider` contract (`06_INTEGRATION_CONTRACTS.md` §2):
+The Qwikspot integration should conceptually provide the canonical `CommerceProvider` contract (`06_INTEGRATION_CONTRACTS.md` §2):
 
 ```text
 getProducts()
@@ -850,7 +854,7 @@ WhatsApp
    ↓
 Meta Cloud API
    ↓
-Buildwise webhook
+Qwikspot webhook
    ↓
 Cloud Run
    ↓
@@ -867,7 +871,7 @@ AI Action Guardrail
 WhatsApp response / controlled action
 ```
 
-The production onboarding direction is Meta Embedded Signup so a D2C brand connects its own WhatsApp Business Account and phone number to Buildwise.
+The production onboarding direction is Meta Embedded Signup so a D2C brand connects its own WhatsApp Business Account and phone number to Qwikspot.
 
 The AI should not send arbitrary messages without respecting WhatsApp policy, consent/opt-in requirements, template requirements, and the customer-service conversation window.
 
@@ -909,7 +913,7 @@ pickup status
 
 The rule is:
 
-> **WhatsApp is the customer's primary interface; Buildwise web pages appear only when they materially improve completion of a task.**
+> **WhatsApp is the customer's primary interface; Qwikspot web pages appear only when they materially improve completion of a task.**
 
 ---
 
@@ -1047,7 +1051,7 @@ ALLOWED / BLOCKED / HUMAN_APPROVAL_REQUIRED
 
 # 19. Data boundary
 
-Firestore is the current operational state for Buildwise.
+Firestore is the current operational state for Qwikspot.
 
 BigQuery is the historical/event analytics layer.
 
@@ -1208,7 +1212,7 @@ Use `09_LEARNING_LOG.md` to record:
 
 ```text
 What is it?
-Why does Buildwise need it?
+Why does Qwikspot need it?
 How does data flow through it?
 Where is it implemented?
 What can fail?
@@ -1220,12 +1224,12 @@ What do I still not understand?
 
 # 24. Git/repository M0 boundary
 
-The canonical specification pack should live in the Buildwise GitHub repository.
+The canonical specification pack should live in the Qwikspot GitHub repository.
 
 Repository structure at M0:
 
 ```text
-Buildwise/
+Qwikspot/
 │
 ├── docs/
 │   ├── 00_M0_SPECIFICATION_FREEZE.md
@@ -1254,10 +1258,10 @@ Buildwise/
 M0 commits should be atomic and understandable. Examples:
 
 ```text
-docs(product): add Buildwise product source of truth
+docs(product): add Qwikspot product source of truth
 docs(mvp): add MVP specification
 docs(architecture): freeze Node.js TypeScript architecture
-docs(data): define Buildwise data model
+docs(data): define Qwikspot data model
 docs(ai): define Gemini ADK agent boundaries
 docs(integrations): define Shopify WhatsApp and retail contracts
 docs(security): define security specification
@@ -1287,7 +1291,7 @@ m0-spec-freeze
 
 M0 is complete only when:
 
-> **A developer who did not participate in the original research could read these files and understand what Buildwise is, what the MVP does, what it does not do, how AI participates, what external systems are integrated, how security works, and how success will be tested.**
+> **A developer who did not participate in the original research could read these files and understand what Qwikspot is, what the MVP does, what it does not do, how AI participates, what external systems are integrated, how security works, and how success will be tested.**
 
 In addition, the team must have completed three read-only architecture checks:
 
@@ -1344,7 +1348,7 @@ The architecture may evolve when implementation produces evidence of a better te
 
 The goal is a working real-world prototype—not a perfect architecture diagram.
 
-Buildwise's product foundation remains:
+Qwikspot's product foundation remains:
 
 ```text
 ONLINE COMMERCE

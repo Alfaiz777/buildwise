@@ -35,7 +35,7 @@ const RULES = [
 ];
 
 /** Demo-only values that are allowed in the repo but must never be in the frontend bundle. */
-const BUNDLE_ONLY_RULES = [['Demo password in the frontend bundle', /buildwise-demo-1/]];
+const BUNDLE_ONLY_RULES = [['Demo password in the frontend bundle', /qwikspot-demo-1/]];
 
 /** Files that may legitimately contain key-shaped placeholders. */
 const ALLOW_FILES = [/^package-lock\.json$/, /(^|\/)\.env\.example$/];

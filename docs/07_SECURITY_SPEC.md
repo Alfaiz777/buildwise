@@ -1,4 +1,4 @@
-# Buildwise — Security Specification
+# Qwikspot — Security Specification
 
 ## Status
 
@@ -68,7 +68,7 @@ Retailers are sub-scopes **inside** a brand tenant (`04_DATA_MODEL.md` §8a). Th
 
 # 4. Roles, scopes and permissions
 
-Buildwise has **four interfaces**:
+Qwikspot has **four interfaces**:
 
 | Interface | Who | Authentication |
 |---|---|---|
@@ -173,7 +173,7 @@ Rules:
 
 ## 4.2 Platform scope
 
-`PLATFORM_ADMIN` operates the Buildwise platform. It does **not** operate inside a brand.
+`PLATFORM_ADMIN` operates the Qwikspot platform. It does **not** operate inside a brand.
 
 Can see:
 
@@ -379,7 +379,7 @@ Gemini guesses the store has stock
 
 # 10. WhatsApp privacy and consent
 
-Buildwise must maintain:
+Qwikspot must maintain:
 
 ```text
 customer consent/opt-in state
@@ -533,7 +533,7 @@ Applies to `/nearby-stores`, `/reservation/:id` and `/pickup/:id` (`02_MVP_SPEC.
 
 2. OPEN
    The SPA reads the token from the URL fragment and removes it from the address bar.
-   It sends the token only in the X-Buildwise-Page-Token header.
+   It sends the token only in the X-Qwikspot-Page-Token header.
 
 3. VALIDATE (every request)
    hash exists AND not revoked AND now < expires_at

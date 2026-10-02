@@ -1,6 +1,6 @@
 /**
  * M6 through the real routes and pipeline on the in-memory world: the store queue and
- * transitions, customer notifications (incl. refusal forward dispatch), outcomes, bw_ref
+ * transitions, customer notifications (incl. refusal forward dispatch), outcomes, qs_ref
  * attribution and the handoff queue. Stores A–E per docs/08 §7.1; sc_A and sc_B belong to
  * retailer rtl_A with one Retail Admin each.
  */
@@ -224,7 +224,7 @@ describe('refusal with forward dispatch (Change 13, F3–F4)', () => {
     });
     const message = s.world.conversations.messages.filter((m) => m.origin === 'RESERVATION_UPDATE').at(-1)!;
     expect(message.text).toContain("isn't available for pickup at a store near you right now");
-    expect(message.text).toMatch(/http:\/\/shop\.test\/products\/prd_1001\?bw_ref=/);
+    expect(message.text).toMatch(/http:\/\/shop\.test\/products\/prd_1001\?qs_ref=/);
     expect(message.text).not.toMatch(/till|Priya/);
     expect(message.options!.map((o) => o.optionId)).toEqual(['buy_online']);
     const unmet = s.world.events.events.find(
@@ -291,15 +291,15 @@ describe('outcomes: expiry, NONE window, first purchase wins (Change 13, F5)', (
     expect(recheck.body.decision.action).toBe('STORE_DISCOVERY');
   });
 
-  it('buy online → bw_ref → order → ONLINE outcome linked to the recommendation; a second order adds no Outcome', async () => {
+  it('buy online → qs_ref → order → ONLINE outcome linked to the recommendation; a second order adds no Outcome', async () => {
     const s = await buildScenarioWorld();
     await s.startFromStore('c1', 'hi');
     await s.share('c1');
     const online = await s.tap('c1', 'buy_online');
-    const ref = /bw_ref=([0-9A-Z]{26})/.exec(online.body.outbound_messages[0].text)![1]!;
+    const ref = /qs_ref=([0-9A-Z]{26})/.exec(online.body.outbound_messages[0].text)![1]!;
     expect(s.world.attributionRefs.refs).toHaveLength(1);
     expect(s.world.attributionRefs.refs[0]!.refHash).not.toContain(ref);
-    const order = (bw: string | undefined, session: string) =>
+    const order = (qs: string | undefined, session: string) =>
       request(s.world.app)
         .post('/api/demo-storefront/orders')
         .set('Origin', TEST_ORIGIN)
@@ -307,7 +307,7 @@ describe('outcomes: expiry, NONE window, first purchase wins (Change 13, F5)', (
           brand_id: 'brand_A',
           web_session_id: session,
           shopify_variant_id: 'gid://shopify/ProductVariant/2001',
-          ...(bw ? { bw_ref: bw } : {}),
+          ...(qs ? { qs_ref: qs } : {}),
         });
     const first = await order(ref, 'ws_other_tab_000001');
     expect(first.body).toMatchObject({ attributed: true, outcome_recorded: true });

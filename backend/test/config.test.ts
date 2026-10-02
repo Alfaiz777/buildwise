@@ -13,15 +13,15 @@ export const GCP_REQUIRED_FAKE = {
   SHOPIFY_SHOP_DOMAIN: 'demo-shop.myshopify.com',
   SHOPIFY_ADMIN_TOKEN: 'fake-shopify-token',
   SHOPIFY_WEBHOOK_SECRET: 'fake-hook-secret',
-  BIGQUERY_DATASET: 'buildwise_events',
-  GCS_BUCKET: 'buildwise-uploads-test',
+  BIGQUERY_DATASET: 'qwikspot_events',
+  GCS_BUCKET: 'qwikspot-uploads-test',
   DEMO_MODE: 'false',
-  CORS_ALLOWED_ORIGINS: 'https://buildwise.example.web.app',
+  CORS_ALLOWED_ORIGINS: 'https://qwikspot.example.web.app',
 };
 
 const GCP_REAL = {
-  BUILDWISE_PROFILE: 'gcp',
-  GOOGLE_CLOUD_PROJECT: 'buildwise-prod',
+  QWIKSPOT_PROFILE: 'gcp',
+  GOOGLE_CLOUD_PROJECT: 'qwikspot-prod',
   NODE_ENV: 'production',
   ...GCP_REQUIRED_FAKE,
 } as const;
@@ -33,7 +33,7 @@ describe('loadConfig — local profile (default)', () => {
       nodeEnv: 'development',
       port: 8080,
       profile: 'local',
-      projectId: 'demo-buildwise',
+      projectId: 'demo-qwikspot',
       localDataDir: '.data',
       usingEmulators: true,
       emulators: { firestore: '127.0.0.1:8085', auth: '127.0.0.1:9099' },
@@ -68,7 +68,7 @@ describe('loadConfig — local profile (default)', () => {
       expect((err as Error).message).not.toContain('super-secret-value');
     }
     expect(() => loadConfig({ MESSAGING_CHANNELS: 'sms' })).toThrow(/MESSAGING_CHANNELS/);
-    expect(() => loadConfig({ BUILDWISE_PROFILE: 'staging' })).toThrow(/BUILDWISE_PROFILE/);
+    expect(() => loadConfig({ QWIKSPOT_PROFILE: 'staging' })).toThrow(/QWIKSPOT_PROFILE/);
   });
 
   it('parses the CORS allowlist', () => {
@@ -86,7 +86,7 @@ describe('loadConfig — gcp profile and startup guard (docs/07 §19)', () => {
     const config = loadConfig(GCP_REAL);
     expect(config).toMatchObject({
       profile: 'gcp',
-      projectId: 'buildwise-prod',
+      projectId: 'qwikspot-prod',
       usingEmulators: false,
       emulators: null,
       adapters: {
@@ -100,7 +100,7 @@ describe('loadConfig — gcp profile and startup guard (docs/07 §19)', () => {
   });
 
   it('requires GOOGLE_CLOUD_PROJECT', () => {
-    expect(() => loadConfig({ BUILDWISE_PROFILE: 'gcp' })).toThrow(/GOOGLE_CLOUD_PROJECT/);
+    expect(() => loadConfig({ QWIKSPOT_PROFILE: 'gcp' })).toThrow(/GOOGLE_CLOUD_PROJECT/);
   });
 
   it.each([
@@ -145,7 +145,7 @@ describe('loadConfig — gcp profile and startup guard (docs/07 §19)', () => {
       firestoreDatabase: '(default)',
       vertex: { model: 'gemini-test-model' },
       shopify: { shopDomain: 'demo-shop.myshopify.com' },
-      gcsBucket: 'buildwise-uploads-test',
+      gcsBucket: 'qwikspot-uploads-test',
     });
     expect(loadConfig({}).gcp).toBeNull(); // the local profile needs none of it
   });

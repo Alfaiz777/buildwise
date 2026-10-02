@@ -44,9 +44,9 @@ export function MeGate() {
   if (state.kind === 'error') {
     return (
       <main className="card">
-        <h1>Buildwise</h1>
+        <h1>Qwikspot</h1>
         <div role="alert" className="error">
-          <p>{state.error?.message ?? 'Could not reach the Buildwise API.'}</p>
+          <p>{state.error?.message ?? 'Could not reach the Qwikspot API.'}</p>
           {state.error?.requestId && <p className="muted">Reference: {state.error.requestId}</p>}
         </div>
         <button type="button" className="secondary" onClick={() => void signOut()}>

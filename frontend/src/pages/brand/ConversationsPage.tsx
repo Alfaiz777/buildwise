@@ -57,9 +57,9 @@ const newMessageId = () =>
 function judgeRef(): string {
   const fresh = `judge_${Math.random().toString(36).slice(2, 6)}`;
   try {
-    const kept = window.sessionStorage.getItem('bw_simulator_ref');
+    const kept = window.sessionStorage.getItem('qs_simulator_ref');
     if (kept && /^judge_[a-z0-9]{1,8}$/.test(kept)) return kept;
-    window.sessionStorage.setItem('bw_simulator_ref', fresh);
+    window.sessionStorage.setItem('qs_simulator_ref', fresh);
   } catch {
     // storage blocked: a fresh ref per page load is still safe
   }
@@ -69,7 +69,7 @@ function judgeRef(): string {
 /**
  * Brand Console → "Conversations & intents" (docs/11 §4): conversation list with filters,
  * an Intents tab (every intent, anonymous and not-eligible included), a Reservations tab
- * (M5), the conversation detail with the "Intent & follow-up" panel and the "Why Buildwise
+ * (M5), the conversation detail with the "Intent & follow-up" panel and the "Why Qwikspot
  * did this" decision trace, and the phone-style simulator.
  */
 export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) {

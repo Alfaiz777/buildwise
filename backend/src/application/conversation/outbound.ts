@@ -114,7 +114,7 @@ export async function sendAndPersist(
   await deps.events.record({
     brandId: conversation.brandId,
     eventType: 'MESSAGE_SENT',
-    source: 'BUILDWISE',
+    source: 'QWIKSPOT',
     customerId: customer.customerId,
     entityReference: messageId,
     payload: {

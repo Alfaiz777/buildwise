@@ -129,9 +129,9 @@ describe('POST /api/intents (public storefront endpoint)', () => {
       shopify_variant_id: SERUM_30,
     });
     expect(res.status).toBe(202);
-    const token = res.body.whatsapp.prefilled_text.replace('START_BUILDWISE_', '');
+    const token = res.body.whatsapp.prefilled_text.replace('START_QWIKSPOT_', '');
     expect(token).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
-    expect(res.body.whatsapp.wa_link).toBe(`https://wa.me/910000000000?text=START_BUILDWISE_${token}`);
+    expect(res.body.whatsapp.wa_link).toBe(`https://wa.me/910000000000?text=START_QWIKSPOT_${token}`);
     expect(res.body.intent_type).toBe('STORE_ORIENTED');
     const stored = world.tokens.tokens[0]!;
     expect(stored.tokenHash).toBe(hashIntentToken(token));
@@ -222,7 +222,7 @@ describe('simulator channel → ConversationPipeline', () => {
       shopify_variant_id: SERUM_30,
     });
     const prefilled: string = click.body.whatsapp.prefilled_text;
-    const token = prefilled.replace('START_BUILDWISE_', '');
+    const token = prefilled.replace('START_QWIKSPOT_', '');
     const res = await simulate(world, 'admin_a', text('customer_02', `${prefilled} Do you have it today?`));
     expect(res.status).toBe(200);
 
@@ -257,7 +257,7 @@ describe('simulator channel → ConversationPipeline', () => {
       world.audit.brandEvents.filter((e) => e.action === 'INTENT_TOKEN_REJECTED').map((e) => e.reasonCode),
     ).toEqual(['TOKEN_ALREADY_USED']);
     // Another brand cannot use this brand's token either.
-    const bad = await simulate(world, 'admin_b', text('customer_05', 'START_BUILDWISE_0123456789ABCDEFGHJKMNPQRS'));
+    const bad = await simulate(world, 'admin_b', text('customer_05', 'START_QWIKSPOT_0123456789ABCDEFGHJKMNPQRS'));
     expect(bad.status).toBe(200);
   });
 

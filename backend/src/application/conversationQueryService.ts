@@ -38,7 +38,7 @@ export interface ConversationDetail extends ConversationSummary {
   recommendations: (RecommendationRecord & { reservation: ReservationSummary | null })[];
 }
 
-/** The reservation a decision created, for the "Why Buildwise did this" trace. */
+/** The reservation a decision created, for the "Why Qwikspot did this" trace. */
 export interface ReservationSummary {
   reservationId: string;
   status: string;

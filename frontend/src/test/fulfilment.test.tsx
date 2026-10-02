@@ -7,7 +7,7 @@ import { AppRoutes } from '../AppRoutes';
 import { AuthContext, type AuthState } from '../auth/authContext';
 import { expiresIn, storeTime } from '../pages/retailer/RetailerQueue';
 import { waitingFor } from '../pages/brand/HandoffPanel';
-import SNIPPET from '../../public/buildwise-intent.js?raw';
+import SNIPPET from '../../public/qwikspot-intent.js?raw';
 
 const RETAIL: MeResponse = {
   scope: 'RETAIL',
@@ -314,20 +314,20 @@ describe('Brand Console — Outcomes & insights (M6)', () => {
   });
 });
 
-describe('storefront snippet — bw_ref (M6)', () => {
+describe('storefront snippet — qs_ref (M6)', () => {
   afterEach(() => {
     window.history.replaceState(null, '', '/');
     sessionStorage.clear();
   });
 
-  it('keeps a valid bw_ref from the landing URL for the session and ignores malformed ones', () => {
-    delete window.BuildwiseIntent;
-    window.history.replaceState(null, '', '/demo-store?bw_ref=0123456789ABCDEFGHJKMNPQRS#product=prd_1001');
+  it('keeps a valid qs_ref from the landing URL for the session and ignores malformed ones', () => {
+    delete window.QwikspotIntent;
+    window.history.replaceState(null, '', '/demo-store?qs_ref=0123456789ABCDEFGHJKMNPQRS#product=prd_1001');
     // eslint-disable-next-line no-new-func
     new Function(SNIPPET)();
-    const tracker = window.BuildwiseIntent!.init({ apiBaseUrl: '', brandId: 'brd_demo', openLink: () => {} });
+    const tracker = window.QwikspotIntent!.init({ apiBaseUrl: '', brandId: 'brd_demo', openLink: () => {} });
     expect(tracker.attributionRef!()).toBe('0123456789ABCDEFGHJKMNPQRS');
-    window.history.replaceState(null, '', '/demo-store?bw_ref=<script>');
+    window.history.replaceState(null, '', '/demo-store?qs_ref=<script>');
     tracker.init({ apiBaseUrl: '', brandId: 'brd_demo', openLink: () => {} });
     expect(tracker.attributionRef!()).toBe('0123456789ABCDEFGHJKMNPQRS');
   });

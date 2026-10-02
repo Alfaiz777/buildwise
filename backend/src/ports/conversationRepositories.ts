@@ -271,7 +271,7 @@ export interface RecommendationRecord {
   /** M5: the block code when BLOCKED. */
   guardrailReason: string | null;
   proposedAt: string;
-  /** M5: "Why Buildwise did this" (docs/04 §14); PII-free JSON. */
+  /** M5: "Why Qwikspot did this" (docs/04 §14); PII-free JSON. */
   trace: DecisionTrace | null;
 }
 
@@ -314,7 +314,7 @@ export interface CommerceEventRecord {
   customerId: string | null;
   webSessionId: string | null;
   eventType: CommerceEventType;
-  source: 'WEBSITE' | 'SIMULATOR' | 'WHATSAPP' | 'SHOPIFY' | 'BUILDWISE';
+  source: 'WEBSITE' | 'SIMULATOR' | 'WHATSAPP' | 'SHOPIFY' | 'QWIKSPOT';
   entityReference: string | null;
   /** Small, PII-free JSON payload (e.g. product_id, matched_category, reason, unmet_demand). */
   payload: { [key: string]: JsonValue };

@@ -9,9 +9,9 @@ import type { IntentRepository } from '../ports/conversationRepositories.js';
  * The single order-recording path (docs/00 §11.8 Change 11, D4; Change 13, F6). A completed
  * purchase is never a public browser event: locally the demo storefront's "Place order"
  * calls this through a local-only endpoint; in L2 the verified Shopify orders webhook calls
- * the same function with the `bw_ref` cart attribute. It writes ORDER_CREATED, marks the
+ * the same function with the `qs_ref` cart attribute. It writes ORDER_CREATED, marks the
  * session's open intent CONVERTED, and — when the order links to an engaged journey (a valid
- * `bw_ref`, or the session's engaged intent) — records the journey's Outcome. The ref only
+ * `qs_ref`, or the session's engaged intent) — records the journey's Outcome. The ref only
  * links; the order is the evidence. An invalid ref never fails the order.
  */
 export class OrderService {
@@ -33,7 +33,7 @@ export class OrderService {
     externalOrderId: string;
     variantId: string | null;
     source: 'WEBSITE' | 'SHOPIFY';
-    /** The `bw_ref` the customer arrived with (null when none). */
+    /** The `qs_ref` the customer arrived with (null when none). */
     attributionRef?: string | null;
   }): Promise<{ intentConverted: boolean; attributed: boolean; journeyKey: string | null; outcomeRecorded: boolean }> {
     const at = (this.deps.now ?? (() => new Date()))().toISOString();
@@ -66,7 +66,7 @@ export class OrderService {
         variant_id: input.variantId,
         intent_id: converted ? intentId : null,
         journey_key: journeyKey,
-        attributed_by: link ? 'BW_REF' : journeyKey ? 'SESSION' : null,
+        attributed_by: link ? 'QS_REF' : journeyKey ? 'SESSION' : null,
       },
       idempotencyKey: `ORDER_CREATED:${input.externalOrderId}`,
       at,
@@ -76,7 +76,7 @@ export class OrderService {
       action: 'ORDER_RECORDED',
       targetType: 'ORDER',
       targetId: input.externalOrderId,
-      reasonCode: link ? 'ATTRIBUTED_BW_REF' : journeyKey ? 'ATTRIBUTED_SESSION' : 'UNATTRIBUTED',
+      reasonCode: link ? 'ATTRIBUTED_QS_REF' : journeyKey ? 'ATTRIBUTED_SESSION' : 'UNATTRIBUTED',
       actor: { type: 'SYSTEM', id: input.source === 'SHOPIFY' ? 'shopify-webhook' : 'demo-storefront' },
     });
 

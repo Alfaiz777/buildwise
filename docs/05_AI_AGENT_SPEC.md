@@ -1,4 +1,4 @@
-# Buildwise — AI Agent Specification
+# Qwikspot — AI Agent Specification
 
 ## Status
 
@@ -8,7 +8,7 @@
 
 # 1. AI mission
 
-Buildwise AI is a **commerce relationship and decision agent**, not a generic chatbot.
+Qwikspot AI is a **commerce relationship and decision agent**, not a generic chatbot.
 
 Its mission:
 
@@ -239,7 +239,7 @@ ALTERNATIVE_PRODUCT
 HUMAN_HANDOFF
 ```
 
-**Action ≠ outcome.** The AI action is what Buildwise *proposes*. The business outcome (`Outcome.purchase_type`: `ONLINE | OFFLINE | ALTERNATIVE | NONE`) is what *actually happened*. Deterministic code records the outcome from verified evidence, such as a Shopify order or a completed reservation. The AI never records or asserts an outcome. The mapping between the two is `04_DATA_MODEL.md` §16.1.
+**Action ≠ outcome.** The AI action is what Qwikspot *proposes*. The business outcome (`Outcome.purchase_type`: `ONLINE | OFFLINE | ALTERNATIVE | NONE`) is what *actually happened*. Deterministic code records the outcome from verified evidence, such as a Shopify order or a completed reservation. The AI never records or asserts an outcome. The mapping between the two is `04_DATA_MODEL.md` §16.1.
 
 # 9.1 Execution model
 
@@ -251,7 +251,7 @@ The agent is reached only through the `ConversationPipeline` (`03_TECH_ARCHITECT
 
 | Runtime | Profile | Purpose |
 |---|---|---|
-| `AdkGeminiAgentRuntime` | `gcp` | The real Buildwise AI: Google ADK for TypeScript + Gemini on Vertex AI. The judged prototype uses only this runtime. |
+| `AdkGeminiAgentRuntime` | `gcp` | The real Qwikspot AI: Google ADK for TypeScript + Gemini on Vertex AI. The judged prototype uses only this runtime. |
 | `MockAgentRuntime` | `local` | Deterministic stand-in for pipeline tests, contract tests, deterministic development and local workflow verification **only** |
 
 `MockAgentRuntime` rules:

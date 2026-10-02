@@ -20,7 +20,7 @@ import { loadConfig } from '../../src/config/env.js';
 import { initFirebase } from '../../src/firebase/admin.js';
 import { silentLogger } from '../../src/lib/logger.js';
 
-const PROJECT = 'demo-buildwise';
+const PROJECT = 'demo-qwikspot';
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const FS_HOST = process.env.FIRESTORE_EMULATOR_HOST;
 if (!AUTH_HOST || !FS_HOST) {
@@ -70,11 +70,11 @@ async function importDemoCsv(): Promise<request.Response> {
 beforeAll(async () => {
   await fetch(`http://${FS_HOST}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' });
   await fetch(`http://${AUTH_HOST}/emulator/v1/projects/${PROJECT}/accounts`, { method: 'DELETE' });
-  dataDir = await mkdtemp(join(tmpdir(), 'buildwise-m3-'));
+  dataDir = await mkdtemp(join(tmpdir(), 'qwikspot-m3-'));
 
   const config = loadConfig({
     ...process.env,
-    BUILDWISE_PROFILE: 'local',
+    QWIKSPOT_PROFILE: 'local',
     GOOGLE_CLOUD_PROJECT: PROJECT,
     LOCAL_DATA_DIR: dataDir,
   });

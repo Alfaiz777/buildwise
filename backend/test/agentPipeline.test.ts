@@ -279,9 +279,9 @@ describe('forward dispatch when no store is eligible (Change 12, E3 / E7)', () =
     await s.share('c1');
     const res = await s.tap('c1', 'buy_online');
     expect(res.body.decision.action).toBe('ONLINE_PURCHASE');
-    // M6: the link carries an attribution reference (bw_ref) that links a later order to this journey.
+    // M6: the link carries an attribution reference (qs_ref) that links a later order to this journey.
     expect(replyText(res)).toMatch(
-      /^You can order Vitamin C Glow Serum online here: http:\/\/shop\.test\/products\/prd_1001\?bw_ref=[0-9A-HJKMNP-TV-Z]{26}$/,
+      /^You can order Vitamin C Glow Serum online here: http:\/\/shop\.test\/products\/prd_1001\?qs_ref=[0-9A-HJKMNP-TV-Z]{26}$/,
     );
   });
 
@@ -351,7 +351,7 @@ describe('context package scope (docs/04 §20)', () => {
     const input = seen.at(-1)!;
     const json = JSON.stringify(input.context);
     expect(input.context.history.length).toBeLessThanOrEqual(10);
-    expect(json).not.toMatch(/START_BUILDWISE_|secret from c2|sim:c2|brand_B/);
+    expect(json).not.toMatch(/START_QWIKSPOT_|secret from c2|sim:c2|brand_B/);
     expect(input.context.customer.customer_ref).toBe('sim:c1');
     expect(input.context.products.map((p) => p.product_id)).toEqual(['prd_1001', 'prd_1002']);
     expect(input.tools.map((t) => t.name)).not.toContain('create_reservation');
@@ -435,7 +435,7 @@ describe('reservation lifecycle through the conversation', () => {
 });
 
 describe('Brand Console: decision trace and reservations (scoped)', () => {
-  it('"Why Buildwise did this": context summary, tool calls, stores, guardrail, action, runtime, reservation', async () => {
+  it('"Why Qwikspot did this": context summary, tool calls, stores, guardrail, action, runtime, reservation', async () => {
     const s = await buildScenarioWorld();
     await s.startFromStore('c1', 'hi');
     await s.share('c1');

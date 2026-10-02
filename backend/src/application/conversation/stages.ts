@@ -81,7 +81,7 @@ export interface ConversationDeps extends OutboundDeps {
   runtimeName: AgentRuntimeName;
   /** Total AI decision budget per inbound message (docs/03 §16.1); injectable for tests. */
   aiBudgetMs?: number;
-  /** M6: bw_ref on "Buy online" links, and the step-11 evidence re-check. */
+  /** M6: qs_ref on "Buy online" links, and the step-11 evidence re-check. */
   attribution?: AttributionService;
   outcomes?: OutcomeService;
   /** OUTCOME hook for the follow-up engine (M4 part 2). */
@@ -146,7 +146,7 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
     },
   };
 
-  /** 3. HANDSHAKE — START_BUILDWISE_<token>: strip always; validate + consume + bind in one transaction. */
+  /** 3. HANDSHAKE — START_QWIKSPOT_<token>: strip always; validate + consume + bind in one transaction. */
   const handshake: PipelineStage = {
     name: 'HANDSHAKE',
     async run(context) {
@@ -478,7 +478,7 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
           targetId: (outcome.checked === 'CANCEL_RESERVATION' ? nba.reservation_id : outcome.storeId) ?? 'unknown',
           result: 'DENIED',
           reasonCode: outcome.reason,
-          actor: { type: 'AGENT', id: context.data.recommendationId ?? 'buildwise' },
+          actor: { type: 'AGENT', id: context.data.recommendationId ?? 'qwikspot' },
         });
       }
       return CONTINUE;
@@ -656,7 +656,7 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
         await deps.events.record({
           ...base,
           eventType: 'AI_DECISION',
-          source: 'BUILDWISE',
+          source: 'QWIKSPOT',
           entityReference: recommendationId,
           payload: {
             action: nba.action,
@@ -678,7 +678,7 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
           await deps.events.record({
             ...base,
             eventType: 'STORE_RECOMMENDATION',
-            source: 'BUILDWISE',
+            source: 'QWIKSPOT',
             entityReference: recommendationId,
             payload: unmetDemandPayload(f.output, now()),
             idempotencyKey: `STORE_RECOMMENDATION:UNMET:${recommendationId}:${variantId}`,
@@ -706,7 +706,7 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
             await deps.events.record({
               ...base,
               eventType: 'STORE_RECOMMENDATION',
-              source: 'BUILDWISE',
+              source: 'QWIKSPOT',
               entityReference: recommendationId,
               payload: {
                 kind: 'PROPOSED',
@@ -741,7 +741,7 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
           });
         }
 
-        // M6: a "Buy online" link carries a bw_ref that links a later order to this journey.
+        // M6: a "Buy online" link carries a qs_ref that links a later order to this journey.
         const text = deps.attribution
           ? await deps.attribution.decorate(brandId, reply.text, {
               intentId: context.intentId,

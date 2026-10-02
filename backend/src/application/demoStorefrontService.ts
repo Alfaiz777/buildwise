@@ -137,7 +137,7 @@ export class DemoStorefrontService {
       brandId,
       webSessionId: input.webSessionId,
       externalOrderId: `demo_order_${randomUUID()}`,
-      // The same normalisation as catalogue sync: Shopify variant GID → Buildwise variant ID.
+      // The same normalisation as catalogue sync: Shopify variant GID → Qwikspot variant ID.
       variantId: input.shopifyVariantId ? variantIdFor(input.shopifyVariantId) : null,
       source: 'WEBSITE',
       attributionRef: input.attributionRef ?? null,

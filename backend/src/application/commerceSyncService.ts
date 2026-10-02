@@ -29,7 +29,7 @@ export interface SyncActor {
 
 export const SHOPIFY_CONNECTION_ID = 'SHOPIFY';
 
-/** Deterministic Buildwise IDs from provider IDs, so a re-sync overwrites instead of duplicating. */
+/** Deterministic Qwikspot IDs from provider IDs, so a re-sync overwrites instead of duplicating. */
 const idTail = (externalId: string) => (externalId.split('/').pop() ?? externalId).replace(/[^A-Za-z0-9_-]/g, '_');
 export const productIdFor = (externalProductId: string) => `prd_${idTail(externalProductId)}`;
 export const variantIdFor = (externalVariantId: string) => `var_${idTail(externalVariantId)}`;

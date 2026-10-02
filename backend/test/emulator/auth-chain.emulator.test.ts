@@ -20,7 +20,7 @@ import type { TenantPrincipal } from '../../src/domain/principal.js';
 import { initFirebase } from '../../src/firebase/admin.js';
 import { silentLogger } from '../../src/lib/logger.js';
 
-const PROJECT = 'demo-buildwise';
+const PROJECT = 'demo-qwikspot';
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const FS_HOST = process.env.FIRESTORE_EMULATOR_HOST;
 if (!AUTH_HOST || !FS_HOST) {
@@ -29,7 +29,7 @@ if (!AUTH_HOST || !FS_HOST) {
   );
 }
 
-const config = loadConfig({ ...process.env, BUILDWISE_PROFILE: 'local', GOOGLE_CLOUD_PROJECT: PROJECT });
+const config = loadConfig({ ...process.env, QWIKSPOT_PROFILE: 'local', GOOGLE_CLOUD_PROJECT: PROJECT });
 const container = buildContainer(config, silentLogger);
 const app = createApp(container.appDeps);
 const { auth, db } = initFirebase(PROJECT, config.emulators);

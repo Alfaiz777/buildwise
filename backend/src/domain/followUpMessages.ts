@@ -20,23 +20,23 @@ interface TemplateDef {
 
 export const FOLLOW_UP_TEMPLATES: Record<FollowUpType, TemplateDef> = {
   SEARCH_EXPLORATION: {
-    name: 'buildwise_search_help_v1',
+    name: 'qwikspot_search_help_v1',
     body: 'Hi, this is {{brand}}. You were looking at {{category}}. Want help finding the right one?',
   },
   PRODUCT_CONSIDERATION: {
-    name: 'buildwise_consideration_v1',
+    name: 'qwikspot_consideration_v1',
     body: 'Hi, this is {{brand}}. Still deciding on {{product}}? I can help you compare the options.',
   },
   CART_ABANDONMENT: {
-    name: 'buildwise_cart_reminder_v1',
+    name: 'qwikspot_cart_reminder_v1',
     body: 'Hi, this is {{brand}}. You still have {{product}} in your cart. Any questions before you complete your order?',
   },
   CHECKOUT_ABANDONMENT: {
-    name: 'buildwise_checkout_help_v1',
+    name: 'qwikspot_checkout_help_v1',
     body: 'Hi, this is {{brand}}. Looks like you were checking out with {{product}}. Need a hand finishing your order?',
   },
   STORE_ORIENTED: {
-    name: 'buildwise_store_nearby_v1',
+    name: 'qwikspot_store_nearby_v1',
     body: "Hi, this is {{brand}}. Looking for {{product}} today? Reply with your area and I'll help you find a nearby store.",
   },
 };

@@ -1,4 +1,4 @@
-# Buildwise — Technical Architecture
+# Qwikspot — Technical Architecture
 
 ## Status
 
@@ -10,13 +10,13 @@ The Google Cloud target architecture below is unchanged. The local profile runs 
 
 # 1. Architecture principle
 
-Buildwise is a Google Cloud-native application with external commerce systems integrated through controlled backend services.
+Qwikspot is a Google Cloud-native application with external commerce systems integrated through controlled backend services.
 
 ```text
 Customer
   WhatsApp
      ↓
-Buildwise backend
+Qwikspot backend
      ↓
 AI agent + commerce context
      ↓
@@ -30,7 +30,7 @@ Retailer / Shopify
 # 2. High-level architecture
 
 ```
-                              BUILDWISE
+                              QWIKSPOT
                                   │
         ┌─────────────────┬───────┴─────────┬─────────────────────┐
         ↓                 ↓                 ↓                     ↓
@@ -59,7 +59,7 @@ Retailer / Shopify
        │                    │                    │
        └────────────────────┼────────────────────┘
                             ↓
-                       Buildwise Context
+                       Qwikspot Context
                             ↓
                         Next Action
                             ↓
@@ -74,7 +74,7 @@ The diagram shows the **GCP profile**. In the local profile, the same boxes are 
 
 ## 2.1 Layering (ports and adapters)
 
-Buildwise is **one** logical architecture. Business logic is written once and does not know which profile it runs in.
+Qwikspot is **one** logical architecture. Business logic is written once and does not know which profile it runs in.
 
 ```text
 backend/src/
@@ -120,7 +120,7 @@ Firestore and Firebase Auth are **not** replaced locally by a different database
 Selection:
 
 ```text
-BUILDWISE_PROFILE   = local | gcp          (sets the defaults above)
+QWIKSPOT_PROFILE   = local | gcp          (sets the defaults above)
 COMMERCE_PROVIDER   = mock | shopify
 MESSAGING_CHANNELS  = simulator | simulator,whatsapp | whatsapp
 AGENT_RUNTIME       = mock | adk_gemini
@@ -150,14 +150,14 @@ flowchart LR
     SF[Storefront snippet<br/>or demo store]
   end
 
-  subgraph Core["Buildwise API (Cloud Run / local Node) — the same code in both profiles"]
+  subgraph Core["Qwikspot API (Cloud Run / local Node) — the same code in both profiles"]
     R[Routes + auth<br/>token → principal → scope]
     P[ConversationPipeline<br/>11 fixed stages]
     G[Guardrail + ToolExecutor<br/>writes only after re-check]
     S[Application services<br/>reservations · fulfilment · outcomes · insights · reset demo]
   end
 
-  subgraph Ports["Ports → adapters (chosen by BUILDWISE_PROFILE)"]
+  subgraph Ports["Ports → adapters (chosen by QWIKSPOT_PROFILE)"]
     AR[AgentRuntime<br/>local: Mock · gcp: ADK + Gemini]
     MP[MessagingProvider<br/>local: Simulator · gcp: WhatsApp + Simulator]
     CP[CommerceProvider<br/>local: Mock · gcp: Shopify]
@@ -214,7 +214,7 @@ Responsibilities:
 
 Route areas are a UX convenience. Authorization is always enforced by the backend, whose API areas mirror them: `/api/platform/*` (platform scope), `/api/brand/*` and `/api/brands/:brandId` (brand scope), `/api/retail/*` (retail scope, own store only). The per-interface contract is `11_INTERFACE_CONTRACT.md`.
 
-The customer does not receive a full Buildwise dashboard.
+The customer does not receive a full Qwikspot dashboard.
 
 # 4. Backend:
 
@@ -246,7 +246,7 @@ Identity for console users:
 
 Locally, the Firebase Auth Emulator provides the same identity flow.
 
-Customer identity (WhatsApp or simulator) is handled through the customer channel-identity model (`04_DATA_MODEL.md` §6) rather than a Buildwise customer portal.
+Customer identity (WhatsApp or simulator) is handled through the customer channel-identity model (`04_DATA_MODEL.md` §6) rather than a Qwikspot customer portal.
 
 ---
 
@@ -591,12 +591,12 @@ If the budget is exhausted, the request stops calling the runtime and uses the d
 | Gemini (timeout, 429, 5xx) | 1 retry with jittered backoff, only if the budget remains | Deterministic fallback |
 | Gemini (invalid structured output) | 1 repair attempt with the validation error | Deterministic fallback |
 | WhatsApp send (429, 5xx, network) | up to 2 retries with exponential backoff (250 ms, 1 s), same outbound request ID — implemented in M7 for every channel | Message marked `FAILED`; shown as "Not delivered" in the Brand Console |
-| Firestore unavailable (gRPC UNAVAILABLE / DEADLINE_EXCEEDED) | the SDK's own retries | `503 SERVICE_UNAVAILABLE`, retryable, "Buildwise can't reach its database right now. Please try again in a minute." (M7) |
+| Firestore unavailable (gRPC UNAVAILABLE / DEADLINE_EXCEEDED) | the SDK's own retries | `503 SERVICE_UNAVAILABLE`, retryable, "Qwikspot can't reach its database right now. Please try again in a minute." (M7) |
 | Shopify API (429, 5xx) | exponential backoff respecting Shopify throttling, up to 3 retries | Sync marked failed on the connection (`last_error`) |
 | Firestore transaction contention | handled by the Firestore SDK transaction retry | Reservation request fails with a retryable error |
 | 4xx validation / auth errors | never retried | Normalized error (`06_INTEGRATION_CONTRACTS.md` §16) |
 
-**Deterministic fallback:** Buildwise sends a fixed, safe holding reply. It never claims stock, price or policy. The AIRecommendation keeps the `runtime` that failed and is recorded with `action = HUMAN_HANDOFF` and `decision_source = DETERMINISTIC_FALLBACK` when human handoff is enabled for the brand. Otherwise it is recorded with `action = NO_ACTION` and a reply asking the customer to try again. The fallback never executes a commerce action.
+**Deterministic fallback:** Qwikspot sends a fixed, safe holding reply. It never claims stock, price or policy. The AIRecommendation keeps the `runtime` that failed and is recorded with `action = HUMAN_HANDOFF` and `decision_source = DETERMINISTIC_FALLBACK` when human handoff is enabled for the brand. Otherwise it is recorded with `action = NO_ACTION` and a reply asking the customer to try again. The fallback never executes a commerce action.
 
 ## 16.3 Webhook idempotency
 

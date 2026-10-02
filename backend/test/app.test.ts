@@ -80,9 +80,9 @@ describe('app foundation', () => {
   });
 
   it('allows only configured CORS origins', async () => {
-    const { app: corsApp } = buildTestWorld({ corsAllowedOrigins: ['https://app.buildwise.test'] });
-    const ok = await request(corsApp).get('/api/health').set('Origin', 'https://app.buildwise.test');
-    expect(ok.headers['access-control-allow-origin']).toBe('https://app.buildwise.test');
+    const { app: corsApp } = buildTestWorld({ corsAllowedOrigins: ['https://app.qwikspot.test'] });
+    const ok = await request(corsApp).get('/api/health').set('Origin', 'https://app.qwikspot.test');
+    expect(ok.headers['access-control-allow-origin']).toBe('https://app.qwikspot.test');
     const bad = await request(corsApp).get('/api/health').set('Origin', 'https://evil.example');
     expect(bad.headers['access-control-allow-origin']).toBeUndefined();
   });

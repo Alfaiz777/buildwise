@@ -1,7 +1,7 @@
 /**
  * Log hygiene across the whole customer + store journey (docs/07 §11): every log line is
  * captured and searched. Logs carry IDs and codes — never contact details, intent tokens,
- * pickup codes, bw_ref values or message text.
+ * pickup codes, qs_ref values or message text.
  */
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
@@ -10,7 +10,7 @@ import { bearer, TEST_ORIGIN } from './helpers.js';
 import { buildScenarioWorld } from './scenarioWorld.js';
 
 describe('log hygiene (docs/07 §11)', () => {
-  it('a full journey logs no PII, tokens, pickup codes, bw_ref values or message text', async () => {
+  it('a full journey logs no PII, tokens, pickup codes, qs_ref values or message text', async () => {
     const lines: string[] = [];
     const logger = createLogger('debug', (line) => lines.push(line));
     const s = await buildScenarioWorld({ logger });
@@ -38,11 +38,11 @@ describe('log hygiene (docs/07 §11)', () => {
     });
     await patch({ status: 'COMPLETED', expected_current_status: 'CUSTOMER_ARRIVED', pickup_code: pickupCode });
 
-    // Buy online with a bw_ref, a demo shopper sign-in and an attributed order.
+    // Buy online with a qs_ref, a demo shopper sign-in and an attributed order.
     await s.startFromStore('c2', 'hi');
     await s.share('c2');
     const online = await s.tap('c2', 'buy_online');
-    const ref = /bw_ref=([0-9A-Z]{26})/.exec(online.body.outbound_messages[0].text)![1]!;
+    const ref = /qs_ref=([0-9A-Z]{26})/.exec(online.body.outbound_messages[0].text)![1]!;
     await request(s.world.app).post('/api/demo-storefront/shopper-sign-in').set('Origin', TEST_ORIGIN).send({
       brand_id: 'brand_A',
       shopper_id: 'gid://shopify/Customer/3002',
@@ -53,7 +53,7 @@ describe('log hygiene (docs/07 §11)', () => {
       brand_id: 'brand_A',
       web_session_id: 'ws_log_00000001',
       shopify_variant_id: 'gid://shopify/ProductVariant/2001',
-      bw_ref: ref,
+      qs_ref: ref,
     });
 
     // Handoff + a reply as a person + opt-out + an invalid token + due work.
@@ -62,7 +62,7 @@ describe('log hygiene (docs/07 §11)', () => {
       .post(`/api/brand/conversations/${handoff.body.conversation_id}/replies`)
       .set('Authorization', bearer('admin_a'))
       .send({ text: 'Hello from Meera at the brand' });
-    await s.say('c4', 'START_BUILDWISE_0123456789ABCDEFGHJKMNPQRS hello');
+    await s.say('c4', 'START_QWIKSPOT_0123456789ABCDEFGHJKMNPQRS hello');
     await s.say('c4', 'STOP');
     await request(s.world.app).post('/api/brand/follow-ups/process-due').set('Authorization', bearer('admin_a'));
 
@@ -71,7 +71,7 @@ describe('log hygiene (docs/07 §11)', () => {
     expect(log).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/); // emails
     expect(log).not.toMatch(/\+91|\b\d{10}\b/); // phone numbers
     expect(log).not.toMatch(/Asha|Ravi|Meera/); // demo shopper / person names
-    expect(log).not.toMatch(/START_BUILDWISE_|[0-9A-HJKMNP-TV-Z]{26}/); // intent tokens and bw_ref values
+    expect(log).not.toMatch(/START_QWIKSPOT_|[0-9A-HJKMNP-TV-Z]{26}/); // intent tokens and qs_ref values
     expect(log).not.toContain(ref);
     expect(log).not.toMatch(new RegExp(`\\b${pickupCode}\\b`));
     // No message text, inbound or outbound.

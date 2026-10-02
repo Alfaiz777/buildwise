@@ -24,7 +24,7 @@ const SAMPLES: Record<string, string> = {
   'meta.ts': `const t = '${'EA' + 'A'}${r(48, 'ABCDEFGHJK0123456789')}';`,
   'generic.ts': `const config = { client_secret: '${r(24)}' };`,
 };
-const dir = mkdtempSync(join(tmpdir(), 'bw-secrets-'));
+const dir = mkdtempSync(join(tmpdir(), 'qs-secrets-'));
 for (const [name, text] of Object.entries(SAMPLES)) writeFileSync(join(dir, name), text);
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 

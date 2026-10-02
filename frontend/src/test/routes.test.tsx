@@ -10,7 +10,7 @@ const ME: Record<'platform' | 'brandAdmin' | 'retailAdmin', MeResponse> = {
   platform: {
     scope: 'PLATFORM',
     role: 'PLATFORM_ADMIN',
-    user: { user_id: 'p', email: 'platform@bw.test' },
+    user: { user_id: 'p', email: 'platform@qs.test' },
   },
   brandAdmin: {
     scope: 'BRAND',
@@ -291,13 +291,13 @@ describe('authentication gate', () => {
       throw new ApiError(
         403,
         'USER_NOT_PROVISIONED',
-        'Your account has not been set up for Buildwise yet.',
+        'Your account has not been set up for Qwikspot yet.',
         false,
         'req-1',
       );
     }) as ApiClient['get'];
     renderAt('/', signedIn, api);
-    expect(await screen.findByText('Your account has not been set up for Buildwise yet.')).toBeInTheDocument();
+    expect(await screen.findByText('Your account has not been set up for Qwikspot yet.')).toBeInTheDocument();
     expect(screen.getByText('Reference: req-1')).toBeInTheDocument();
   });
 
@@ -336,7 +336,7 @@ describe('scope routing — each of the three roles lands in its own console are
     const row = (await screen.findByText('Has Admin')).closest('tr')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Suspend' }));
     const dialog = screen.getByRole('form', { name: 'Suspend Has Admin' });
-    expect(dialog).toHaveTextContent('Your brand is suspended. Contact Buildwise support.');
+    expect(dialog).toHaveTextContent('Your brand is suspended. Contact Qwikspot support.');
     expect(api.patch).not.toHaveBeenCalled();
     fireEvent.change(within(dialog).getByLabelText('Reason (kept in the audit log)'), {
       target: { value: 'Unpaid invoice' },

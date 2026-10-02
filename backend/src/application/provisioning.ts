@@ -38,7 +38,7 @@ export interface SingleAdminSlot {
  * Creates (or reuses) the Firebase Auth user, claims the scope's single admin
  * slot and writes users/{uid}. The MVP has exactly one admin per scope
  * (docs/04_DATA_MODEL.md §4): one BRAND_ADMIN per brand, one RETAIL_ADMIN per
- * store. An existing Buildwise user is never silently moved or re-scoped.
+ * store. An existing Qwikspot user is never silently moved or re-scoped.
  * Callers are responsible for authorization.
  */
 export async function provisionUser(

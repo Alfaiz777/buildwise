@@ -5,7 +5,7 @@
  *   BRAND_ADMIN    → retailers + each retailer’s single RETAIL_ADMIN
  *
  * Usage (from the repo root):
- *   npm run seed:platform-admin -- --email ops@buildwise.test --password 'change-me-123'
+ *   npm run seed:platform-admin -- --email ops@qwikspot.test --password 'change-me-123'
  *
  * Local profile (default): writes to the Firebase emulators.
  * A real project additionally requires --confirm-project <projectId>.

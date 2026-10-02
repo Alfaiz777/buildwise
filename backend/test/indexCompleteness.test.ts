@@ -68,11 +68,11 @@ describe('Firestore index completeness', () => {
     }
   });
 
-  it('Firebase Hosting sends /api/** to the buildwise-api Cloud Run service; everything else is the SPA', () => {
+  it('Firebase Hosting sends /api/** to the qwikspot-api Cloud Run service; everything else is the SPA', () => {
     const firebase = JSON.parse(readFileSync(new URL('../../firebase.json', import.meta.url), 'utf8'));
     expect(firebase.hosting.public).toBe('frontend/dist');
     expect(firebase.hosting.rewrites).toEqual([
-      { source: '/api/**', run: { serviceId: 'buildwise-api', region: 'asia-south1' } },
+      { source: '/api/**', run: { serviceId: 'qwikspot-api', region: 'asia-south1' } },
       { source: '**', destination: '/index.html' },
     ]);
   });

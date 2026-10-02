@@ -1,5 +1,5 @@
 /**
- * AttributionRef (`bw_ref`, docs/00 §11.8 Change 13, F6): an opaque random reference added
+ * AttributionRef (`qs_ref`, docs/00 §11.8 Change 13, F6): an opaque random reference added
  * to "Buy online" links. 128 random bits in Crockford Base32; only its SHA-256 is stored.
  * It only LINKS an order to a journey — the purchase evidence is the order itself.
  */
@@ -24,13 +24,13 @@ export function checkAttributionRef(
   return null;
 }
 
-/** Adds bw_ref to the query string, before any #fragment, keeping existing parameters. */
+/** Adds qs_ref to the query string, before any #fragment, keeping existing parameters. */
 export function withAttributionRef(url: string, ref: string): string {
   const hashAt = url.indexOf('#');
   const base = hashAt >= 0 ? url.slice(0, hashAt) : url;
   const fragment = hashAt >= 0 ? url.slice(hashAt) : '';
-  const cleaned = base.replace(/([?&])bw_ref=[^&]*&?/, '$1').replace(/[?&]$/, '');
-  return `${cleaned}${cleaned.includes('?') ? '&' : '?'}bw_ref=${ref}${fragment}`;
+  const cleaned = base.replace(/([?&])qs_ref=[^&]*&?/, '$1').replace(/[?&]$/, '');
+  return `${cleaned}${cleaned.includes('?') ? '&' : '?'}qs_ref=${ref}${fragment}`;
 }
 
 /** Decorates every link in a reply that points at the brand's online store (prefix match). */

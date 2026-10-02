@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// Buildwise: the browser never reads or writes Firestore directly.
+// Qwikspot: the browser never reads or writes Firestore directly.
 // All data access goes through Cloud Run (Firebase Admin SDK bypasses these rules).
 // See docs/03_TECH_ARCHITECTURE.md §7 and docs/07_SECURITY_SPEC.md §4.1.
 service cloud.firestore {
