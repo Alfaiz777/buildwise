@@ -1,8 +1,8 @@
-# Buildwise
+# Qwikspot
 
 **AI that turns a shopper's "I need it today" into a sale at the nearest store that really has it — and shows the brand what happened.**
 
-Buildwise is an omnichannel commerce layer for D2C brands. It watches storefront intent (a product view, an abandoned cart, a "Need it today?" tap), continues the journey in a WhatsApp conversation, lets an AI agent pick the next best action from **verified** catalogue and store-stock data, reserves the product at an eligible nearby store, guides the store through the pickup, and records the outcome — online or in store — so the brand can see whether a weekday problem is demand or availability.
+Qwikspot is an omnichannel commerce layer for D2C brands. It watches storefront intent (a product view, an abandoned cart, a "Need it today?" tap), continues the journey in a WhatsApp conversation, lets an AI agent pick the next best action from **verified** catalogue and store-stock data, reserves the product at an eligible nearby store, guides the store through the pickup, and records the outcome — online or in store — so the brand can see whether a weekday problem is demand or availability.
 
 Every AI action is re-checked by a guardrail on fresh data before anything is written; the agent can never invent stock, choose a closed store or touch another customer's data.
 
@@ -24,18 +24,18 @@ Open <http://localhost:5173/login>: every demo account is one **Use** click away
 | Account | Role | What to look at |
 |---|---|---|
 | Brand Admin — Demo Beauty Co | `admin@demo-brand.test` | Demo guide, simulator, decision trace, Outcomes & insights |
-| Retail Admin — Bandra Store | `retail-admin-north-1@buildwise.test` | Bandra's reservation queue and stock only |
-| Retail Admin — Andheri Store | `retail-admin-north-2@buildwise.test` | Andheri's queue — the demo hold lands here |
-| Platform Admin | `platform@buildwise.test` | Brands, onboarding checklist, last activity, suspend — never customer data |
+| Retail Admin — Bandra Store | `retail-admin-north-1@qwikspot.test` | Bandra's reservation queue and stock only |
+| Retail Admin — Andheri Store | `retail-admin-north-2@qwikspot.test` | Andheri's queue — the demo hold lands here |
+| Platform Admin | `platform@qwikspot.test` | Brands, onboarding checklist, last activity, suspend — never customer data |
 
-Local demo password: `buildwise-demo-1` (emulators only; a deployed demo uses its own secret).
+Local demo password: `qwikspot-demo-1` (emulators only; a deployed demo uses its own secret).
 
 ### The 4-tab walkthrough
 
 | Tab | Steps |
 |---|---|
 | **1 · Brand Admin** (`/brand`) | Open the **Demo guide**. Step 1 opens the demo store. |
-| **2 · Demo store → simulator** | Pick **Vitamin C Glow Serum 30 ml** → **Need it today? Check a store near you**. The simulator opens in a new tab (sign in as the Brand Admin there) with the message ready — send it. **Share location → Near Powai → Send location**. Powai has no stock, so the assistant offers **Hold 1 at Andheri** — tap it: pickup code, hold-until time, maps link. Under the chat, **Why Buildwise did this** shows eligible and excluded stores with reasons, the guardrail's fresh re-check and every tool call. |
+| **2 · Demo store → simulator** | Pick **Vitamin C Glow Serum 30 ml** → **Need it today? Check a store near you**. The simulator opens in a new tab (sign in as the Brand Admin there) with the message ready — send it. **Share location → Near Powai → Send location**. Powai has no stock, so the assistant offers **Hold 1 at Andheri** — tap it: pickup code, hold-until time, maps link. Under the chat, **Why Qwikspot did this** shows eligible and excluded stores with reasons, the guardrail's fresh re-check and every tool call. |
 | **3 · Retail Admin — Andheri** | The hold is at the top of **Reservations**: **Confirm → Mark ready → Customer arrived → Complete** with the customer's 6-digit code (shown in tab 2). The customer gets a message at each step; stock drops by one. Try **Refuse → Not actually in stock** on another hold: the customer is offered the next store that really has it. |
 | **4 · Outcomes & insights** (tab 1 → nav) | The pickup is an **in-store** outcome. The weekday panel explains, from counted records, that Saturday is an *availability* problem, not a demand problem, with suggested next actions. Then sign in as the **Platform Admin** in this tab: brands with their onboarding checklist and last activity. |
 
@@ -50,7 +50,7 @@ flowchart LR
   C[Customer] -->|WhatsApp / simulator| P
   SF[Storefront snippet] -->|intents| API
   UI[React consoles: Platform · Brand · Retailer] -->|Firebase ID token| API
-  subgraph API[Buildwise API — Cloud Run or local Node, same code]
+  subgraph API[Qwikspot API — Cloud Run or local Node, same code]
     P[ConversationPipeline] --> A[AgentRuntime<br/>Mock locally · ADK + Gemini live]
     A -->|read tools| G[Guardrail: re-check on fresh data]
     P --> G --> W[Writes: reservations, outcomes, audit]

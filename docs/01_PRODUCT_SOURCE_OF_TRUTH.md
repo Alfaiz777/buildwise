@@ -1,4 +1,4 @@
-# Buildwise — Product Source of Truth
+# Qwikspot — Product Source of Truth
 
 ## Status
 
@@ -8,7 +8,7 @@
 
 # 1. Product name
 
-**Buildwise**
+**Qwikspot**
 
 ---
 
@@ -42,9 +42,9 @@ store hours
 retail fulfillment
 ```
 
-The problem Buildwise targets is the missed opportunity between them.
+The problem Qwikspot targets is the missed opportunity between them.
 
-Instead of treating a high-intent online customer as simply “lost,” Buildwise can use relevant context to determine whether another purchase path—especially a nearby retail path—would be more useful.
+Instead of treating a high-intent online customer as simply “lost,” Qwikspot can use relevant context to determine whether another purchase path—especially a nearby retail path—would be more useful.
 
 ---
 
@@ -90,7 +90,7 @@ D2C brands that:
 
 ### Platform Admin (`PLATFORM_ADMIN`)
 
-The Buildwise operator who runs the platform on behalf of its brands.
+The Qwikspot operator who runs the platform on behalf of its brands.
 
 Needs:
 
@@ -165,7 +165,7 @@ The customer primarily interacts through WhatsApp.
 
 # 8. Customer experience principle
 
-> **WhatsApp is the customer interface; Buildwise is the intelligence behind it.**
+> **WhatsApp is the customer interface; Qwikspot is the intelligence behind it.**
 
 The customer should feel:
 
@@ -179,7 +179,7 @@ They should not feel:
 
 # 8a. Platform Admin experience
 
-Buildwise Platform Admin Console:
+Qwikspot Platform Admin Console:
 
 ```text
 Brands
@@ -196,7 +196,7 @@ The Platform Admin Console manages the platform. It is **not** a window into bra
 
 # 8b. The four interfaces
 
-Buildwise has exactly four interfaces:
+Qwikspot has exactly four interfaces:
 
 | # | Interface | Users | Form |
 |---|---|---|---|
@@ -205,15 +205,15 @@ Buildwise has exactly four interfaces:
 | 3 | Retailer Console | Retail Admin | web console |
 | 4 | Customer AI Channel | Customer | WhatsApp-first; simulator during local development; contextual web pages only when needed |
 
-The customer never gets a Buildwise dashboard or a login.
+The customer never gets a Qwikspot dashboard or a login.
 
-Buildwise therefore has four actors: `PLATFORM_ADMIN`, `BRAND_ADMIN` and `RETAIL_ADMIN` (the three internal roles, one per console) and the customer, who is identified by their WhatsApp channel identity and is not an internal role.
+Qwikspot therefore has four actors: `PLATFORM_ADMIN`, `BRAND_ADMIN` and `RETAIL_ADMIN` (the three internal roles, one per console) and the customer, who is identified by their WhatsApp channel identity and is not an internal role.
 
 ---
 
 # 9. Brand experience
 
-Buildwise Brand Console:
+Qwikspot Brand Console:
 
 ```text
 Overview
@@ -230,7 +230,7 @@ AI Performance
 The brand console should explain:
 
 - what happened
-- why Buildwise intervened
+- why Qwikspot intervened
 - what action was chosen
 - whether the customer converted
 - where the conversion happened
@@ -239,7 +239,7 @@ The brand console should explain:
 
 # 10. Retailer experience
 
-Buildwise Retailer Console:
+Qwikspot Retailer Console:
 
 ```text
 Reservations
@@ -284,7 +284,7 @@ Outcome recorded
 
 # 12. Core decision
 
-> **Should Buildwise intervene, and if so, what is the most helpful next action for this customer in this context?**
+> **Should Qwikspot intervene, and if so, what is the most helpful next action for this customer in this context?**
 
 The system should not assume that every high-intent customer needs the same action.
 
@@ -292,7 +292,7 @@ The system should not assume that every high-intent customer needs the same acti
 
 # 13. Personalization definition
 
-Personalization in Buildwise is contextual, not cosmetic.
+Personalization in Qwikspot is contextual, not cosmetic.
 
 The system may use:
 
@@ -343,7 +343,7 @@ Example:
 
 # 14. AI definition
 
-Buildwise is not “AI because a chatbot is included.”
+Qwikspot is not “AI because a chatbot is included.”
 
 The AI must perform meaningful reasoning across multiple contexts:
 
@@ -392,7 +392,7 @@ The application is responsible for verified facts and execution:
 
 # 16. Outcome model
 
-Buildwise measures outcomes rather than message volume.
+Qwikspot measures outcomes rather than message volume.
 
 Core outcome types (journey vocabulary):
 
@@ -419,7 +419,7 @@ The mapping from each journey outcome type above to its canonical field, and fro
 
 # 17. Product boundaries
 
-Buildwise is not:
+Qwikspot is not:
 
 - a Shopify replacement
 - a POS
@@ -448,6 +448,6 @@ Shopify context
 → brand intelligence
 ```
 
-and understand why Buildwise exists.
+and understand why Qwikspot exists.
 
 The judged prototype runs on Google Cloud with real Shopify, real Meta WhatsApp and Gemini. The product is built locally first against local adapters, with the same business logic (`10_EXECUTION_PLAN.md`). Local mocks are development tools, not the product.

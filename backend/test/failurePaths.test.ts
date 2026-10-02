@@ -82,7 +82,7 @@ describe('docs/08 §13 failure paths (local)', () => {
     expect(res.body.error).toMatchObject({
       code: 'SERVICE_UNAVAILABLE',
       retryable: true,
-      message: "Buildwise can't reach its database right now. Please try again in a minute.",
+      message: "Qwikspot can't reach its database right now. Please try again in a minute.",
     });
     expect(JSON.stringify(res.body)).not.toMatch(/stack|10\.0\.0\.1|UNAVAILABLE:/);
 

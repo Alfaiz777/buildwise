@@ -52,11 +52,11 @@ export function checkSeedLive(input: {
     brandId,
     password,
     emails: {
-      platform: env.DEMO_PLATFORM_ADMIN_EMAIL ?? 'platform@buildwise.test',
+      platform: env.DEMO_PLATFORM_ADMIN_EMAIL ?? 'platform@qwikspot.test',
       brandAdmin: env.DEMO_BRAND_ADMIN_EMAIL ?? 'admin@demo-brand.test',
       retailAdmins: [
-        ['st_north_1', env.DEMO_RETAIL_ADMIN_1_EMAIL ?? 'retail-admin-north-1@buildwise.test'],
-        ['st_north_2', env.DEMO_RETAIL_ADMIN_2_EMAIL ?? 'retail-admin-north-2@buildwise.test'],
+        ['st_north_1', env.DEMO_RETAIL_ADMIN_1_EMAIL ?? 'retail-admin-north-1@qwikspot.test'],
+        ['st_north_2', env.DEMO_RETAIL_ADMIN_2_EMAIL ?? 'retail-admin-north-2@qwikspot.test'],
       ],
     },
   };

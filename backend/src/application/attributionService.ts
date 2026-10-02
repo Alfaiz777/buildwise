@@ -17,14 +17,14 @@ export interface JourneyLink {
 }
 
 /**
- * Online-order attribution (docs/00 §11.8 Change 13, F6). `bw_ref` only LINKS an order to
+ * Online-order attribution (docs/00 §11.8 Change 13, F6). `qs_ref` only LINKS an order to
  * a journey; the order from the commerce source is the evidence. The raw ref exists only
- * in the link the customer receives; Buildwise stores its hash.
+ * in the link the customer receives; Qwikspot stores its hash.
  */
 export class AttributionService {
   constructor(private readonly deps: { refs: AttributionRefRepository; brands: BrandRepository; now: () => Date }) {}
 
-  /** Adds a fresh bw_ref to every brand online-store link in `text` (one ref per message). */
+  /** Adds a fresh qs_ref to every brand online-store link in `text` (one ref per message). */
   async decorate(brandId: string, text: string, link: JourneyLink): Promise<string> {
     const brand = await this.deps.brands.getById(brandId);
     const prefix = brand ? onlinePrefixOf(brand.settings) : null;

@@ -261,7 +261,7 @@ export class FulfilmentService {
       brandId: r.brandId,
       customerId: r.customerId,
       eventType: 'STORE_RECOMMENDATION',
-      source: 'BUILDWISE',
+      source: 'QWIKSPOT',
       entityReference: r.reservationId,
       payload: JSON.parse(JSON.stringify(payload)),
       idempotencyKey: `STORE_RECOMMENDATION:${kind}:REFUSAL:${r.reservationId}`,

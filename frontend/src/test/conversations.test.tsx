@@ -23,7 +23,7 @@ const FOLLOW_UP_SENT = {
   due_at: '2026-10-05T10:02:00.000Z',
   priority: 'NORMAL',
   message_kind: 'TEMPLATE',
-  template_name: 'buildwise_cart_reminder_v1',
+  template_name: 'qwikspot_cart_reminder_v1',
   sent_at: '2026-10-05T10:02:05.000Z',
 };
 const INTENT = {
@@ -86,7 +86,7 @@ const DETAIL = {
       location: null,
       origin: 'PROACTIVE_FOLLOW_UP',
       message_kind: 'TEMPLATE',
-      template_name: 'buildwise_cart_reminder_v1',
+      template_name: 'qwikspot_cart_reminder_v1',
       delivery_status: 'DELIVERED',
       timestamp: '2026-10-05T10:02:05.000Z',
     },
@@ -166,7 +166,7 @@ describe('Brand Console — Conversations & intents', () => {
     const panel = screen.getByLabelText('Intent and follow-up');
     expect(within(panel).getByText('Added to cart', { exact: false })).toBeInTheDocument();
     expect(within(panel).getByText('cart abandonment')).toBeInTheDocument();
-    expect(within(panel).getByText(/Sent .* as a template message \(buildwise_cart_reminder_v1\)/)).toBeInTheDocument();
+    expect(within(panel).getByText(/Sent .* as a template message \(qwikspot_cart_reminder_v1\)/)).toBeInTheDocument();
     expect(within(panel).getByText('Replied: yes')).toBeInTheDocument();
   });
 
@@ -188,9 +188,9 @@ describe('Brand Console — Conversations & intents', () => {
 
   it('prefills the simulator from the URL fragment and sends through the simulator route', async () => {
     const api = apiFor();
-    renderAt('/brand/conversations#customer=shopper_3002&text=START_BUILDWISE_0123456789ABCDEFGHJKMNPQRS', api);
+    renderAt('/brand/conversations#customer=shopper_3002&text=START_QWIKSPOT_0123456789ABCDEFGHJKMNPQRS', api);
     const input = await screen.findByLabelText('Message');
-    expect(input).toHaveValue('START_BUILDWISE_0123456789ABCDEFGHJKMNPQRS');
+    expect(input).toHaveValue('START_QWIKSPOT_0123456789ABCDEFGHJKMNPQRS');
     expect(screen.getByLabelText('Simulator customer')).toHaveValue('shopper_3002');
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByText('Fallback (deterministic)');
@@ -198,7 +198,7 @@ describe('Brand Console — Conversations & intents', () => {
       '/api/channels/simulator/messages',
       expect.objectContaining({
         simulator_customer_ref: 'shopper_3002',
-        content: { type: 'TEXT', text: 'START_BUILDWISE_0123456789ABCDEFGHJKMNPQRS' },
+        content: { type: 'TEXT', text: 'START_QWIKSPOT_0123456789ABCDEFGHJKMNPQRS' },
       }),
     );
   });
@@ -354,10 +354,10 @@ describe('Brand Console — M5 decision trace and reservations', () => {
     return { ...api, get: get as ApiClient['get'] };
   }
 
-  it('"Why Buildwise did this": guardrail, runtime, source, stores with reasons, tool calls, reservation', async () => {
+  it('"Why Qwikspot did this": guardrail, runtime, source, stores with reasons, tool calls, reservation', async () => {
     renderAt('/brand/conversations', api5());
     fireEvent.click(await screen.findByRole('button', { name: /sim:shopper_3002/ }));
-    expect(await screen.findByText('Why Buildwise did this')).toBeInTheDocument();
+    expect(await screen.findByText('Why Qwikspot did this')).toBeInTheDocument();
     expect(screen.getByText('store reservation')).toBeInTheDocument();
     expect(screen.getByText(/Allowed after re-checking create reservation on fresh data/)).toBeInTheDocument();
     expect(screen.getByText(/Andheri Store · pending · pickup code/)).toBeInTheDocument();

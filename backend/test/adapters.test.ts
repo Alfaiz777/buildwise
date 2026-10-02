@@ -22,7 +22,7 @@ import {
 
 let dataDir: string;
 beforeAll(async () => {
-  dataDir = await mkdtemp(join(tmpdir(), 'buildwise-test-'));
+  dataDir = await mkdtemp(join(tmpdir(), 'qwikspot-test-'));
 });
 afterAll(async () => {
   await rm(dataDir, { recursive: true, force: true });

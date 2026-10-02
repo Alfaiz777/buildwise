@@ -1,7 +1,7 @@
 /**
  * M6 local end-to-end on the Firebase Auth + Firestore emulators with the REAL composition
  * root (local profile, MockAgentRuntime): store fulfilment, customer notifications,
- * refusal forward dispatch, outcomes (OFFLINE / ONLINE / NONE), bw_ref attribution, the
+ * refusal forward dispatch, outcomes (OFFLINE / ONLINE / NONE), qs_ref attribution, the
  * handoff queue and the Outcomes screen with and without synthetic history.
  *
  * Run from the repo root: npm run test:emulator
@@ -17,7 +17,7 @@ import { loadConfig } from '../../src/config/env.js';
 import { initFirebase } from '../../src/firebase/admin.js';
 import { silentLogger } from '../../src/lib/logger.js';
 
-const PROJECT = 'demo-buildwise';
+const PROJECT = 'demo-qwikspot';
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const FS_HOST = process.env.FIRESTORE_EMULATOR_HOST;
 if (!AUTH_HOST || !FS_HOST) {
@@ -182,10 +182,10 @@ const move = (key: string, id: string, status: string, from: string, extra: obje
 beforeAll(async () => {
   await fetch(`http://${FS_HOST}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' });
   await fetch(`http://${AUTH_HOST}/emulator/v1/projects/${PROJECT}/accounts`, { method: 'DELETE' });
-  dataDir = await mkdtemp(join(tmpdir(), 'buildwise-m6-'));
+  dataDir = await mkdtemp(join(tmpdir(), 'qwikspot-m6-'));
   const config = loadConfig({
     ...process.env,
-    BUILDWISE_PROFILE: 'local',
+    QWIKSPOT_PROFILE: 'local',
     GOOGLE_CLOUD_PROJECT: PROJECT,
     LOCAL_DATA_DIR: dataDir,
   });
@@ -321,20 +321,20 @@ describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
     );
   }, 60_000);
 
-  it('5 · Buy online → bw_ref → demo storefront order → ONLINE outcome linked to the recommendation', async () => {
+  it('5 · Buy online → qs_ref → demo storefront order → ONLINE outcome linked to the recommendation', async () => {
     const om = customer('b', B, 'om_m6');
     await om.fromStore('hi');
     await om.share(NEAR_POWAI);
     const online = await om.tap('buy_online');
-    const ref = /bw_ref=([0-9A-Z]{26})/.exec(online.body.outbound_messages[0].text)![1];
+    const ref = /qs_ref=([0-9A-Z]{26})/.exec(online.body.outbound_messages[0].text)![1];
     expect(online.body.outbound_messages[0].text).toContain(
-      `http://localhost:5173/demo-store?bw_ref=${ref}#product=prd_1001`,
+      `http://localhost:5173/demo-store?qs_ref=${ref}#product=prd_1001`,
     );
     const order = await request(app).post('/api/demo-storefront/orders').set('Origin', ORIGIN).send({
       brand_id: B,
       web_session_id: 'ws_om_m6_landing_01',
       shopify_variant_id: 'gid://shopify/ProductVariant/2001',
-      bw_ref: ref,
+      qs_ref: ref,
     });
     expect(order.body).toMatchObject({ attributed: true, outcome_recorded: true });
     const outcome = (

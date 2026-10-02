@@ -5,9 +5,9 @@ set -euo pipefail
 
 : "${PROJECT_ID:?Set PROJECT_ID}"
 REGION="${REGION:-asia-south1}"   # must match firebase.json hosting rewrite region
-SERVICE="buildwise-api"           # must match firebase.json hosting rewrite serviceId
-REPO="buildwise"
-SERVICE_ACCOUNT="buildwise-api@${PROJECT_ID}.iam.gserviceaccount.com"
+SERVICE="qwikspot-api"           # must match firebase.json hosting rewrite serviceId
+REPO="qwikspot"
+SERVICE_ACCOUNT="qwikspot-api@${PROJECT_ID}.iam.gserviceaccount.com"
 COMMIT="$(git rev-parse --short HEAD)"
 VERSION="$(node -p "require('./backend/package.json').version")"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${SERVICE}:${COMMIT}"

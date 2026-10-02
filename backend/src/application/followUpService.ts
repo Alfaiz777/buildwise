@@ -134,7 +134,7 @@ export class FollowUpService {
       await this.deps.events.record({
         brandId,
         eventType: 'FOLLOW_UP_SCHEDULED',
-        source: 'BUILDWISE',
+        source: 'QWIKSPOT',
         customerId: updated.customerId,
         webSessionId: updated.webSessionId,
         entityReference: intentId,
@@ -237,7 +237,7 @@ export class FollowUpService {
       await this.deps.events.record({
         brandId,
         eventType: 'FOLLOW_UP_SUPPRESSED',
-        source: 'BUILDWISE',
+        source: 'QWIKSPOT',
         customerId: intent.customerId,
         webSessionId: intent.webSessionId,
         entityReference: intent.intentId,
@@ -306,7 +306,7 @@ export class FollowUpService {
     await this.deps.events.record({
       brandId,
       eventType: 'FOLLOW_UP_SENT',
-      source: 'BUILDWISE',
+      source: 'QWIKSPOT',
       customerId: customer.customerId,
       webSessionId: intent.webSessionId,
       entityReference: intent.intentId,
@@ -430,7 +430,7 @@ export class FollowUpService {
       await this.deps.events.record({
         brandId,
         eventType: 'FOLLOW_UP_SUPPRESSED',
-        source: 'BUILDWISE',
+        source: 'QWIKSPOT',
         customerId: updated.customerId,
         webSessionId: updated.webSessionId,
         entityReference: intentId,

@@ -474,7 +474,7 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
         brandId: scope.brandId,
         customerId: scope.customerId,
         eventType: 'HUMAN_HANDOFF',
-        source: 'BUILDWISE',
+        source: 'QWIKSPOT',
         entityReference: scope.conversationId,
         payload: { conversation_id: scope.conversationId, reason: input.reason.slice(0, 80) },
         idempotencyKey: `HUMAN_HANDOFF:${scope.recommendationId}`,

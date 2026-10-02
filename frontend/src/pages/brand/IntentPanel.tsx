@@ -20,7 +20,7 @@ function useNow(): number {
 }
 
 /**
- * "Intent & follow-up": answers, in plain words, what the customer did, what Buildwise
+ * "Intent & follow-up": answers, in plain words, what the customer did, what Qwikspot
  * detected, whether a follow-up was eligible and why, when it was due, what was sent,
  * and what happened next. It grows into the decision trace in M5.
  */
@@ -69,7 +69,7 @@ export function IntentPanel({
         </ol>
       )}
 
-      <h4>What intent did Buildwise detect?</h4>
+      <h4>What intent did Qwikspot detect?</h4>
       <p>
         <span className="badge">{humanize(intent.intent_type)}</span>{' '}
         <span className="badge">stage: {humanize(intent.intent_stage)}</span>{' '}

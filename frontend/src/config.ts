@@ -28,8 +28,8 @@ export interface AppConfig {
 
 const LOCAL_DEFAULTS = {
   VITE_FIREBASE_API_KEY: 'demo-api-key',
-  VITE_FIREBASE_AUTH_DOMAIN: 'demo-buildwise.firebaseapp.com',
-  VITE_FIREBASE_PROJECT_ID: 'demo-buildwise',
+  VITE_FIREBASE_AUTH_DOMAIN: 'demo-qwikspot.firebaseapp.com',
+  VITE_FIREBASE_PROJECT_ID: 'demo-qwikspot',
   VITE_FIREBASE_APP_ID: '1:000000000000:web:demo',
   VITE_FIREBASE_AUTH_EMULATOR_URL: 'http://127.0.0.1:9099',
 } as const;
@@ -43,9 +43,9 @@ function value(env: Env, key: string, fallback: string | undefined): string {
 }
 
 export function readConfig(env: Env): AppConfig {
-  const rawProfile = env.VITE_BUILDWISE_PROFILE?.trim() || 'local';
+  const rawProfile = env.VITE_QWIKSPOT_PROFILE?.trim() || 'local';
   if (rawProfile !== 'local' && rawProfile !== 'gcp') {
-    throw new Error('Invalid frontend configuration: VITE_BUILDWISE_PROFILE');
+    throw new Error('Invalid frontend configuration: VITE_QWIKSPOT_PROFILE');
   }
   const profile: FrontendProfile = rawProfile;
   const defaults: Partial<Record<keyof typeof LOCAL_DEFAULTS, string>> = profile === 'local' ? LOCAL_DEFAULTS : {};

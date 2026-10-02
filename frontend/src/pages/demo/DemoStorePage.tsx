@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 
 /**
  * LOCAL PROFILE ONLY: a small demo storefront (docs/00 §11.8 Change 11). It uses the same
- * dependency-free snippet (/buildwise-intent.js) that goes into the real Shopify theme in
+ * dependency-free snippet (/qwikspot-intent.js) that goes into the real Shopify theme in
  * L2, so every click here posts exactly the events a real storefront would. It never writes
  * to Firestore itself; orders go through the local-only order endpoint (same path as the
  * L2 orders webhook). WhatsApp is not wired locally, so the WhatsApp buttons open the
@@ -17,7 +17,7 @@ export interface IntentTracker {
     openLink: (link: string | null, prefilled: string) => void;
   }): IntentTracker;
   ids(): { web_session_id: string; visitor_id: string };
-  /** M6: the bw_ref this tab arrived with from a "Buy online" link, or null. */
+  /** M6: the qs_ref this tab arrived with from a "Buy online" link, or null. */
   attributionRef?(): string | null;
   track(type: string, data?: { variantId?: string; searchTerm?: string; entry?: string }): Promise<TrackResult>;
   whatsapp(entry: 'STORE_NEED' | 'CHAT', variantId?: string): Promise<TrackResult>;
@@ -49,18 +49,18 @@ interface Shopper {
 
 declare global {
   interface Window {
-    BuildwiseIntent?: IntentTracker;
+    QwikspotIntent?: IntentTracker;
   }
 }
 
-const SHOPPER_KEY = 'bw_demo_shopper';
+const SHOPPER_KEY = 'qs_demo_shopper';
 
 function loadSnippet(): Promise<IntentTracker> {
-  if (window.BuildwiseIntent) return Promise.resolve(window.BuildwiseIntent);
+  if (window.QwikspotIntent) return Promise.resolve(window.QwikspotIntent);
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = '/buildwise-intent.js';
-    script.onload = () => (window.BuildwiseIntent ? resolve(window.BuildwiseIntent) : reject(new Error('snippet')));
+    script.src = '/qwikspot-intent.js';
+    script.onload = () => (window.QwikspotIntent ? resolve(window.QwikspotIntent) : reject(new Error('snippet')));
     script.onerror = () => reject(new Error('Could not load the storefront snippet.'));
     document.head.appendChild(script);
   });
@@ -203,7 +203,7 @@ export function DemoStorePage({ tracker: injected }: { tracker?: IntentTracker }
         brand_id: brandId,
         web_session_id: tracker.ids().web_session_id,
         shopify_variant_id: cart.variantId,
-        ...(tracker.attributionRef?.() ? { bw_ref: tracker.attributionRef!() } : {}),
+        ...(tracker.attributionRef?.() ? { qs_ref: tracker.attributionRef!() } : {}),
       }),
     });
     if (!res.ok) return setError('Could not place the order.');

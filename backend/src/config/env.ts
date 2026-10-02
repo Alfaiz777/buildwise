@@ -17,7 +17,7 @@ const optionalEnum = <T extends readonly [string, ...string[]]>(values: T) =>
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
-  BUILDWISE_PROFILE: z.enum(PROFILES).default('local'),
+  QWIKSPOT_PROFILE: z.enum(PROFILES).default('local'),
   GOOGLE_CLOUD_PROJECT: z.string().trim().optional(),
   CORS_ALLOWED_ORIGINS: z.string().default(''),
   LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
@@ -103,7 +103,7 @@ const DemoLoginsSchema = z
   .max(8);
 
 /** The local demo users created by `seed:demo` (local profile only; deployed demos set DEMO_LOGINS). */
-export const LOCAL_DEMO_PASSWORD = 'buildwise-demo-1';
+export const LOCAL_DEMO_PASSWORD = 'qwikspot-demo-1';
 export const LOCAL_DEMO_LOGINS: DemoLogin[] = [
   {
     email: 'admin@demo-brand.test',
@@ -113,21 +113,21 @@ export const LOCAL_DEMO_LOGINS: DemoLogin[] = [
     hint: 'Start here: open the demo guide, chat as a customer in the simulator, and see Outcomes & insights.',
   },
   {
-    email: 'retail-admin-north-1@buildwise.test',
+    email: 'retail-admin-north-1@qwikspot.test',
     password: LOCAL_DEMO_PASSWORD,
     role: 'RETAIL_ADMIN',
     title: 'Retail Admin — Bandra Store',
     hint: 'Confirm, prepare and complete customer holds for Bandra; try refusing one.',
   },
   {
-    email: 'retail-admin-north-2@buildwise.test',
+    email: 'retail-admin-north-2@qwikspot.test',
     password: LOCAL_DEMO_PASSWORD,
     role: 'RETAIL_ADMIN',
     title: 'Retail Admin — Andheri Store',
     hint: "Andheri's queue: the demo story's hold lands here. Complete it with the customer's pickup code.",
   },
   {
-    email: 'platform@buildwise.test',
+    email: 'platform@qwikspot.test',
     password: LOCAL_DEMO_PASSWORD,
     role: 'PLATFORM_ADMIN',
     title: 'Platform Admin',
@@ -158,7 +158,7 @@ export interface Config {
   gcp: GcpSettings | null;
 }
 
-const LOCAL_PROJECT_ID = 'demo-buildwise';
+const LOCAL_PROJECT_ID = 'demo-qwikspot';
 
 function parseChannels(raw: string | undefined, fallback: AdapterSelection['messagingChannels']) {
   if (!raw?.trim()) return fallback;
@@ -180,7 +180,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`Invalid environment configuration: ${fields.join(', ')}`);
   }
   const e = parsed.data;
-  const profile = e.BUILDWISE_PROFILE;
+  const profile = e.QWIKSPOT_PROFILE;
   const defaults = PROFILE_DEFAULTS[profile];
 
   const adapters: AdapterSelection = {

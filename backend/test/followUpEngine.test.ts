@@ -91,7 +91,7 @@ describe('follow-up engine (docs/00 §11.8 Change 11)', () => {
     const [message] = proactive(world);
     expect(message).toMatchObject({
       messageKind: 'TEMPLATE',
-      templateName: 'buildwise_cart_reminder_v1',
+      templateName: 'qwikspot_cart_reminder_v1',
       deliveryStatus: 'DELIVERED',
     });
     expect(message!.text).toContain('Hi, this is Brand brand_A.');

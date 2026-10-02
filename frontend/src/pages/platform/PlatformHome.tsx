@@ -211,7 +211,7 @@ export function PlatformHome() {
           <form className="notice" onSubmit={confirmSuspend} aria-label={`Suspend ${suspending.name}`}>
             <p>
               Suspend <strong>{suspending.name}</strong>? Its users lose access to every console and see "Your brand is
-              suspended. Contact Buildwise support." Customers are not messaged. You can reactivate at any time.
+              suspended. Contact Qwikspot support." Customers are not messaged. You can reactivate at any time.
             </p>
             <label>
               Reason (kept in the audit log)

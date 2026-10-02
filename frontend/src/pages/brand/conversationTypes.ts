@@ -66,7 +66,7 @@ export interface ConversationDetail extends ConversationRow {
   recommendations: Recommendation[];
 }
 
-/** "Why Buildwise did this" (docs/04 §14 trace; docs/11 §4). */
+/** "Why Qwikspot did this" (docs/04 §14 trace; docs/11 §4). */
 export interface DecisionTrace {
   context_hash: string;
   context_summary: Record<string, unknown>;

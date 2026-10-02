@@ -67,7 +67,7 @@ export class OutcomeService {
       brandId: o.brandId,
       customerId: o.customerId,
       eventType: 'OUTCOME_RECORDED',
-      source: 'BUILDWISE',
+      source: 'QWIKSPOT',
       entityReference: o.outcomeId,
       payload: {
         purchase_type: o.purchaseType,
@@ -136,7 +136,7 @@ export class OutcomeService {
     });
   }
 
-  /** Verified evidence: an order linked to the journey (bw_ref or the engaged session intent) → ONLINE (or ALTERNATIVE). */
+  /** Verified evidence: an order linked to the journey (qs_ref or the engaged session intent) → ONLINE (or ALTERNATIVE). */
   async recordFromOrder(input: {
     brandId: string;
     journeyKey: string;

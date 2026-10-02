@@ -11,8 +11,8 @@ import { bearer, buildTestWorld, TEST_ORIGIN } from './helpers.js';
 import { GCP_REQUIRED_FAKE } from './config.test.js';
 
 const GCP = {
-  BUILDWISE_PROFILE: 'gcp',
-  GOOGLE_CLOUD_PROJECT: 'buildwise-test',
+  QWIKSPOT_PROFILE: 'gcp',
+  GOOGLE_CLOUD_PROJECT: 'qwikspot-test',
   NODE_ENV: 'production',
   ...GCP_REQUIRED_FAKE,
 };

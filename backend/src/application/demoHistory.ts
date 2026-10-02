@@ -130,7 +130,7 @@ export function generateDemoHistory(input: DemoHistoryInput): DemoHistory {
       customerId,
       webSessionId: null,
       eventType,
-      source: 'BUILDWISE',
+      source: 'QWIKSPOT',
       entityReference,
       payload,
       timestamp: at,
@@ -214,7 +214,7 @@ export function generateDemoHistory(input: DemoHistoryInput): DemoHistory {
               priority: 'NORMAL',
               status: 'REPLIED',
               messageKind: 'TEMPLATE',
-              templateName: 'buildwise_store_nearby_v1',
+              templateName: 'qwikspot_store_nearby_v1',
               sentMessageId: null,
               conversationId: null,
               claimedAt: new Date(at.getTime() - 2 * 60_000).toISOString(),
@@ -475,7 +475,7 @@ export function generateDemoHistory(input: DemoHistoryInput): DemoHistory {
         }
       }
 
-      // Online orders: with bw_ref (attributed → ONLINE) or without (unattributed, no outcome).
+      // Online orders: with qs_ref (attributed → ONLINE) or without (unattributed, no outcome).
       if (!purchase) {
         const roll = rnd();
         const orderAt = new Date(at.getTime() + between(30, 300) * 60_000).toISOString();
@@ -499,7 +499,7 @@ export function generateDemoHistory(input: DemoHistoryInput): DemoHistory {
               variant_id: lookup.variant.variantId,
               intent_id: intentId,
               journey_key: `int:${intentId}`,
-              attributed_by: 'BW_REF',
+              attributed_by: 'QS_REF',
             },
             `ORDER:${seq}`,
           );

@@ -1,17 +1,17 @@
 /**
  * Web → WhatsApp handshake token (docs/06_INTEGRATION_CONTRACTS.md §10.1,
- * docs/07_SECURITY_SPEC.md §18): START_BUILDWISE_<INTENT_TOKEN>, where the token is a
+ * docs/07_SECURITY_SPEC.md §18): START_QWIKSPOT_<INTENT_TOKEN>, where the token is a
  * 128-bit random value in Crockford Base32 (26 chars). Only its SHA-256 hash is stored.
  */
 import { createHash } from 'node:crypto';
 
-export const TOKEN_PREFIX = 'START_BUILDWISE_';
+export const TOKEN_PREFIX = 'START_QWIKSPOT_';
 export const TOKEN_TTL_MS = 30 * 60 * 1000;
 export const MAX_TOKENS_PER_SESSION_PER_HOUR = 5;
 
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 /** Detection anywhere in the first inbound text (docs/06 §10.1). */
-export const TOKEN_PATTERN = /START_BUILDWISE_([0-9A-HJKMNP-TV-Z]{26})/;
+export const TOKEN_PATTERN = /START_QWIKSPOT_([0-9A-HJKMNP-TV-Z]{26})/;
 
 /** 16 random bytes → 26 Crockford Base32 characters (128 bits, left-padded to 130). */
 export function encodeIntentToken(bytes: Uint8Array): string {

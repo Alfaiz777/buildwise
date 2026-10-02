@@ -1,12 +1,12 @@
 /*
- * Buildwise storefront intent snippet (docs/06_INTEGRATION_CONTRACTS.md §14.1).
+ * Qwikspot storefront intent snippet (docs/06_INTEGRATION_CONTRACTS.md §14.1).
  * Dependency-free; the same file goes into the real Shopify theme in L2.
  *
- *   <script src="https://<buildwise>/buildwise-intent.js"></script>
+ *   <script src="https://<qwikspot>/qwikspot-intent.js"></script>
  *   <script>
- *     BuildwiseIntent.init({ apiBaseUrl: 'https://<buildwise>', brandId: 'brd_…' });
- *     BuildwiseIntent.track('PRODUCT_VIEW', { variantId: 'gid://shopify/ProductVariant/…' });
- *     button.onclick = () => BuildwiseIntent.whatsapp('STORE_NEED', variantId);
+ *     QwikspotIntent.init({ apiBaseUrl: 'https://<qwikspot>', brandId: 'brd_…' });
+ *     QwikspotIntent.track('PRODUCT_VIEW', { variantId: 'gid://shopify/ProductVariant/…' });
+ *     button.onclick = () => QwikspotIntent.whatsapp('STORE_NEED', variantId);
  *   </script>
  *
  * Privacy: only two opaque random IDs are kept — web_session_id (per tab, sessionStorage)
@@ -14,19 +14,19 @@
  * snippet never sends names, phone numbers, emails or locations.
  *
  * Attribution (M6): when a "Buy online" link from the conversation brings the shopper here
- * with `?bw_ref=…`, the opaque reference is kept for this tab's session (sessionStorage) and
+ * with `?qs_ref=…`, the opaque reference is kept for this tab's session (sessionStorage) and
  * returned by attributionRef(), so checkout can pass it on (locally: the demo order call; in
  * L2: a Shopify cart attribute). It only links the order to the conversation.
  */
 (function () {
   'use strict';
 
-  var SESSION_KEY = 'bw_web_session_id';
-  var VISITOR_KEY = 'bw_visitor_id';
-  var REF_KEY = 'bw_ref';
+  var SESSION_KEY = 'qs_web_session_id';
+  var VISITOR_KEY = 'qs_visitor_id';
+  var REF_KEY = 'qs_ref';
   var REF_PATTERN = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
-  /** Keeps a valid bw_ref from the landing URL for this tab's session. */
+  /** Keeps a valid qs_ref from the landing URL for this tab's session. */
   function captureRef() {
     try {
       var ref = new URLSearchParams(window.location.search).get(REF_KEY);
@@ -74,7 +74,7 @@
   }
 
   function requireInit() {
-    if (!config) throw new Error('BuildwiseIntent.init() must be called first');
+    if (!config) throw new Error('QwikspotIntent.init() must be called first');
   }
 
   function track(eventType, data) {
@@ -112,7 +112,7 @@
     });
   }
 
-  window.BuildwiseIntent = {
+  window.QwikspotIntent = {
     init: function (options) {
       config = {
         apiBaseUrl: String(options.apiBaseUrl || '').replace(/\/$/, ''),
@@ -124,7 +124,7 @@
           },
       };
       captureRef();
-      return window.BuildwiseIntent;
+      return window.QwikspotIntent;
     },
     ids: ids,
     attributionRef: attributionRef,

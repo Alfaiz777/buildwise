@@ -1,4 +1,4 @@
-# Builds the Buildwise API image from the repo root (workspace lockfile lives there).
+# Builds the Qwikspot API image from the repo root (workspace lockfile lives there).
 # Invoked by infrastructure/scripts/deploy-backend.sh.
 steps:
   - name: gcr.io/cloud-builders/docker

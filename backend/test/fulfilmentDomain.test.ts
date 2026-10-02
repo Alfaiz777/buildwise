@@ -192,10 +192,10 @@ describe('notification builders (Change 13, F4)', () => {
 
   it('named templates exist for every update', () => {
     expect(Object.values(RESERVATION_TEMPLATES)).toEqual([
-      'buildwise_reservation_confirmed_v1',
-      'buildwise_reservation_ready_v1',
-      'buildwise_reservation_refused_v1',
-      'buildwise_reservation_expired_v1',
+      'qwikspot_reservation_confirmed_v1',
+      'qwikspot_reservation_ready_v1',
+      'qwikspot_reservation_refused_v1',
+      'qwikspot_reservation_expired_v1',
     ]);
   });
 });

@@ -4,7 +4,7 @@ import { formatDateTime } from './types';
 const RUNTIME_TEXT: Record<string, string> = { MOCK: 'Mock AI, deterministic', ADK_GEMINI: 'Gemini' };
 
 /**
- * "Why Buildwise did this" (docs/11 §4): for each decision, what the agent saw (a summary,
+ * "Why Qwikspot did this" (docs/11 §4): for each decision, what the agent saw (a summary,
  * never the raw context), the tools it called, which stores were eligible or excluded and
  * why, what the guardrail decided, the action, runtime / decision source, and any
  * reservation that was created. Newest decision first.
@@ -14,7 +14,7 @@ export function DecisionTrace({ recommendations }: { recommendations: Recommenda
   const newestFirst = [...recommendations].reverse();
   return (
     <div className="decision-trace">
-      <h3>Why Buildwise did this</h3>
+      <h3>Why Qwikspot did this</h3>
       {newestFirst.map((r, i) => (
         <details key={r.recommendation_id} open={i === 0} className="trace-card">
           <summary>

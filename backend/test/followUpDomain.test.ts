@@ -168,7 +168,7 @@ describe('composeFollowUp — personalised, verified data only (D6)', () => {
       expect(m.text.endsWith(OPT_OUT_LINE)).toBe(true);
       expect(m.templateName).toBe(FOLLOW_UP_TEMPLATES[type].name);
       // Never a price, stock or availability claim, an internal ID or a token.
-      expect(m.text).not.toMatch(/₹|\d+\.\d{2}|in stock|available|var_|prd_|int_|START_BUILDWISE/i);
+      expect(m.text).not.toMatch(/₹|\d+\.\d{2}|in stock|available|var_|prd_|int_|START_QWIKSPOT/i);
     },
   );
 

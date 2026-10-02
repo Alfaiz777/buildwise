@@ -68,7 +68,7 @@ const LOGINS = [
     hint: 'Start here.',
   },
   {
-    email: 'retail-admin-north-2@buildwise.test',
+    email: 'retail-admin-north-2@qwikspot.test',
     password: 'pw-from-api',
     role: 'RETAIL_ADMIN',
     title: 'Retail Admin — Andheri Store',
@@ -96,7 +96,7 @@ describe('login page — "Try the demo" (DEMO_MODE)', () => {
     expect(within(panel).getByText('Retail Admin — Andheri Store')).toBeInTheDocument();
     expect(within(panel).getByText('Retail Admin')).toBeInTheDocument(); // a label, not RETAIL_ADMIN
     fireEvent.click(within(panel).getByRole('button', { name: 'Use Retail Admin — Andheri Store' }));
-    expect(screen.getByLabelText('Email')).toHaveValue('retail-admin-north-2@buildwise.test');
+    expect(screen.getByLabelText('Email')).toHaveValue('retail-admin-north-2@qwikspot.test');
     expect(screen.getByLabelText('Password')).toHaveValue('pw-from-api');
   });
 
@@ -105,7 +105,7 @@ describe('login page — "Try the demo" (DEMO_MODE)', () => {
     renderAt('/login', apiWith({}), { user: null });
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.queryByRole('region', { name: 'Try the demo' })).not.toBeInTheDocument();
-    expect(document.body.innerHTML).not.toContain('buildwise-demo-1');
+    expect(document.body.innerHTML).not.toContain('qwikspot-demo-1');
   });
 
   it('an unreachable config simply hides the panel', async () => {

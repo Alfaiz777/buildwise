@@ -6,16 +6,16 @@ import type { ApiClient } from '../api/client';
 import { AppRoutes } from '../AppRoutes';
 import { AuthContext, type AuthState } from '../auth/authContext';
 import type { IntentTracker } from '../pages/demo/DemoStorePage';
-import SNIPPET from '../../public/buildwise-intent.js?raw';
+import SNIPPET from '../../public/qwikspot-intent.js?raw';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-describe('storefront snippet (public/buildwise-intent.js)', () => {
+describe('storefront snippet (public/qwikspot-intent.js)', () => {
   beforeEach(() => {
     sessionStorage.clear();
     localStorage.clear();
-    delete window.BuildwiseIntent;
+    delete window.QwikspotIntent;
     // eslint-disable-next-line no-new-func
     new Function(SNIPPET)();
   });
@@ -35,7 +35,7 @@ describe('storefront snippet (public/buildwise-intent.js)', () => {
       ),
     );
     vi.stubGlobal('fetch', fetchMock);
-    const tracker = window.BuildwiseIntent!.init({
+    const tracker = window.QwikspotIntent!.init({
       apiBaseUrl: 'https://api.test/',
       brandId: 'brd_demo',
       openLink: vi.fn(),
@@ -43,8 +43,8 @@ describe('storefront snippet (public/buildwise-intent.js)', () => {
     const ids = tracker.ids();
     expect(ids.web_session_id).toMatch(/^ws_[0-9a-f]{32}$/);
     expect(ids.visitor_id).toMatch(/^vis_[0-9a-f]{32}$/);
-    expect(sessionStorage.getItem('bw_web_session_id')).toBe(ids.web_session_id);
-    expect(localStorage.getItem('bw_visitor_id')).toBe(ids.visitor_id);
+    expect(sessionStorage.getItem('qs_web_session_id')).toBe(ids.web_session_id);
+    expect(localStorage.getItem('qs_visitor_id')).toBe(ids.visitor_id);
 
     await tracker.track('ADD_TO_CART', { variantId: 'gid://shopify/ProductVariant/2001' });
     const [url, init] = fetchMock.mock.calls[0]!;
@@ -72,17 +72,17 @@ describe('storefront snippet (public/buildwise-intent.js)', () => {
           intent_strength: 'HIGH_INTENT',
           intent_type: 'STORE_ORIENTED',
           whatsapp: {
-            prefilled_text: 'START_BUILDWISE_X',
-            wa_link: 'https://wa.me/91?text=START_BUILDWISE_X',
+            prefilled_text: 'START_QWIKSPOT_X',
+            wa_link: 'https://wa.me/91?text=START_QWIKSPOT_X',
             expires_at: '',
           },
         }),
       ),
     );
     const openLink = vi.fn();
-    const tracker = window.BuildwiseIntent!.init({ apiBaseUrl: '', brandId: 'brd_demo', openLink });
+    const tracker = window.QwikspotIntent!.init({ apiBaseUrl: '', brandId: 'brd_demo', openLink });
     await tracker.whatsapp('STORE_NEED', 'gid://shopify/ProductVariant/2001');
-    expect(openLink).toHaveBeenCalledWith('https://wa.me/91?text=START_BUILDWISE_X', 'START_BUILDWISE_X');
+    expect(openLink).toHaveBeenCalledWith('https://wa.me/91?text=START_QWIKSPOT_X', 'START_QWIKSPOT_X');
   });
 });
 
@@ -102,7 +102,7 @@ describe('demo storefront page (local profile only)', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    delete window.BuildwiseIntent;
+    delete window.QwikspotIntent;
   });
 
   function fakeTracker() {
@@ -125,7 +125,7 @@ describe('demo storefront page (local profile only)', () => {
 
   it('renders the labelled demo store, records a visit, and replays a journey scenario through the snippet', async () => {
     const tracker = fakeTracker();
-    window.BuildwiseIntent = tracker;
+    window.QwikspotIntent = tracker;
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) =>

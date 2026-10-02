@@ -20,7 +20,7 @@ import { loadConfig } from '../../src/config/env.js';
 import { initFirebase } from '../../src/firebase/admin.js';
 import { silentLogger } from '../../src/lib/logger.js';
 
-const PROJECT = 'demo-buildwise';
+const PROJECT = 'demo-qwikspot';
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const FS_HOST = process.env.FIRESTORE_EMULATOR_HOST;
 if (!AUTH_HOST || !FS_HOST) {
@@ -157,10 +157,10 @@ async function proactiveMessages(brandId: string) {
 beforeAll(async () => {
   await fetch(`http://${FS_HOST}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' });
   await fetch(`http://${AUTH_HOST}/emulator/v1/projects/${PROJECT}/accounts`, { method: 'DELETE' });
-  dataDir = await mkdtemp(join(tmpdir(), 'buildwise-m4-'));
+  dataDir = await mkdtemp(join(tmpdir(), 'qwikspot-m4-'));
   const config = loadConfig({
     ...process.env,
-    BUILDWISE_PROFILE: 'local',
+    QWIKSPOT_PROFILE: 'local',
     GOOGLE_CLOUD_PROJECT: PROJECT,
     LOCAL_DATA_DIR: dataDir,
   });
@@ -226,7 +226,7 @@ describe('M4 local E2E: intent → follow-up → conversation', () => {
     expect((await processDue()).body.sent).toBe(0); // never twice
 
     const [message] = await proactiveMessages('brd_m4');
-    expect(message).toMatchObject({ message_kind: 'TEMPLATE', template_name: 'buildwise_cart_reminder_v1' });
+    expect(message).toMatchObject({ message_kind: 'TEMPLATE', template_name: 'qwikspot_cart_reminder_v1' });
     expect(message!.text).toContain('Hi, this is Demo Beauty Co.');
     expect(message!.text).toContain('Vitamin C Glow Serum (30 ml)');
     expect(message!.text).toContain('Reply STOP to opt out.');
@@ -307,7 +307,7 @@ describe('M4 local E2E: intent → follow-up → conversation', () => {
 
     // 10. The token never reaches stored text; reusing it elsewhere binds nothing.
     const conversation = await as('brandAdmin').get(`/api/brand/conversations/${res.body.conversation_id}`);
-    const token = prefilled.replace('START_BUILDWISE_', '');
+    const token = prefilled.replace('START_QWIKSPOT_', '');
     expect(JSON.stringify(conversation.body)).not.toContain(token);
     const reuse = await say('brandAdmin', 'intruder_01', prefilled);
     expect(reuse.status).toBe(200);

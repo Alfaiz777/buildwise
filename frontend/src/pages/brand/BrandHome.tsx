@@ -130,7 +130,7 @@ export function BrandHome({ demoStorefront = false }: { demoStorefront?: boolean
         <p>
           {brandAdmin?.email ?? '—'} <span className="badge">Brand Admin</span>
         </p>
-        <p className="muted small">One Brand Admin per brand, provisioned by the Buildwise platform admin.</p>
+        <p className="muted small">One Brand Admin per brand, provisioned by the Qwikspot platform admin.</p>
       </Section>
 
       <CatalogSection catalog={catalog.data} error={catalog.error} syncing={syncing} onSync={syncCatalog} />

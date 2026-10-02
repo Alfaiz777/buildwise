@@ -88,7 +88,7 @@ export class EventRecorder {
       await this.deps.audit.recordBrandEvent({
         brandId,
         actorType: entry.actor?.type ?? 'SYSTEM',
-        actorId: entry.actor?.id ?? 'buildwise',
+        actorId: entry.actor?.id ?? 'qwikspot',
         action: entry.action,
         targetType: entry.targetType,
         targetId: entry.targetId,

@@ -1,4 +1,4 @@
-# Buildwise — Data Model
+# Qwikspot — Data Model
 
 ## Status
 
@@ -34,7 +34,7 @@ must exist on every tenant-owned entity.
 
 No brand can access another brand's operational data.
 
-Buildwise itself (the platform) is **not** a tenant. Platform-level records (the brand registry, platform users, the platform audit) live outside any brand. Platform scope is never represented by a special `brand_id` value (see §4 and `07_SECURITY_SPEC.md` §4.2).
+Qwikspot itself (the platform) is **not** a tenant. Platform-level records (the brand registry, platform users, the platform audit) live outside any brand. Platform scope is never represented by a special `brand_id` value (see §4 and `07_SECURITY_SPEC.md` §4.2).
 
 A **Retailer** belongs to exactly one brand (§8a). Retail scope (a `RETAIL_ADMIN`'s retailer) is a subset of brand scope, so the brand remains the tenant boundary.
 
@@ -499,7 +499,7 @@ RetailInventory
 - canonical_sku
 - variant_id
 - quantity              (on-hand units reported by the retail file)
-- reserved_quantity     (units held by active reservations; maintained by Buildwise)
+- reserved_quantity     (units held by active reservations; maintained by Qwikspot)
 - offline_price
 - availability_status
 - last_updated_at
@@ -760,7 +760,7 @@ AIRecommendation
 - trace                  (M5: the decision trace, below)
 ```
 
-`trace` (`00` §11.8 Change 12, E8) explains the decision in the Brand Console ("Why Buildwise did this"):
+`trace` (`00` §11.8 Change 12, E8) explains the decision in the Brand Console ("Why Qwikspot did this"):
 
 ```text
 context_hash       SHA-256 of the context package (§20)
@@ -1037,7 +1037,7 @@ The audit trail should answer:
 
 > What happened, who/what initiated it, what was proposed, what was allowed, and what actually executed?
 
-M7 (audit completeness, `08` §15a): **every mutating route writes at least one AuditEvent** — enforced by a test that scans the routes. Actions added in M7: `CUSTOMER_MESSAGE_RECEIVED` (actor `CUSTOMER`, every inbound message), `AI_DECISION_RECORDED` (actor `AGENT`, result `DENIED` when the guardrail blocked; `reason_code` = action:source[:reason]), `INTENT_EVENT_RECORDED` (storefront events), `DEMO_SHOPPER_LINKED`, `ORDER_RECORDED` (`ATTRIBUTED_BW_REF` / `ATTRIBUTED_SESSION` / `UNATTRIBUTED`), `DUE_WORK_PROCESSED` (counts) and `DEMO_RESET` (`DENIED` for a non-demo brand). Audit events carry IDs and codes only — never contact details or message text. The newest event's `timestamp` is the brand's "last activity" in the Platform Admin console.
+M7 (audit completeness, `08` §15a): **every mutating route writes at least one AuditEvent** — enforced by a test that scans the routes. Actions added in M7: `CUSTOMER_MESSAGE_RECEIVED` (actor `CUSTOMER`, every inbound message), `AI_DECISION_RECORDED` (actor `AGENT`, result `DENIED` when the guardrail blocked; `reason_code` = action:source[:reason]), `INTENT_EVENT_RECORDED` (storefront events), `DEMO_SHOPPER_LINKED`, `ORDER_RECORDED` (`ATTRIBUTED_QS_REF` / `ATTRIBUTED_SESSION` / `UNATTRIBUTED`), `DUE_WORK_PROCESSED` (counts) and `DEMO_RESET` (`DENIED` for a non-demo brand). Audit events carry IDs and codes only — never contact details or message text. The newest event's `timestamp` is the brand's "last activity" in the Platform Admin console.
 
 ## 18.0 PlatformAuditEvent
 
@@ -1154,7 +1154,7 @@ The backend builds a temporary, request-scoped decision context from the custome
   "intent": {
     "intent_id": "...", "intent_type": "STORE_ORIENTED", "intent_stage": "CONSIDERATION",
     "intent_strength": "HIGH_INTENT", "product_id": "...", "variant_id": "...",
-    "follow_up": { "status": "SENT", "template_name": "buildwise_store_nearby_v1" }
+    "follow_up": { "status": "SENT", "template_name": "qwikspot_store_nearby_v1" }
   },
   "products": [
     {
@@ -1201,7 +1201,7 @@ brands/{brand_id}/conversations/{conversation_id}/messages/{message_id}
 brands/{brand_id}/aiRecommendations/{recommendation_id}
 brands/{brand_id}/reservations/{reservation_id}
 brands/{brand_id}/outcomes/{outcome_id}
-brands/{brand_id}/attributionRefs/{ref_hash}   (M6: bw_ref → journey link; hash only, TTL = attribution window)
+brands/{brand_id}/attributionRefs/{ref_hash}   (M6: qs_ref → journey link; hash only, TTL = attribution window)
 brands/{brand_id}/commerceEvents/{event_id}
 brands/{brand_id}/auditEvents/{audit_id}
 ```

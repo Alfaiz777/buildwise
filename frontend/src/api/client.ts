@@ -1,4 +1,4 @@
-/** Error returned by the Buildwise API (common error envelope). */
+/** Error returned by the Qwikspot API (common error envelope). */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -22,7 +22,7 @@ export interface ApiClient {
   /**
    * PUTs a file to an upload target returned by the backend. A same-origin API path
    * (the local profile's /api/local-files/uploads/...) gets the Bearer token; an absolute
-   * signed URL (Cloud Storage in gcp) is used as-is, without Buildwise credentials.
+   * signed URL (Cloud Storage in gcp) is used as-is, without Qwikspot credentials.
    */
   upload<T>(url: string, file: Blob, contentType: string): Promise<T>;
 }

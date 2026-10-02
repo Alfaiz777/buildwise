@@ -26,9 +26,9 @@ const BRAND = env.DEMO_BRAND_ID ?? 'brd_demo';
 const PASSWORD = env.DEMO_PASSWORD ?? LOCAL_DEMO_PASSWORD;
 const BRAND_ADMIN = env.DEMO_BRAND_ADMIN_EMAIL ?? 'admin@demo-brand.test';
 const RETAIL_ADMINS = (
-  env.DEMO_RETAIL_ADMIN_EMAILS ?? 'retail-admin-north-1@buildwise.test,retail-admin-north-2@buildwise.test'
+  env.DEMO_RETAIL_ADMIN_EMAILS ?? 'retail-admin-north-1@qwikspot.test,retail-admin-north-2@qwikspot.test'
 ).split(',');
-const PLATFORM_ADMIN = env.DEMO_PLATFORM_ADMIN_EMAIL ?? 'platform@buildwise.test';
+const PLATFORM_ADMIN = env.DEMO_PLATFORM_ADMIN_EMAIL ?? 'platform@qwikspot.test';
 const AUTH_URL = env.FIREBASE_API_KEY
   ? `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${env.FIREBASE_API_KEY}`
   : `http://${env.FIREBASE_AUTH_EMULATOR_HOST ?? '127.0.0.1:9099'}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`;
@@ -79,7 +79,7 @@ async function signIn(email: string): Promise<string> {
   return body.idToken;
 }
 
-console.log(`Buildwise demo check → ${BASE_URL} (brand ${BRAND})`);
+console.log(`Qwikspot demo check → ${BASE_URL} (brand ${BRAND})`);
 const ref = `judge_check_${Math.random().toString(36).slice(2, 6)}`;
 
 await step('API is healthy', async () => {

@@ -1,4 +1,4 @@
-# Buildwise — Test Plan
+# Qwikspot — Test Plan
 
 ## Status
 
@@ -218,7 +218,7 @@ Two runs of the same 12 scenarios, with different purposes:
 | Run | Runtime | Purpose | Pass rule |
 |---|---|---|---|
 | Local pipeline run (M5 onward; all 12 scenarios in M7) | `MockAgentRuntime` | Verifies pipeline, tools, guardrail, persistence and outcome recording. **Not** an AI-quality result. | Deterministic: each scenario runs once and must pass 1/1 |
-| **Final AI evaluation** (L3) | `AdkGeminiAgentRuntime` | Verifies Buildwise AI behavior | The rules below |
+| **Final AI evaluation** (L3) | `AdkGeminiAgentRuntime` | Verifies Qwikspot AI behavior | The rules below |
 
 Final AI evaluation rules:
 
@@ -469,7 +469,7 @@ When the agent runtime (Gemini) fails, the expected result is the deterministic 
 | Shopify (commerce) unavailable | `backend/test/failurePaths.test.ts`; `frontend/src/test/routes.test.tsx` | `502 COMMERCE_SYNC_FAILED`, the connection shows `last_error`; checklist "Sync failed — … Try again in a moment." + **Retry sync** |
 | WhatsApp / simulator send 5xx | `failurePaths.test.ts` | 2 retries with the same request ID, then `FAILED`; "Not delivered" on the bubble |
 | Gemini unavailable / timeout / invalid twice | `contracts/agentScenarioSuite.ts` (runtime-agnostic) | deterministic fallback, no commerce action |
-| Firestore unavailable | `failurePaths.test.ts` | `503 SERVICE_UNAVAILABLE` "Buildwise can't reach its database right now. Please try again in a minute." — never a stack trace |
+| Firestore unavailable | `failurePaths.test.ts` | `503 SERVICE_UNAVAILABLE` "Qwikspot can't reach its database right now. Please try again in a minute." — never a stack trace |
 | Retail file malformed | `failurePaths.test.ts`, `retailIngestion.test.ts` | FAILED report with the code; nothing half-written |
 | Store data stale | `failurePaths.test.ts`, `routes.test.tsx` | "… stock was last updated <time> (store time), so it may have changed."; Retailer "stale" badge |
 | Inventory unavailable / race lost | `agentDomain.test.ts`, emulator `decide-reserve` race, scenario 12 | guardrail blocks; exactly one hold for the last unit |

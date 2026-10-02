@@ -23,7 +23,7 @@ import { loadConfig } from '../../src/config/env.js';
 import { initFirebase } from '../../src/firebase/admin.js';
 import { createLogger } from '../../src/lib/logger.js';
 
-const PROJECT = 'demo-buildwise';
+const PROJECT = 'demo-qwikspot';
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const FS_HOST = process.env.FIRESTORE_EMULATOR_HOST;
 if (!AUTH_HOST || !FS_HOST) {
@@ -117,10 +117,10 @@ const optionIds = (res: request.Response) =>
 beforeAll(async () => {
   await fetch(`http://${FS_HOST}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' });
   await fetch(`http://${AUTH_HOST}/emulator/v1/projects/${PROJECT}/accounts`, { method: 'DELETE' });
-  dataDir = await mkdtemp(join(tmpdir(), 'buildwise-m7-'));
+  dataDir = await mkdtemp(join(tmpdir(), 'qwikspot-m7-'));
   const config = loadConfig({
     ...process.env,
-    BUILDWISE_PROFILE: 'local',
+    QWIKSPOT_PROFILE: 'local',
     GOOGLE_CLOUD_PROJECT: PROJECT,
     LOCAL_DATA_DIR: dataDir,
   });
@@ -206,7 +206,7 @@ describe('M7 full journey — platform → brand → stores → customer → sto
 
   it('3 · storefront intent → an invalid token is silently ignored (audited) → the real token binds → store recommendation → reserve', async () => {
     const asha = customer('asha_journey');
-    const forged = await asha.say('START_BUILDWISE_0123456789ABCDEFGHJKMNPQRS hi');
+    const forged = await asha.say('START_QWIKSPOT_0123456789ABCDEFGHJKMNPQRS hi');
     expect(forged.status).toBe(200);
     expect(JSON.stringify(forged.body.outbound_messages)).not.toMatch(/invalid|token/i); // no oracle
     const rejected = await db
@@ -271,17 +271,17 @@ describe('M7 full journey — platform → brand → stores → customer → sto
     });
   }, 60_000);
 
-  it('5 · Buy online → bw_ref → demo storefront order → ONLINE outcome', async () => {
+  it('5 · Buy online → qs_ref → demo storefront order → ONLINE outcome', async () => {
     const om = customer('om_journey');
     await om.fromStore('I need it today');
     await om.share(NEAR_POWAI);
     const online = await om.tap('buy_online');
-    const ref = /bw_ref=([0-9A-Z]{26})/.exec(online.body.outbound_messages[0].text)![1];
+    const ref = /qs_ref=([0-9A-Z]{26})/.exec(online.body.outbound_messages[0].text)![1];
     const order = await request(app).post('/api/demo-storefront/orders').set('Origin', ORIGIN).send({
       brand_id: brandId,
       web_session_id: 'ws_journey_om_00001',
       shopify_variant_id: 'gid://shopify/ProductVariant/2001',
-      bw_ref: ref,
+      qs_ref: ref,
     });
     expect(order.body).toMatchObject({ attributed: true, outcome_recorded: true });
     const insights = await as('brand').get('/api/brand/insights?days=28');
@@ -329,12 +329,12 @@ describe('M7 full journey — platform → brand → stores → customer → sto
     expect(customerIds.size).toBe(list.length);
   });
 
-  it('the whole journey logged no PII, tokens, pickup codes, bw_ref values or message text', () => {
+  it('the whole journey logged no PII, tokens, pickup codes, qs_ref values or message text', () => {
     const log = logLines.join('\n');
     expect(logLines.length).toBeGreaterThan(30);
     expect(log).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
     expect(log).not.toMatch(/\+91|\b\d{10}\b/);
-    expect(log).not.toMatch(/START_BUILDWISE_|bw_ref=/);
+    expect(log).not.toMatch(/START_QWIKSPOT_|qs_ref=/);
     expect(log).not.toMatch(new RegExp(`\\b${andheriHold.pickupCode}\\b`));
     expect(log).not.toMatch(/I need it today|Sorry — Bandra/);
   });

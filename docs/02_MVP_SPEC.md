@@ -1,4 +1,4 @@
-# Buildwise — MVP Specification
+# Qwikspot — MVP Specification
 
 ## Status
 
@@ -27,9 +27,9 @@ Brand uploads retail network data
         ↓
 Products are mapped by stable SKU/identifier
         ↓
-Customer intent enters Buildwise
+Customer intent enters Qwikspot
         ↓
-Buildwise constructs decision context
+Qwikspot constructs decision context
         ↓
 Gemini + ADK reasons over context
         ↓
@@ -103,7 +103,7 @@ For the prototype, retrieve the minimum relevant commerce data:
 
 Shopify remains the source of truth for online commerce.
 
-Buildwise maintains a normalized operational representation in Firestore.
+Qwikspot maintains a normalized operational representation in Firestore.
 
 ### Important MVP constraint
 
@@ -111,7 +111,7 @@ Do not assume Shopify Admin API automatically provides every raw website-behavio
 
 For the prototype, customer intent can enter through:
 
-1. a controlled Buildwise intent-event endpoint, or
+1. a controlled Qwikspot intent-event endpoint, or
 2. a small demo instrumentation layer, or
 3. seeded/simulated events.
 
@@ -185,7 +185,7 @@ manual exception mapping where necessary
 Canonical identity:
 
 ```text
-Buildwise canonical product
+Qwikspot canonical product
         ↕
 Shopify variant/SKU
         ↕
@@ -225,7 +225,7 @@ UNKNOWN
 
 The intent engine is deterministic for `intent_stage`. For `intent_type`, it is deterministic on web events and may be refined by Gemini from conversation content, with backend validation.
 
-Web intent is carried into WhatsApp through the `START_BUILDWISE_<INTENT_TOKEN>` handshake (`06_INTEGRATION_CONTRACTS.md` §10.1).
+Web intent is carried into WhatsApp through the `START_QWIKSPOT_<INTENT_TOKEN>` handshake (`06_INTEGRATION_CONTRACTS.md` §10.1).
 
 Gemini then reasons over the resulting context rather than being responsible for every low-level event calculation.
 
@@ -281,7 +281,7 @@ ConversationPipeline (one pipeline for both channels)
 ↓
 Customer resolution
 ↓
-Buildwise context
+Qwikspot context
 ↓
 AgentRuntime (gcp: ADK + Gemini · local: MockAgentRuntime)
 ↓
@@ -396,7 +396,7 @@ The MVP is accepted when all of these work, first in the `local` profile (M7) an
 - [ ] Brand can authenticate
 - [ ] Brand Admin can create retailers and provision each retailer's single Retail Admin; it cannot add a Brand Admin; a Retail Admin can do neither
 - [ ] Shopify connection can be verified
-- [ ] Relevant Shopify data can appear in Buildwise
+- [ ] Relevant Shopify data can appear in Qwikspot
 - [ ] Retail data can be uploaded
 - [ ] SKU mappings can be displayed
 

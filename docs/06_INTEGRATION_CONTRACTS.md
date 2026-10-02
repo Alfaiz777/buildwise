@@ -1,4 +1,4 @@
-# Buildwise — Integration Contracts
+# Qwikspot — Integration Contracts
 
 ## Status
 
@@ -8,10 +8,10 @@
 
 # 1. Principle
 
-Buildwise should depend on stable internal interfaces rather than directly coupling the entire application to Shopify, WhatsApp, or the retail file implementation.
+Qwikspot should depend on stable internal interfaces rather than directly coupling the entire application to Shopify, WhatsApp, or the retail file implementation.
 
 ```text
-Buildwise domain logic
+Qwikspot domain logic
         ↓
 Internal contract (port)
         ↓
@@ -259,7 +259,7 @@ Shopify connector
   ↓
 normalizer
   ↓
-canonical Buildwise models
+canonical Qwikspot models
   ↓
 Firestore
 ```
@@ -298,11 +298,11 @@ as part of idempotency handling.
 
 ## 8.1 Online-order attribution (M6 local, L2 Shopify)
 
-When a reply offers "Buy online", the backend creates an AttributionRef (`00` §11.8 Change 13, F6) and adds it to the product URL as `bw_ref`. The storefront keeps it for the browsing session and hands it to checkout.
+When a reply offers "Buy online", the backend creates an AttributionRef (`00` §11.8 Change 13, F6) and adds it to the product URL as `qs_ref`. The storefront keeps it for the browsing session and hands it to checkout.
 
 ```text
-local (M6):  demo storefront → POST /api/demo-storefront/orders { ..., bw_ref } → OrderService.recordOrder
-L2:          bw_ref as a Shopify cart attribute → orders/create webhook (verified) → OrderService.recordOrder
+local (M6):  demo storefront → POST /api/demo-storefront/orders { ..., qs_ref } → OrderService.recordOrder
+L2:          qs_ref as a Shopify cart attribute → orders/create webhook (verified) → OrderService.recordOrder
 ```
 
 `OrderService.recordOrder({ brand_id, web_session_id, external_order_id, variant_id, source, attribution_ref })` validates the ref (exists by hash, same brand, not expired) and links the order to the ref's journey; the Outcome service then records ONLINE (or ALTERNATIVE for another variant). An invalid, expired or other-brand ref never fails the order: it is recorded unattributed. The ref only links; the purchase evidence is the order from the commerce source.
@@ -311,7 +311,7 @@ L2:          bw_ref as a Shopify cart attribute → orders/create webhook (verif
 
 # 9. Shopify authentication boundary
 
-Buildwise should isolate Shopify authentication behind the connector.
+Qwikspot should isolate Shopify authentication behind the connector.
 
 Do not let Shopify-specific credentials leak into:
 
@@ -357,13 +357,13 @@ The simulator channel (§14.2) hands its messages to the **same** `ConversationP
 This carries web intent (captured anonymously on the storefront) into the WhatsApp conversation **without putting PII in the link or message**.
 
 ```text
-Storefront (Buildwise instrumentation)
+Storefront (Qwikspot instrumentation)
    ↓  POST /api/intents  { event_type: WHATSAPP_CLICK, web_session_id, ... }
 Cloud Run
    ↓  records CommerceEvent, updates CustomerIntent (customer_id = null)
    ↓  issues IntentToken bound to intent_id
 Storefront
-   ↓  opens wa.me/<brand WhatsApp number>?text=START_BUILDWISE_<INTENT_TOKEN>
+   ↓  opens wa.me/<brand WhatsApp number>?text=START_QWIKSPOT_<INTENT_TOKEN>
 Customer sends the prefilled message
    ↓
 WhatsApp webhook → Cloud Run
@@ -378,14 +378,14 @@ Token rules:
 
 | Rule | Value |
 |---|---|
-| Format | `START_BUILDWISE_<INTENT_TOKEN>` |
+| Format | `START_QWIKSPOT_<INTENT_TOKEN>` |
 | `INTENT_TOKEN` | 128-bit cryptographically random value, Crockford Base32, uppercase, 26 characters |
 | Contents | Opaque. No PII, no customer, brand, product or intent identifiers encoded. |
 | Storage | Only the SHA-256 hash is stored (`intentTokens/{token_hash}`, `04_DATA_MODEL.md` §18.1) |
 | TTL | 30 minutes from issue |
 | Use | Single use. It is consumed by the first valid WhatsApp message that carries it. |
 | Brand binding | Valid only when the message arrives on the WhatsApp number of the brand that issued it |
-| Detection | Regex `START_BUILDWISE_([0-9A-HJKMNP-TV-Z]{26})` anywhere in the first inbound text |
+| Detection | Regex `START_QWIKSPOT_([0-9A-HJKMNP-TV-Z]{26})` anywhere in the first inbound text |
 
 Validation (inside one Firestore transaction):
 
@@ -594,7 +594,7 @@ Authentication types used below:
 | Type | Mechanism |
 |---|---|
 | `FIREBASE` | `Authorization: Bearer <Firebase ID token>`, verified per `07_SECURITY_SPEC.md` §4.1 |
-| `PAGE_TOKEN` | `X-Buildwise-Page-Token: <opaque token>`, validated per `07_SECURITY_SPEC.md` §16 |
+| `PAGE_TOKEN` | `X-Qwikspot-Page-Token: <opaque token>`, validated per `07_SECURITY_SPEC.md` §16 |
 | `PUBLIC` | Unauthenticated. Brand origin allowlist + rate limiting (`07_SECURITY_SPEC.md` §17) |
 
 For `FIREBASE` and `PAGE_TOKEN` requests, `brand_id` always comes from the verified principal or token, never from the request body or query.
@@ -651,8 +651,8 @@ Response `202`:
   "intent_strength": "HIGH_INTENT",
   "intent_type": "CART_ABANDONMENT",
   "whatsapp": {
-    "prefilled_text": "START_BUILDWISE_7K3M9Q2XH4T8VBN6R1CZ5WJPDA",
-    "wa_link": "https://wa.me/<brand number>?text=START_BUILDWISE_7K3M9Q2XH4T8VBN6R1CZ5WJPDA",
+    "prefilled_text": "START_QWIKSPOT_7K3M9Q2XH4T8VBN6R1CZ5WJPDA",
+    "wa_link": "https://wa.me/<brand number>?text=START_QWIKSPOT_7K3M9Q2XH4T8VBN6R1CZ5WJPDA",
     "expires_at": "2026-10-01T10:30:00Z"
   }
 }
@@ -684,7 +684,7 @@ Request:
 
 - `simulator_customer_ref` identifies a synthetic customer. It resolves through `channel_identities` as `SIMULATOR` / `sim:customer_01` (`04_DATA_MODEL.md` §6). The first message creates the Customer, just like a first WhatsApp message.
 - `client_message_id` is the idempotency key (the simulator's equivalent of a WhatsApp message ID). The receipt key is `SIMULATOR:{brand_id}:MESSAGE:{client_message_id}`.
-- `content.type` is one of `TEXT` (may contain `START_BUILDWISE_<INTENT_TOKEN>`, §10.1), `LOCATION` (`latitude`, `longitude`; simulates a location share) or `INTERACTIVE_REPLY` (`option_id`).
+- `content.type` is one of `TEXT` (may contain `START_QWIKSPOT_<INTENT_TOKEN>`, §10.1), `LOCATION` (`latitude`, `longitude`; simulates a location share) or `INTERACTIVE_REPLY` (`option_id`).
 - The conversation is resolved by the pipeline, exactly as for WhatsApp. The client never supplies `conversation_id`.
 
 Response `200`: the pipeline ran synchronously. The response contains the messages that `SimulatorMessagingProvider.send()` produced during this run, plus a decision summary for the brand admin.
@@ -948,7 +948,7 @@ Response `201`: `{ "brand_id": "...", "name": "Brand XYZ", "status": "ACTIVE", "
 { "status": "SUSPENDED", "reason": "..." }
 ```
 
-`status` is `ACTIVE` or `SUSPENDED`. Suspension takes effect on the next request of every `BRAND_ADMIN` and `RETAIL_ADMIN` of that brand, who get `403 BRAND_INACTIVE` "Your brand is suspended. Contact Buildwise support." (M7). The Platform Admin console asks for the `reason`, which is kept in the audit trail.
+`status` is `ACTIVE` or `SUSPENDED`. Suspension takes effect on the next request of every `BRAND_ADMIN` and `RETAIL_ADMIN` of that brand, who get `403 BRAND_INACTIVE` "Your brand is suspended. Contact Qwikspot support." (M7). The Platform Admin console asks for the `reason`, which is kept in the audit trail.
 
 ### POST /api/platform/brands/:brandId/admins
 
@@ -1074,7 +1074,7 @@ Other scopes calling `/api/retail/*` → `403 FORBIDDEN`. The store's reservatio
 
 # 15. Provider isolation rule
 
-The rest of Buildwise must not depend directly on:
+The rest of Qwikspot must not depend directly on:
 
 ```text
 Shopify GraphQL response shape

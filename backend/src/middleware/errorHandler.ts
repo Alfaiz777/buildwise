@@ -29,7 +29,7 @@ function fromInfrastructure(err: unknown): AppError | null {
     return new AppError(
       503,
       'SERVICE_UNAVAILABLE',
-      "Buildwise can't reach its database right now. Please try again in a minute.",
+      "Qwikspot can't reach its database right now. Please try again in a minute.",
       true,
     );
   }

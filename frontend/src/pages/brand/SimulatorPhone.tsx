@@ -46,7 +46,7 @@ const LOCATION_PRESETS = [
 
 /**
  * The simulator, styled as a phone chat (docs/11 §6): messages come from the brand, not
- * from "Buildwise". It always shows the Simulator and runtime badges, and labels each
+ * from "Qwikspot". It always shows the Simulator and runtime badges, and labels each
  * message by origin (customer / automated reply / proactive follow-up with its kind).
  */
 export function SimulatorPhone(props: {

@@ -1,8 +1,8 @@
-# Buildwise — Learning Log
+# Qwikspot — Learning Log
 
 ## Purpose
 
-Buildwise is being developed as a learning project as well as a working prototype.
+Qwikspot is being developed as a learning project as well as a working prototype.
 
 The objective is not to memorize tutorials.
 
@@ -45,7 +45,7 @@ Verify
 ## What I learned
 
 - What is it?
-- Why does Buildwise need it?
+- Why does Qwikspot need it?
 - What problem does it solve?
 - How does data move through it?
 
@@ -96,7 +96,7 @@ Explain the feature without opening the AI response.
 For every major feature, I should be able to answer:
 
 1. What is this technology/component?
-2. Why did Buildwise need it?
+2. Why did Qwikspot need it?
 3. What data goes into it?
 4. What does it return/change?
 5. What happens when it fails?
@@ -151,7 +151,7 @@ Use them to accelerate understanding.
 
 ### What I learned
 
-- **Catalogue sync** copies products and variants from the commerce provider (mock locally, Shopify live) into Firestore under `brands/{brand_id}/products` and `productVariants`, plus one SHOPIFY `IntegrationConnection` status document. Buildwise answers questions from its own copy, never by calling Shopify mid-conversation.
+- **Catalogue sync** copies products and variants from the commerce provider (mock locally, Shopify live) into Firestore under `brands/{brand_id}/products` and `productVariants`, plus one SHOPIFY `IntegrationConnection` status document. Qwikspot answers questions from its own copy, never by calling Shopify mid-conversation.
 - **Idempotent writes:** every document ID is derived from the source ID (`gid://shopify/Product/1001` → `prd_1001`, inventory `{store_id}__{canonical_sku}`), and writes are `set` on that ID. Running a sync or an import twice updates the same documents instead of creating duplicates.
 - **CSV ingestion** is split into three layers: the adapter only decodes the file (BOM, quotes, line numbers); pure domain rules validate every row and report a code per rejected row; the application service writes stores, mappings and stock. Nothing is dropped silently.
 - **Timezones:** "open now" is computed in the *store's* IANA timezone with `Intl.DateTimeFormat`, never the server's clock. `Asia/Kolkata` is accepted; `IST` and `+05:30` are rejected even though Node itself would accept them.
@@ -219,7 +219,7 @@ How Cloud Storage signed-URL uploads will replace the local upload endpoint (pha
 
 ### Teach-back
 
-Clicking "Sync catalog" asks the wired commerce provider for its products and variants, turns each into a Buildwise document with an ID derived from the source ID, and writes them to Firestore, so syncing twice changes nothing. Uploading a CSV first stores the file, then processing it reads every row, checks it against the retail schema (hours in the store's own timezone, non-negative whole quantities, valid prices, consistent store details), maps each SKU to a catalogue variant, and writes stores and stock. It keeps any units already reserved, and gives back a report that lists every row it rejected and why.
+Clicking "Sync catalog" asks the wired commerce provider for its products and variants, turns each into a Qwikspot document with an ID derived from the source ID, and writes them to Firestore, so syncing twice changes nothing. Uploading a CSV first stores the file, then processing it reads every row, checks it against the retail schema (hours in the store's own timezone, non-negative whole quantities, valid prices, consistent store details), maps each SKU to a catalogue variant, and writes stores and stock. It keeps any units already reserved, and gives back a report that lists every row it rejected and why.
 
 ### Five-question self-test
 
@@ -237,11 +237,11 @@ Clicking "Sync catalog" asks the wired commerce provider for its products and va
 
 - **Public endpoints and origin checks:** `POST /api/intents` has no login, so it defends itself differently: a strict body (any unexpected field, e.g. a phone number, is rejected), an origin allowlist per brand, per-IP and per-brand rate limits, and deterministic idempotency keys. CORS headers are only echoed for allowed origins.
 - **Idempotency:** the same event or message can arrive twice. Storefront events carry `client_event_id` (remembered on the intent, so a replay is not applied twice); simulator/WhatsApp messages get a `webhookReceipts` document created _if absent_, and a duplicate returns the stored original result without running any stage.
-- **Tokens and hashing:** the "Need it today?" link carries `START_BUILDWISE_<token>`: 128 random bits in Crockford Base32. Only the SHA-256 hash is stored, so a database leak reveals no usable token; it is single-use, expires in 30 minutes, is bound to the brand, and is stripped from the message before storage.
+- **Tokens and hashing:** the "Need it today?" link carries `START_QWIKSPOT_<token>`: 128 random bits in Crockford Base32. Only the SHA-256 hash is stored, so a database leak reveals no usable token; it is single-use, expires in 30 minutes, is bound to the brand, and is stripped from the message before storage.
 - **Pipeline stages:** one fixed order for every channel — idempotency → identity → handshake → conversation state → policy → agent → guardrail → tools → persistence → outbound → outcome. M4 fills 1–5 and 9–11; 6–8 are the deterministic fallback / pass-through, so M5 plugs in without reordering.
 - **Deterministic classification:** the funnel stage only moves forward (visit → search → product → consideration → cart → checkout); the type follows the stage unless "Need it today?" makes it store-oriented; strength is derived, never guessed.
 - **Scheduling without a scheduler:** each intent stores its own `follow_up` (`due_at`, status). A "process due" run marks idle sessions abandoned, then claims each due follow-up in a transaction (so two runs never send twice), re-checks the policy at send time, and sends or suppresses with a reason. Locally a button / 30 s poll triggers it; in gcp Cloud Scheduler will call the same endpoint.
-- **The WhatsApp window and templates:** a business may message first only a known, opted-in customer; inside 24 h of the customer's last message it can send free text (session message), otherwise only a pre-approved template with parameters. Buildwise picks the kind from `last_inbound_at` and the simulator labels it honestly.
+- **The WhatsApp window and templates:** a business may message first only a known, opted-in customer; inside 24 h of the customer's last message it can send free text (session message), otherwise only a pre-approved template with parameters. Qwikspot picks the kind from `last_inbound_at` and the simulator labels it honestly.
 
 ### Architecture
 
@@ -263,7 +263,7 @@ backend/src/application/{intentService,followUpService,orderService,simulatorSer
 backend/src/application/conversation/{stages,outbound,pipeline}.ts
 backend/src/ports/conversationRepositories.ts, adapters/firestore/conversationRepositories.ts
 backend/src/routes/{intents,conversations,demoStorefront}.ts
-frontend/public/buildwise-intent.js, frontend/src/pages/brand/{ConversationsPage,SimulatorPhone,IntentPanel}.tsx, pages/demo/DemoStorePage.tsx
+frontend/public/qwikspot-intent.js, frontend/src/pages/brand/{ConversationsPage,SimulatorPhone,IntentPanel}.tsx, pages/demo/DemoStorePage.tsx
 ```
 
 ### Important code paths
@@ -393,7 +393,7 @@ How strongly Firestore serialises contended transactions in production (L3 re-ru
 
 ### Teach-back
 
-A customer's message is first turned into a small, checked context: who they are, what they looked at, what we already offered. The agent then asks for tools — "which stores near this customer have it open and in stock?" — and gets real answers with reasons for every excluded store, and returns one structured decision. That decision is only a proposal: the guardrail re-reads stock, hours and policy fresh and either lets it through or blocks it with a reason. An approved hold runs in a single Firestore transaction that re-checks the stock and reserves the unit, so two people can never get the last one. Finally the reply is written from those verified results — store, distance, pickup code, hold time, maps link — and the whole path is shown to the brand as "Why Buildwise did this".
+A customer's message is first turned into a small, checked context: who they are, what they looked at, what we already offered. The agent then asks for tools — "which stores near this customer have it open and in stock?" — and gets real answers with reasons for every excluded store, and returns one structured decision. That decision is only a proposal: the guardrail re-reads stock, hours and policy fresh and either lets it through or blocks it with a reason. An approved hold runs in a single Firestore transaction that re-checks the stock and reserves the unit, so two people can never get the last one. Finally the reply is written from those verified results — store, distance, pickup code, hold time, maps link — and the whole path is shown to the brand as "Why Qwikspot did this".
 
 ### Five-question self-test
 
@@ -411,7 +411,7 @@ A customer's message is first turned into a small, checked context: who they are
 
 - **State machines and optimistic concurrency:** a reservation may only move along the §15 table, and only the store's own Retail Admin moves it. Every change carries `expected_current_status`; the transaction re-reads the document and refuses with `STALE_STATUS` if someone else got there first, or `INVALID_TRANSITION` if the move is not in the table — so two staff members can never both "complete" the same hold.
 - **Transactional inventory:** the status change and its stock effect (release on cancel/expiry, quantity and reserved both −1 on completion, quantity = reserved after a "not actually in stock" refusal) are written in one Firestore transaction, always with 0 ≤ reserved ≤ quantity.
-- **Attribution vs evidence:** a `bw_ref` on a "Buy online" link only links an order to a conversation; it never proves a purchase. The evidence is the order from the commerce source (locally the demo order call, in L2 the Shopify webhook) or a reservation the store completed with the customer's pickup code.
+- **Attribution vs evidence:** a `qs_ref` on a "Buy online" link only links an order to a conversation; it never proves a purchase. The evidence is the order from the commerce source (locally the demo order call, in L2 the Shopify webhook) or a reservation the store completed with the customer's pickup code.
 - **Idempotent outcome recording:** one Outcome per engaged journey, with an ID derived from the journey; it is created only if absent, so the first verified purchase wins and replays or later purchases add nothing (they keep their own events). NONE is decided only by the process-due sweep, after the attribution window counted from the journey's last activity — never at the moment a hold expires.
 - **Time zones in analytics:** "Saturday" means Saturday in the store's timezone: an event at 20:00 UTC on Friday is a Saturday lookup in Mumbai. Every weekday split converts each timestamp with the store's IANA zone.
 - **Synthetic data that stays honest:** the demo history is generated deterministically (fixed seed) by the same domain functions as live traffic, every document is flagged `demo_history: true`, the Outcomes screen says so and can exclude it, and live actions are never flagged.
@@ -424,8 +424,8 @@ Retailer Console ─PATCH /api/reservations/:id─► FulfilmentService.transiti
    └─ notify(): message built from verified facts → sendAndPersist (RESERVATION_UPDATE; SESSION | TEMPLATE; not if opted out)
         refused → find_nearby_stores (skip the refusing store) → pending_proposal → the customer's tap → M5 guardrail path
    └─ COMPLETED → OutcomeService.recordFromReservation (OFFLINE | ALTERNATIVE)
-Pipeline reply with an online link → AttributionService.decorate (bw_ref, hash stored)
-Demo / Shopify order ─► OrderService.recordOrder(bw_ref) → OutcomeService.recordFromOrder (ONLINE | ALTERNATIVE)
+Pipeline reply with an online link → AttributionService.decorate (qs_ref, hash stored)
+Demo / Shopify order ─► OrderService.recordOrder(qs_ref) → OutcomeService.recordFromOrder (ONLINE | ALTERNATIVE)
 process-due ─► expire holds (+ notice) → OutcomeService.closeExpiredJourneys (NONE after the window)
 Brand Console ─► HandoffService (reply as a person / resolve) · InsightsService ← InsightsReader (Firestore; BigQuery in L2)
 ```
@@ -438,7 +438,7 @@ backend/src/application/{fulfilmentService,outcomeService,attributionService,han
 backend/src/ports/{reservations,outcomes,insights,conversationRepositories}.ts
 backend/src/adapters/firestore/{reservationRepository,outcomeRepository,insightsReader,conversationRepositories}.ts
 backend/src/routes/{reservations,retail,conversations,insights,demoStorefront}.ts, backend/scripts/{seed-demo,demoHistory}.ts
-frontend/src/pages/retailer/{RetailerHome,RetailerQueue}.tsx, pages/brand/{OutcomesPage,HandoffPanel,ConversationsPage,SimulatorPhone}.tsx, public/buildwise-intent.js
+frontend/src/pages/retailer/{RetailerHome,RetailerQueue}.tsx, pages/brand/{OutcomesPage,HandoffPanel,ConversationsPage,SimulatorPhone}.tsx, public/qwikspot-intent.js
 ```
 
 ### Important code paths
@@ -457,7 +457,7 @@ Two staff act on the same hold → the second gets 409 STALE_STATUS; nothing cha
 Wrong pickup code → 422, audited, attempts +1; 5 wrong codes lock completion (refusal still possible)
 Customer opted out → no message; the store sees "customer opted out; not notified"
 No location / no eligible store after a refusal → the online link or a verified alternative, plus UNMET_DEMAND
-Invalid or expired bw_ref → the order is recorded unattributed (never fails)
+Invalid or expired qs_ref → the order is recorded unattributed (never fails)
 An order and a completed pickup in one journey → the first is the Outcome; the second stays an event
 ```
 
@@ -466,7 +466,7 @@ An order and a completed pickup in one journey → the first is the Outcome; the
 ```text
 PATCH: RETAIL_ADMIN of the reservation's own store only (another store of the same retailer → 404; brand / platform → 403)
 Retail screens show masked customer references only; a refusal note never reaches the customer
-bw_ref is random, only its hash is stored, it expires with the attribution window and carries no PII
+qs_ref is random, only its hash is stored, it expires with the attribution window and carries no PII
 Human replies: the admin's uid only in the audit log; opt-out and the 24 h window still apply
 Insights are brand-scoped; synthetic history is labelled and excludable
 ```
@@ -480,13 +480,13 @@ How Meta categorises these store updates (utility templates) and their approval 
 
 ### Teach-back
 
-A customer holds a product; the store sees it at the top of its queue and confirms, prepares and — when the customer shows their code — completes it, each step changing the reservation and its stock in one safe transaction. Every step sends the customer a short, factual update; if the store has to refuse, the customer is offered the next store that really has it, with one tap. When a purchase is verified — a pickup completed with the code, or an online order that arrived through the conversation's link — Buildwise records one outcome for that journey; if nothing is bought in time, it records "none". Those outcomes, lookups and refusals become the brand's Outcomes screen, which shows, from counted records only, whether a weekday problem is demand or availability and what to do about it.
+A customer holds a product; the store sees it at the top of its queue and confirms, prepares and — when the customer shows their code — completes it, each step changing the reservation and its stock in one safe transaction. Every step sends the customer a short, factual update; if the store has to refuse, the customer is offered the next store that really has it, with one tap. When a purchase is verified — a pickup completed with the code, or an online order that arrived through the conversation's link — Qwikspot records one outcome for that journey; if nothing is bought in time, it records "none". Those outcomes, lookups and refusals become the brand's Outcomes screen, which shows, from counted records only, whether a weekday problem is demand or availability and what to do about it.
 
 ### Five-question self-test
 
 | | State machine + optimistic concurrency | Transactional inventory | Attribution vs evidence | Idempotent outcomes | Time zones in analytics | Honest synthetic data |
 |---|---|---|---|---|---|---|
-| 1. What is it? | An allowed-moves table plus "only if it is still in the status I saw" | Status and stock changed together, all or nothing | A link (bw_ref) vs proof (an order / completed pickup) | One outcome per journey, created only if absent | Converting each timestamp to the store's local day | Generated, flagged, excludable demo data |
+| 1. What is it? | An allowed-moves table plus "only if it is still in the status I saw" | Status and stock changed together, all or nothing | A link (qs_ref) vs proof (an order / completed pickup) | One outcome per journey, created only if absent | Converting each timestamp to the store's local day | Generated, flagged, excludable demo data |
 | 2. Why needed? | Staff and expiry act concurrently | Stock must never be wrong or negative | A click is not a sale | Webhooks and sweeps repeat | A UTC day is not the store's day | Demos need a past; reports must not lie |
 | 3. What goes in? | status + expected_current_status (+ code / reason) | the plan (reserved −q, quantity −q, correction) | the ref from the landing URL; the verified order | journey key + verified evidence | ISO timestamp + IANA timezone | a fixed seed + the live domain functions |
 | 4. What changes? | the reservation's status and timestamps | retailInventory quantity / reserved | the order's journey link and its Outcome | outcomes + OUTCOME_RECORDED | which weekday bucket an event counts in | documents marked demo_history: true |
@@ -555,7 +555,7 @@ A deploy without a required setting → the service refuses to start and names t
 ```text
 DEMO_MODE never widens a role: Retail / Platform Admins cannot reset; only an allowlisted demo brand can be reset
 Demo passwords: runtime config only; secrets:scan fails if one reaches frontend/dist; seed:live refuses the repo's local password
-Logs: no emails, phones, names, tokens, pickup codes, bw_ref values or message text (tested over a full journey)
+Logs: no emails, phones, names, tokens, pickup codes, qs_ref values or message text (tested over a full journey)
 Every mutating route audited (static scan); platform views carry counts only, never customer data
 Per-tab sessions: closing a tab signs it out
 ```
@@ -569,7 +569,7 @@ The right Cloud Scheduler → internal process-due design across many brands (L1
 
 ### Teach-back
 
-Before a stranger sees Buildwise, everything they can do must already have been done by a test. M7 runs the whole story — a platform admin creating a brand, the brand setting up its stores, a customer asking for a product today, a store handing it over with a pickup code, and the brand seeing the sale — through the real API, and checks that every failure along the way ends in a clear next step rather than an error page. It proves the security rules by enumerating the code (every route audited, every query indexed, every log line clean) and gives judges a safe shared demo: their own customer per tab, plenty of stock, short holds, and a reset that can only ever touch the demo brand.
+Before a stranger sees Qwikspot, everything they can do must already have been done by a test. M7 runs the whole story — a platform admin creating a brand, the brand setting up its stores, a customer asking for a product today, a store handing it over with a pickup code, and the brand seeing the sale — through the real API, and checks that every failure along the way ends in a clear next step rather than an error page. It proves the security rules by enumerating the code (every route audited, every query indexed, every log line clean) and gives judges a safe shared demo: their own customer per tab, plenty of stock, short holds, and a reset that can only ever touch the demo brand.
 
 ### Five-question self-test
 

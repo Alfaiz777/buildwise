@@ -1,12 +1,12 @@
-# Buildwise — Infrastructure
+# Qwikspot — Infrastructure
 
-How Buildwise runs in the `local` profile and how it is deployed in the `gcp` profile
+How Qwikspot runs in the `local` profile and how it is deployed in the `gcp` profile
 (docs/03_TECH_ARCHITECTURE.md §2.2). The main build path is local-first; going live is
 phase L1 (docs/10_EXECUTION_PLAN.md). **The ordered go-live checklist — secrets, IAM,
 indexes, `seed:live`, `demo:check`, rollback — is [docs/12_DEPLOYMENT_RUNBOOK.md](../docs/12_DEPLOYMENT_RUNBOOK.md).**
 
 ```text
-Browser ──► Firebase Hosting ──(/api/** rewrite)──► Cloud Run: buildwise-api ──► Firestore
+Browser ──► Firebase Hosting ──(/api/** rewrite)──► Cloud Run: qwikspot-api ──► Firestore
    │                                                    ▲
    └──── Firebase Auth (sign-in, ID tokens) ────────────┘ (ID token verified on every request)
 ```
@@ -14,12 +14,12 @@ Browser ──► Firebase Hosting ──(/api/** rewrite)──► Cloud Run: b
 | Piece | Local | Deployed |
 |---|---|---|
 | Frontend | Vite dev server `:5173` | Firebase Hosting (`frontend/dist`) |
-| API | `tsx watch` on `:8080` | Cloud Run service `buildwise-api` |
+| API | `tsx watch` on `:8080` | Cloud Run service `qwikspot-api` |
 | `/api` routing | Vite proxy → `:8080` | Hosting rewrite → Cloud Run (same origin) |
 | Auth | Auth emulator `:9099` | Firebase Authentication (Email/Password) |
 | Database | Firestore emulator `:8085` | Firestore (Native mode) |
 | Credentials | none (emulators) or `gcloud auth application-default login` | Cloud Run service account (ADC). No key files. |
-| Profile | `BUILDWISE_PROFILE=local` (default) | `BUILDWISE_PROFILE=gcp`, `VITE_BUILDWISE_PROFILE=gcp` |
+| Profile | `QWIKSPOT_PROFILE=local` (default) | `QWIKSPOT_PROFILE=gcp`, `VITE_QWIKSPOT_PROFILE=gcp` |
 | Adapters | mock commerce, simulator channel, mock agent, local files (`backend/.data`), local event sink | Shopify, WhatsApp (+ simulator fallback), ADK + Gemini, Cloud Storage, BigQuery (phases L1–L2) |
 | Config | none required (optional `backend/.env`) | Cloud Run env vars, `frontend/.env.production.local` at build time |
 | Secrets | none | Secret Manager (phases L1–L2) |
@@ -39,7 +39,7 @@ cp backend/.env.example backend/.env   # optional: DEMO_MODE on (demo logins + R
 # terminal 1: Firebase emulators (Auth + Firestore, UI at http://127.0.0.1:4000)
 npm run emulators
 
-# terminal 2: synthetic demo users for the three internal roles (emulators only; password buildwise-demo-1)
+# terminal 2: synthetic demo users for the three internal roles (emulators only; password qwikspot-demo-1)
 npm run seed:demo
 
 # terminal 2: API (local profile)
@@ -52,7 +52,7 @@ npm run dev:frontend
 To start from an empty emulator with only a platform admin (the real bootstrap flow):
 
 ```bash
-npm run seed:platform-admin -- --email ops@buildwise.test --password 'change-me-123'
+npm run seed:platform-admin -- --email ops@qwikspot.test --password 'change-me-123'
 ```
 
 Then sign in as that user, create a brand and provision its Brand Admin in the Platform Admin console.
@@ -97,9 +97,9 @@ also change it in `firebase.json` (hosting rewrite) and `deploy-backend.sh`.
 
 6. **Runtime service account** (least privilege):
    ```bash
-   gcloud iam service-accounts create buildwise-api --project PROJECT_ID
+   gcloud iam service-accounts create qwikspot-api --project PROJECT_ID
    gcloud projects add-iam-policy-binding PROJECT_ID \
-     --member "serviceAccount:buildwise-api@PROJECT_ID.iam.gserviceaccount.com" \
+     --member "serviceAccount:qwikspot-api@PROJECT_ID.iam.gserviceaccount.com" \
      --role roles/datastore.user
    ```
    Verifying ID tokens needs no IAM role (it uses Google's public keys).
@@ -107,7 +107,7 @@ also change it in `firebase.json` (hosting rewrite) and `deploy-backend.sh`.
 
 7. **Artifact Registry.**
    ```bash
-   gcloud artifacts repositories create buildwise --repository-format docker \
+   gcloud artifacts repositories create qwikspot --repository-format docker \
      --location asia-south1 --project PROJECT_ID
    ```
 
@@ -123,8 +123,8 @@ The script refuses to write to a real project without `--confirm-project`. It us
 your ADC credentials, which need Firebase Auth admin and Firestore write access:
 
 ```bash
-BUILDWISE_PROFILE=gcp GOOGLE_CLOUD_PROJECT=PROJECT_ID npm run seed:platform-admin -- \
-  --confirm-project PROJECT_ID --email ops@buildwise.example --password '<strong password>'
+QWIKSPOT_PROFILE=gcp GOOGLE_CLOUD_PROJECT=PROJECT_ID npm run seed:platform-admin -- \
+  --confirm-project PROJECT_ID --email ops@qwikspot.example --password '<strong password>'
 ```
 
 Everything else is provisioned in the product: the Platform Admin creates each brand and its

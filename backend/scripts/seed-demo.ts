@@ -9,15 +9,15 @@
  *
  *   brd_demo (Demo Beauty Co)
  *     └── rtl_north (North Retail)
- *          ├── st_north_1 Bandra Store   ── retail-admin-north-1@buildwise.test
- *          ├── st_north_2 Andheri Store  ── retail-admin-north-2@buildwise.test
+ *          ├── st_north_1 Bandra Store   ── retail-admin-north-1@qwikspot.test
+ *          ├── st_north_2 Andheri Store  ── retail-admin-north-2@qwikspot.test
  *          └── st_north_3 Powai Store    ── (no Retail Admin yet)
  *     └── rtl_pune (Pune Retail)
  *          └── st_pune_1 Koregaon Park   ── (no Retail Admin yet)
  *   brd_other (Other Brand Ltd) ── admin@other-brand.test (tenant-isolation checks)
  *     └── rtl_other ── st_other_1        ── (no Retail Admin yet)
  *
- *   platform@buildwise.test  PLATFORM_ADMIN;  admin@demo-brand.test  BRAND_ADMIN of brd_demo
+ *   platform@qwikspot.test  PLATFORM_ADMIN;  admin@demo-brand.test  BRAND_ADMIN of brd_demo
  *
  * M3: the catalogue comes from a real sync through the wired CommerceProvider (mock
  * locally), and stores + stock + SKU mappings come from running the real retail import on
@@ -41,7 +41,7 @@
  * 50 ml none in Mumbai) and Mumbai stores open 00:00–23:59, so a judge in any timezone can
  * reserve (Change 14, G5). demo-retail.csv (10:00–21:00) stays the fixture for the tests.
  *
- * Every password: buildwise-demo-1
+ * Every password: qwikspot-demo-1
  * Usage: npm run seed:demo   (re-runnable; resets the two fixture brands, upserts the users)
  */
 import { readFile } from 'node:fs/promises';
@@ -173,14 +173,14 @@ console.log(`  catalogue: ${other.productCount} products, ${other.variantCount} 
 await importRetailFile('brd_other', 'other-brand-retail.csv');
 
 console.log(`Demo users (password for every user: ${PASSWORD}):`);
-await user(auth, db, 'platform@buildwise.test', 'PLATFORM_ADMIN', none);
+await user(auth, db, 'platform@qwikspot.test', 'PLATFORM_ADMIN', none);
 const demoAdmin = await user(auth, db, 'admin@demo-brand.test', 'BRAND_ADMIN', { ...none, brandId: 'brd_demo' });
-const north1 = await user(auth, db, 'retail-admin-north-1@buildwise.test', 'RETAIL_ADMIN', {
+const north1 = await user(auth, db, 'retail-admin-north-1@qwikspot.test', 'RETAIL_ADMIN', {
   brandId: 'brd_demo',
   retailerId: 'rtl_north',
   storeId: 'st_north_1',
 });
-const north2 = await user(auth, db, 'retail-admin-north-2@buildwise.test', 'RETAIL_ADMIN', {
+const north2 = await user(auth, db, 'retail-admin-north-2@qwikspot.test', 'RETAIL_ADMIN', {
   brandId: 'brd_demo',
   retailerId: 'rtl_north',
   storeId: 'st_north_2',

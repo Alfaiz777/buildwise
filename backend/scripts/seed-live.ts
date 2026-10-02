@@ -10,7 +10,7 @@
  *   5. the four demo users' password = DEMO_PASSWORD (from the environment, never the repo).
  * Re-runnable: existing users and admins are kept, the demo data is rebuilt.
  * Guard: scripts/seedLiveGuard.ts. Rehearse against the emulators with
- * `--project demo-buildwise` (local profile). Runbook: docs/12_DEPLOYMENT_RUNBOOK.md.
+ * `--project demo-qwikspot` (local profile). Runbook: docs/12_DEPLOYMENT_RUNBOOK.md.
  */
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';

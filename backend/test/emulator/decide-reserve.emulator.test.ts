@@ -21,7 +21,7 @@ import { decideRetailerTransition, type ReservationStatus } from '../../src/doma
 import { initFirebase } from '../../src/firebase/admin.js';
 import { silentLogger } from '../../src/lib/logger.js';
 
-const PROJECT = 'demo-buildwise';
+const PROJECT = 'demo-qwikspot';
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const FS_HOST = process.env.FIRESTORE_EMULATOR_HOST;
 if (!AUTH_HOST || !FS_HOST) {
@@ -183,10 +183,10 @@ async function resetStock(brandId: string, storeId: string, sku: string, quantit
 beforeAll(async () => {
   await fetch(`http://${FS_HOST}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`, { method: 'DELETE' });
   await fetch(`http://${AUTH_HOST}/emulator/v1/projects/${PROJECT}/accounts`, { method: 'DELETE' });
-  dataDir = await mkdtemp(join(tmpdir(), 'buildwise-m5-'));
+  dataDir = await mkdtemp(join(tmpdir(), 'qwikspot-m5-'));
   const config = loadConfig({
     ...process.env,
-    BUILDWISE_PROFILE: 'local',
+    QWIKSPOT_PROFILE: 'local',
     GOOGLE_CLOUD_PROJECT: PROJECT,
     LOCAL_DATA_DIR: dataDir,
   });
@@ -553,8 +553,8 @@ describe('demo story (demo-retail.csv)', () => {
     expect(textOf(fifty)).toContain(
       "Vitamin C Glow Serum 50 ml isn't available for pickup at a store near you right now.",
     );
-    // M6: the link carries a bw_ref (before the #fragment) that links a later order to this journey.
-    expect(textOf(fifty)).toMatch(/http:\/\/localhost:5173\/demo-store\?bw_ref=[0-9A-Z]{26}#product=prd_1001/);
+    // M6: the link carries a qs_ref (before the #fragment) that links a later order to this journey.
+    expect(textOf(fifty)).toMatch(/http:\/\/localhost:5173\/demo-store\?qs_ref=[0-9A-Z]{26}#product=prd_1001/);
     const events = await db
       .collection(`brands/${DEMO}/commerceEvents`)
       .where('event_type', '==', 'STORE_RECOMMENDATION')

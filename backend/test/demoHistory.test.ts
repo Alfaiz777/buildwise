@@ -191,7 +191,7 @@ describe('synthetic demo history (Change 13, F9)', () => {
         .every((r) => r.cancelledBy === 'RETAILER' && r.cancelReason),
     ).toBe(true);
     expect(new Set(h.outcomes.map((o) => o.purchaseType))).toEqual(new Set(['OFFLINE', 'ONLINE', 'NONE']));
-    expect(h.events.some((e) => e.eventType === 'ORDER_CREATED' && e.payload.attributed_by === 'BW_REF')).toBe(true);
+    expect(h.events.some((e) => e.eventType === 'ORDER_CREATED' && e.payload.attributed_by === 'QS_REF')).toBe(true);
     expect(h.events.some((e) => e.eventType === 'ORDER_CREATED' && e.payload.attributed_by === null)).toBe(true);
   });
 

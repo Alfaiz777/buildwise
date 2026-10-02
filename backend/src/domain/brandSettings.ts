@@ -4,7 +4,7 @@
  */
 
 export interface BrandMessagingSettings {
-  /** The sender name customers see ("Demo Beauty Co"), never "Buildwise". */
+  /** The sender name customers see ("Demo Beauty Co"), never "Qwikspot". */
   displayName: string;
   /** The brand's WhatsApp number (digits only; placeholder locally). */
   whatsappNumber: string | null;
