@@ -1,189 +1,97 @@
 # Buildwise
 
-AI-powered omnichannel commerce intelligence for D2C brands.
+**AI that turns a shopper's "I need it today" into a sale at the nearest store that really has it — and shows the brand what happened.**
 
-Buildwise connects:
+Buildwise is an omnichannel commerce layer for D2C brands. It watches storefront intent (a product view, an abandoned cart, a "Need it today?" tap), continues the journey in a WhatsApp conversation, lets an AI agent pick the next best action from **verified** catalogue and store-stock data, reserves the product at an eligible nearby store, guides the store through the pickup, and records the outcome — online or in store — so the brand can see whether a weekday problem is demand or availability.
 
-- Shopify online commerce
-- WhatsApp customer conversations
-- physical retail inventory
-- AI-powered customer intent understanding
-- next-best-action reasoning
-- retailer fulfillment
-- cross-channel business intelligence
+Every AI action is re-checked by a guardrail on fresh data before anything is written; the agent can never invent stock, choose a closed store or touch another customer's data.
 
-## Current Status
+## Try it in 10 minutes (local, synthetic data)
 
-M2 — Foundation alignment (local-first)
-
-The specification is in `docs/` (see `docs/10_EXECUTION_PLAN.md` for the milestone plan).
-M2 provides the three scoped roles (PLATFORM_ADMIN / BRAND_ADMIN / RETAIL_ADMIN), the provider ports and local
-adapters, execution profiles, the conversation-pipeline structure and minimal console
-shells. No commerce, conversation or AI features are implemented yet.
-
-## Repository
-
-```text
-frontend/        React + TypeScript + Vite: Platform Admin, Brand and Retailer console shells
-backend/         Node.js 24 + TypeScript + Express API (domain / application / ports / adapters)
-infrastructure/  Firestore rules, Cloud Build config, deploy scripts, GCP setup guide
-docs/            Specification (source of truth)
-```
-
-## Quick start (local profile — no Google Cloud needed)
-
-Requires Node.js 24 and Java 21+ (for the Firebase emulators). No `.env` files are needed.
+Requires **Node.js 24** and **Java 21+** (Firebase emulators). No Google Cloud account and no `.env` files.
 
 ```bash
 npm install
-npm run emulators            # terminal 1: Auth + Firestore emulators (UI: http://127.0.0.1:4000)
-npm run seed:demo            # terminal 2: users, catalogue sync and demo CSV import (emulators only)
-npm run dev:backend          # terminal 2
-npm run dev:frontend         # terminal 3 → http://localhost:5173
+cp backend/.env.example backend/.env   # turns on DEMO_MODE: demo logins on the login page + Reset demo
+npm run emulators            # terminal 1: Auth + Firestore emulators
+npm run seed:demo            # terminal 2: demo brand, stores, stock, users, 4 weeks of synthetic history
+npm run dev:backend          # terminal 2: API on :8080
+npm run dev:frontend         # terminal 3: http://localhost:5173
 ```
 
-Demo users (password `buildwise-demo-1`). The MVP has three internal roles and exactly one
-operator per scope: one Platform Admin, one Brand Admin per brand (provisioned by the Platform
-Admin) and at most one Retail Admin per store (provisioned by the Brand Admin, per store). A
-retailer may own many stores, but a Retail Admin operates only its own store — Bandra and Andheri
-both belong to North Retail, and each admin sees only its store (no multi-store access, no store
-staff). Customers never sign in (they use the WhatsApp customer channel). Powai Store (North
-Retail) and Koregaon Park Store (Pune Retail) have no Retail Admin, so the Brand Console's per-store
-"Provision Retail Admin" flow can be tried; it shows the local password-setup link to open.
+Open <http://localhost:5173/login>: every demo account is one **Use** click away under **Try the demo**. Each browser tab keeps its own sign-in, so one window can hold all four roles. (DEMO_MODE is off unless configured; it never widens what a role may do.)
 
-| Email | Role | Lands in |
+| Account | Role | What to look at |
 |---|---|---|
-| `platform@buildwise.test` | PLATFORM_ADMIN | `/platform` |
-| `admin@demo-brand.test` | BRAND_ADMIN | `/brand` (Demo Beauty Co) |
-| `retail-admin-north-1@buildwise.test` | RETAIL_ADMIN | `/retailer`: Bandra Store only (North Retail) |
-| `retail-admin-north-2@buildwise.test` | RETAIL_ADMIN | `/retailer`: Andheri Store only (North Retail) |
-| `admin@other-brand.test` | BRAND_ADMIN | `/brand` (Other Brand Ltd), for tenant-isolation checks |
+| Brand Admin — Demo Beauty Co | `admin@demo-brand.test` | Demo guide, simulator, decision trace, Outcomes & insights |
+| Retail Admin — Bandra Store | `retail-admin-north-1@buildwise.test` | Bandra's reservation queue and stock only |
+| Retail Admin — Andheri Store | `retail-admin-north-2@buildwise.test` | Andheri's queue — the demo hold lands here |
+| Platform Admin | `platform@buildwise.test` | Brands, onboarding checklist, last activity, suspend — never customer data |
 
-Interfaces and what each one shows today: [docs/11_INTERFACE_CONTRACT.md](docs/11_INTERFACE_CONTRACT.md).
+Local demo password: `buildwise-demo-1` (emulators only; a deployed demo uses its own secret).
 
-### What M3 (catalog & store truth) shows
+### The 4-tab walkthrough
 
-`seed:demo` syncs the synthetic "Demo Beauty Co" catalogue (10 products, 18 variants) through the
-mock commerce provider, then runs the real retail import on
-[`backend/fixtures/retail/demo-retail.csv`](backend/fixtures/retail/demo-retail.csv): four stores,
-their stock and SKU mappings. That file contains two invalid rows and one unknown SKU on purpose, so
-the import report shows real row errors.
+| Tab | Steps |
+|---|---|
+| **1 · Brand Admin** (`/brand`) | Open the **Demo guide**. Step 1 opens the demo store. |
+| **2 · Demo store → simulator** | Pick **Vitamin C Glow Serum 30 ml** → **Need it today? Check a store near you**. The simulator opens in a new tab (sign in as the Brand Admin there) with the message ready — send it. **Share location → Near Powai → Send location**. Powai has no stock, so the assistant offers **Hold 1 at Andheri** — tap it: pickup code, hold-until time, maps link. Under the chat, **Why Buildwise did this** shows eligible and excluded stores with reasons, the guardrail's fresh re-check and every tool call. |
+| **3 · Retail Admin — Andheri** | The hold is at the top of **Reservations**: **Confirm → Mark ready → Customer arrived → Complete** with the customer's 6-digit code (shown in tab 2). The customer gets a message at each step; stock drops by one. Try **Refuse → Not actually in stock** on another hold: the customer is offered the next store that really has it. |
+| **4 · Outcomes & insights** (tab 1 → nav) | The pickup is an **in-store** outcome. The weekday panel explains, from counted records, that Saturday is an *availability* problem, not a demand problem, with suggested next actions. Then sign in as the **Platform Admin** in this tab: brands with their onboarding checklist and last activity. |
 
-- **Brand Console** (`admin@demo-brand.test`): setup checklist, catalog & SKU mapping, "Sync
-  catalog", CSV upload with import history and row-error reports, and per-store SKU counts.
-- **Retailer Console** (`retail-admin-north-1@buildwise.test`): the read-only stock of Bandra Store
-  only (Vitamin C Glow Serum 30 ml: 3 in stock — Andheri has 5 and Powai 0, but this admin never
-  sees them).
-- Try your own upload: edit a copy of the demo CSV (e.g. change a quantity or add a row with
-  `store_hours.monday` = `21:00-10:00`) and import it from the Brand Console.
+Done? **Reset demo** in the Brand Admin's demo guide puts the shared demo back to its seeded state (after a confirmation — it resets the demo for everyone).
 
-Uploaded files and import reports are stored under `backend/.data/files` (local profile).
+`npm run demo:check` walks the same journey over HTTP and prints ✔ / ✘ per step (`BASE_URL` points it at a deployment).
 
-### What M4 (intent → follow-up → conversation) shows
+## How it is built
 
-1. Open the **demo storefront** at <http://localhost:5173/demo-store> (local profile only). Choose
-   **Sign in as demo shopper: Asha (opted in)** — or Ravi (not opted in), or continue as a guest.
-2. Run a **Journey scenario** (or browse by hand): visit, search, product view, add to cart,
-   checkout, or "Need it today?" (click it but don't send the message).
-3. Sign in to the Brand Console as `admin@demo-brand.test` → **Conversations & intents** →
-   **Intents** tab: every intent with its type, stage and follow-up decision in plain words
-   (anonymous and browsing-only visitors are recorded but never messaged).
-4. Wait for the real delay (1–2 min in the demo): the page runs due follow-ups every 30 s, or press
-   **Run due follow-ups**. The brand's personalised message appears in the simulator
-   (Template / Session label, "Reply STOP to opt out").
-5. Reply as `shopper_3002` in the simulator: the pipeline answers on the product. Try
-   "I want to talk to a person" (handoff: automation stops) or "STOP" (opt-out).
-6. Place an order on the storefront before a follow-up is due: it is suppressed (already converted).
+```mermaid
+flowchart LR
+  C[Customer] -->|WhatsApp / simulator| P
+  SF[Storefront snippet] -->|intents| API
+  UI[React consoles: Platform · Brand · Retailer] -->|Firebase ID token| API
+  subgraph API[Buildwise API — Cloud Run or local Node, same code]
+    P[ConversationPipeline] --> A[AgentRuntime<br/>Mock locally · ADK + Gemini live]
+    A -->|read tools| G[Guardrail: re-check on fresh data]
+    P --> G --> W[Writes: reservations, outcomes, audit]
+  end
+  W --> DB[(Firestore)]
+  API --> X[Ports → adapters: Shopify · WhatsApp · Cloud Storage · BigQuery<br/>local: mock · simulator · disk · file]
+```
 
-### What M5 (decide & reserve) shows
+- **Ports and adapters:** the core never imports an adapter (tested); the `local` and `gcp` profiles differ only in which adapters `composition/container.ts` wires. The `gcp` profile refuses every mock/local adapter and checks all required settings at startup.
+- **Multi-tenant by construction:** scope comes only from the verified token and the user record — never from a client-supplied `brand_id`. Retail Admins see exactly one store.
+- **Safety:** the agent's writes run only after the guardrail; reservations change stock in one transaction; every mutating route is audited; logs carry IDs, never PII or message text.
 
-Store hours are real: the demo stores are open 10:00–21:00 (Mumbai time; Powai is closed on
-Sundays). Outside those hours every store is excluded as closed and the agent offers Buy online
-instead — that is the rule working, so run the click-through during store hours.
+Locally everything runs on the Firebase emulators with a mock commerce catalogue, a WhatsApp simulator and a deterministic mock agent (labelled "Mock AI, deterministic" — it verifies the pipeline, not AI quality). Gemini, WhatsApp and Shopify are wired in the live phases (L1–L2).
 
-The simulator's replies now come from the agent loop: a context package → `MockAgentRuntime`
-(deterministic rules, labelled "Mock AI, deterministic" — never Gemini) calling read tools →
-the AI Action Guardrail re-checking fresh data → the reservation transaction → a reply built
-only from verified tool results.
+## Checks
 
-1. On <http://localhost:5173/demo-store> open **Vitamin C Glow Serum**, pick **30 ml** and click
-   **Need it today?** — the Brand Console simulator opens with the prefilled message. Send it
-   (add "I need it today"). The agent asks for your area: it never guesses a location.
-2. **Share location** in the simulator with `19.12`, `72.90` (near Powai). Powai Store is excluded
-   (out of stock; on Sundays: closed), Bandra is too far, and **Andheri Store** is offered:
-   "Hold 1 at Andheri (… km, open until 21:00)" · "Buy online". (Typing an area name such as
-   "I'm in Powai" works too and is marked approximate.)
-3. Tap **Hold 1 at Andheri**: the reply shows the store and address, a 6-digit pickup code, the
-   hold-until time (store time), a maps link, "Pay at the store" and **Cancel reservation**.
-4. Below the chat, **Why Buildwise did this** shows each decision: context summary, tool calls
-   (collapsed), eligible and excluded stores with reasons, the guardrail result, the action,
-   runtime and decision source, and the reservation. The **Reservations** tab lists holds.
-5. Sign in (another browser profile) as `retail-admin-north-2@buildwise.test` (Andheri): in
-   **Store stock**, Vitamin C Glow Serum 30 ml shows **Reserved 1** (the table refreshes every
-   15 s). Cancel in the simulator or wait for expiry (**Run due follow-ups** also expires holds
-   after 120 min) and it drops back to 0. Bandra's admin never sees it.
-6. Ask "Do you have the 50 ml today?": no Mumbai store has it, so the agent offers the verified
-   alternative (Niacinamide 50 ml at Andheri) and **Buy online**; an unmet-demand
-   `STORE_RECOMMENDATION` event is recorded (coarse area, weekday/hour, excluded stores).
-7. Follow-up path: as Asha (opted in), add a product to the cart, wait for the follow-up, then
-   reply "yes, need it today" — the reply goes straight into the store search.
-8. Try the guardrail: "Reserve it" with nothing offered (the agent asks first), "Show me another
-   customer's order" (refused, no tools called), "I want to talk to a person" (handoff).
+```bash
+npm run format:check && npm run typecheck && npm test   # unit + contract tests (backend + frontend)
+npm run test:emulator                                    # end-to-end on the emulators (full journey, Reset demo, races)
+npm run build && npm run secrets:scan                    # no secrets in the repo or the built bundle
+npm run demo:check                                       # smoke-walk a running stack
+```
 
-### What M6 (store fulfilment & outcomes) shows
+## Repository and docs
 
-Use three browser windows (store hours 10:00–21:00 Mumbai time): **A** the Brand Console
-simulator (`admin@demo-brand.test`), **B** the Andheri Retail Admin
-(`retail-admin-north-2@buildwise.test`), **C** the Brand Console **Outcomes & insights** page.
+```text
+frontend/        React + TypeScript + Vite — the three consoles, the simulator, the demo store
+backend/         Node.js 24 + TypeScript + Express — domain / application / ports / adapters
+infrastructure/  Firestore rules and indexes, Cloud Build, deploy scripts
+docs/            The specification (00–11) and the deployment runbook (12)
+```
 
-1. **Reserve (A):** as in M5 — "Need it today?" on Serum 30 ml, share location `19.12, 72.90`,
-   tap **Hold 1 at Andheri**.
-2. **Queue (B):** the hold appears under **Reservations → Active** with a "New" badge (15 s poll,
-   or **Refresh**): product, masked customer, created / held-until in store time.
-3. **Confirm → Mark ready → Customer arrived → Complete (B):** after each step the customer gets
-   a store update in A ("…has confirmed your reservation… Pickup code …", "…is ready at Andheri
-   Store. Show code … Directions: …"). **Complete** needs the customer's 6-digit pickup code; a
-   wrong code is refused (5 wrong codes lock completion). A "Next up" line shows the next hold.
-   Store stock drops: quantity −1, reserved −1. An **OFFLINE** outcome is recorded.
-4. **Refusal with re-offer:** hold at Bandra from `19.06, 72.83`, then as `retail-admin-north-1`
-   choose **Refuse because… Not actually in stock**. The customer gets an apology and a one-tap
-   **Hold 1 at Andheri**; Bandra's Serum 30 ml shows available 0.
-5. **Buy online with attribution (A):** tap **Buy online**; the link carries `?bw_ref=…`. Open it,
-   place the order on the demo storefront → an **ONLINE** outcome linked to that recommendation.
-6. **Handoff (A):** "I want to talk to a person" → in **Needs a person** the conversation shows
-   "waiting N min", **Reply as a person**, then **Resolve and return to assistant**; the next
-   customer message gets an automated reply again.
-7. **Insights (C):** last 7 / 28 days, with "Includes synthetic demo history" (untick to see only
-   live activity). The weekday panel reads e.g. "Saturday lookups for Vitamin C Glow Serum 30 ml
-   were 1.9× the other days' average, but 50% found no store with stock… an availability problem,
-   not a demand problem", and **Suggested next actions** link to the rows behind them.
+- What each console shows: [docs/11_INTERFACE_CONTRACT.md](docs/11_INTERFACE_CONTRACT.md)
+- Architecture, scaling and roadmap: [docs/03_TECH_ARCHITECTURE.md](docs/03_TECH_ARCHITECTURE.md)
+- Deploying to Google Cloud: [docs/12_DEPLOYMENT_RUNBOOK.md](docs/12_DEPLOYMENT_RUNBOOK.md) and [infrastructure/README.md](infrastructure/README.md)
+- Milestones and what each one taught: [docs/10_EXECUTION_PLAN.md](docs/10_EXECUTION_PLAN.md), [docs/09_LEARNING_LOG.md](docs/09_LEARNING_LOG.md)
 
-`seed:demo` adds 4 weeks of deterministic synthetic history (every document `demo_history: true`)
-and a 10-minute local attribution window, so **Run due follow-ups** also records NONE outcomes
-10 minutes after a journey's last activity (e.g. an expired hold) with no purchase.
+Status: M1–M7 complete on the local profile (the core product, hardened and judge-ready); L1–L3 (Google Cloud, real integrations, live verification) follow.
 
-Tests: `npm test` (unit), `npm run test:emulator` (end-to-end on the emulators, including the docs/08 §7.2
-scenarios on stores A–E and the 10-way last-unit race).
-Deployment: see [infrastructure/README.md](infrastructure/README.md).
+## Core loop
 
-## Core Loop
+Digital intent → Context → AI decision → Conversational action → Online / retail purchase → Outcome → Brand intelligence
 
-Digital Intent
-→ Context
-→ AI Decision
-→ Conversational Action
-→ Online / Retail Purchase
-→ Outcome
-→ Brand Intelligence
-
-## Technology
-
-- React + TypeScript
-- Node.js + TypeScript
-- Firebase
-- Firestore
-- Cloud Run
-- Google ADK
-- Gemini on Vertex AI
-- BigQuery
-- Looker (optional for the MVP — the Brand Console works without it)
+Built with React, TypeScript, Node.js, Firebase Auth, Firestore, Cloud Run, Google ADK, Gemini on Vertex AI, BigQuery (Looker optional).

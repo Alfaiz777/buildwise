@@ -6,6 +6,7 @@ import type { ProductRepository } from '../ports/repositories.js';
 import type { FollowUpService } from './followUpService.js';
 import { intentIdFor, visitorHashOf } from './intentService.js';
 import { variantIdFor } from './commerceSyncService.js';
+import type { EventRecorder } from './eventRecorder.js';
 import type { OrderService } from './orderService.js';
 
 /** The synthetic shoppers the local demo storefront offers (mock commerce fixture). */
@@ -36,6 +37,8 @@ export class DemoStorefrontService {
       intents: IntentRepository;
       followUps: FollowUpService;
       orders: OrderService;
+      /** M7: audit trail for the local demo storefront's writes. */
+      events?: EventRecorder;
       now?: () => Date;
     },
   ) {}
@@ -112,6 +115,12 @@ export class DemoStorefrontService {
       current && !current.customerId ? { ...current, customerId: customer.customerId, updatedAt: at } : null,
     );
     await this.deps.followUps.evaluateForCustomer(brandId, customer.customerId);
+    await this.deps.events?.audit(brandId, {
+      action: 'DEMO_SHOPPER_LINKED',
+      targetType: 'CUSTOMER',
+      targetId: customer.customerId,
+      actor: { type: 'SYSTEM', id: 'demo-storefront' },
+    });
     return {
       shopper_id: shopper.externalCustomerId,
       first_name: shopper.firstName,

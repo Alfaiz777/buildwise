@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useApi } from '../../api/apiContext';
 import { errorMessage, Section } from '../../components/ConsoleShell';
+import { label } from '../../lib/labels';
 import { formatDateTime, type RetailImport, type RetailImportReport } from './types';
 
 const MAX_ERRORS_SHOWN = 50;
@@ -84,7 +85,7 @@ export function RetailImportSection(props: {
       {report && (
         <div className="report" aria-label="Import report">
           <h3>
-            Report: {report.file_name} <span className="badge">{report.status}</span>
+            Report: {report.file_name} <span className="badge">{label(report.status)}</span>
           </h3>
           {report.failure_code && <p className="error">File rejected: {report.failure_code}</p>}
           <p className="small">
@@ -143,7 +144,7 @@ export function RetailImportSection(props: {
             {props.imports?.map((i) => (
               <tr key={i.import_id}>
                 <td>{i.file_name}</td>
-                <td>{i.status}</td>
+                <td>{label(i.status)}</td>
                 <td>
                   {i.rows_valid} / {i.rows_processed}
                 </td>

@@ -50,6 +50,23 @@ const newMessageId = () =>
     : `cm_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
 /**
+ * Shared-demo safety (Change 14, G5): each browser tab chats as its own customer
+ * (`judge_xxxx`, kept in sessionStorage), so judges using the demo at the same time never
+ * see each other's conversations in the simulator.
+ */
+function judgeRef(): string {
+  const fresh = `judge_${Math.random().toString(36).slice(2, 6)}`;
+  try {
+    const kept = window.sessionStorage.getItem('bw_simulator_ref');
+    if (kept && /^judge_[a-z0-9]{1,8}$/.test(kept)) return kept;
+    window.sessionStorage.setItem('bw_simulator_ref', fresh);
+  } catch {
+    // storage blocked: a fresh ref per page load is still safe
+  }
+  return fresh;
+}
+
+/**
  * Brand Console → "Conversations & intents" (docs/11 §4): conversation list with filters,
  * an Intents tab (every intent, anonymous and not-eligible included), a Reservations tab
  * (M5), the conversation detail with the "Intent & follow-up" panel and the "Why Buildwise
@@ -68,7 +85,7 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
   const [busy, setBusy] = useState(false);
 
   const prefill = useMemo(() => parseSimulatorFragment(location.hash), [location.hash]);
-  const [customerRef, setCustomerRef] = useState(prefill.customer ?? 'customer_01');
+  const [customerRef, setCustomerRef] = useState(() => prefill.customer ?? judgeRef());
   const [draft, setDraft] = useState(prefill.text ?? '');
 
   const list = useLoad(

@@ -568,6 +568,13 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
           idempotencyKey: `CONVERSATION_STARTED:${conversation.conversationId}`,
         });
       }
+      await deps.events.audit(brandId, {
+        action: 'CUSTOMER_MESSAGE_RECEIVED',
+        targetType: 'CONVERSATION',
+        targetId: conversation.conversationId,
+        reasonCode: context.inbound.content.type,
+        actor: { type: 'CUSTOMER', id: customerId },
+      });
       await deps.events.record({
         ...base,
         eventType: 'MESSAGE_RECEIVED',
@@ -637,6 +644,14 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
             repaired: context.data.repaired ?? false,
             fallback_reason: context.data.fallbackReason ?? null,
           },
+        });
+        await deps.events.audit(brandId, {
+          action: 'AI_DECISION_RECORDED',
+          targetType: 'RECOMMENDATION',
+          targetId: recommendationId,
+          result: outcome.status === 'BLOCKED' ? 'DENIED' : 'SUCCESS',
+          reasonCode: `${nba.action}:${context.decisionSource}${outcome.reason ? `:${outcome.reason}` : ''}`,
+          actor: { type: 'AGENT', id: decision.runtime },
         });
         await deps.events.record({
           ...base,

@@ -10,6 +10,9 @@ export function ProtectedRoute() {
   const location = useLocation();
 
   if (loading) return <p className="status">Loading…</p>;
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  // Keep the query and fragment (e.g. the simulator's prefilled text) across sign-in.
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}${location.hash}` }} />;
+  }
   return <Outlet />;
 }

@@ -60,6 +60,8 @@ export interface ConversationModuleDeps {
   agent: AgentRuntime;
   /** Test hook: the per-message AI budget (docs/03 §16.1). */
   aiBudgetMs?: number;
+  /** Test hook: outbound retry backoff (docs/03 §16.2). */
+  sendRetryDelaysMs?: readonly number[];
   /** Test hook: deterministic pickup codes. */
   pickupCode?: () => string;
   /** M6: outcomes and attribution references. */
@@ -155,6 +157,7 @@ export function createConversationModule(deps: ConversationModuleDeps) {
           intents: deps.intents,
           followUps,
           orders,
+          events: recorder,
           now,
         })
       : undefined,

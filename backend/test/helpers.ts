@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 import { MockAgentRuntime } from '../src/adapters/agent/mockAgentRuntime.js';
 import { MockCommerceProvider } from '../src/adapters/commerce/mockCommerceProvider.js';
 import type { AgentRuntime } from '../src/ports/agent.js';
+import type { DemoConfig } from '../src/config/env.js';
 import { MemoryReservations } from './memoryReservations.js';
 import { MemoryInsightsReader } from './memoryInsights.js';
 import { InsightsService } from '../src/application/insightsService.js';
@@ -29,6 +30,9 @@ import { AccountService } from '../src/application/accountService.js';
 import { CatalogService } from '../src/application/catalogService.js';
 import { CommerceSyncService } from '../src/application/commerceSyncService.js';
 import { PlatformAdminService } from '../src/application/platformAdminService.js';
+import { DemoResetService } from '../src/application/demoResetService.js';
+import { BundledFixtureSource } from '../src/adapters/fixtures/bundledFixtureSource.js';
+import type { DemoDataStore, DemoHistory } from '../src/ports/demoData.js';
 import { RetailImportService } from '../src/application/retailImportService.js';
 import { StoreService } from '../src/application/storeService.js';
 import { TenantAdminService } from '../src/application/tenantAdminService.js';
@@ -401,6 +405,10 @@ export class MemoryAudit implements AuditRepository {
   async listPlatformEvents(limit: number) {
     return [...this.platformEvents].reverse().slice(0, limit);
   }
+  /** The memory audit stores no timestamps: any event reads as activity at the test clock. */
+  async latestBrandEventAt(brandId: string) {
+    return this.brandEvents.some((e) => e.brandId === brandId) ? '2026-10-07T06:30:00.000Z' : null;
+  }
 }
 
 export class FakeIdentity implements IdentityAdmin {
@@ -575,6 +583,12 @@ export function buildTestWorld(
     agent?: AgentRuntime;
     aiBudgetMs?: number;
     pickupCode?: () => string;
+    /** M7: replace the simulator provider (e.g. one that fails) and the retry backoff. */
+    simulatorProvider?: MessagingProvider;
+    sendRetryDelaysMs?: readonly number[];
+    /** M7: DEMO_MODE configuration (default off) and the execution profile reported by the app. */
+    demo?: DemoConfig;
+    profile?: 'local' | 'gcp';
   } = {},
 ) {
   const world = seedWorld();
@@ -625,7 +639,7 @@ export function buildTestWorld(
   const sunk: CommerceEvent[] = [];
   const messaging = new Map<Channel, MessagingProvider>();
   if ((options.channels ?? ['SIMULATOR']).includes('SIMULATOR'))
-    messaging.set('SIMULATOR', new SimulatorMessagingProvider());
+    messaging.set('SIMULATOR', options.simulatorProvider ?? new SimulatorMessagingProvider());
   const conversation = createConversationModule({
     brands,
     products,
@@ -648,20 +662,51 @@ export function buildTestWorld(
     agent: options.agent ?? new MockAgentRuntime(),
     aiBudgetMs: options.aiBudgetMs,
     pickupCode: options.pickupCode,
+    sendRetryDelaysMs: options.sendRetryDelaysMs ?? [0, 0],
+    logger: options.logger,
     now: options.now,
     demoStorefront:
       options.demoStorefront === false ? undefined : { commerce: options.commerce ?? new MockCommerceProvider() },
   });
 
+  const demoData = new MemoryDemoData(brands);
+  const demoReset = new DemoResetService({
+    demo: options.demo ?? { enabled: false, brandIds: [], holdMinutes: 20 },
+    data: demoData,
+    fixtures: new BundledFixtureSource(),
+    files,
+    brands,
+    stores,
+    products,
+    customers,
+    commerceSync,
+    retailImports,
+    audit,
+    now: options.now,
+  });
+
   const app = createApp({
-    config: { corsAllowedOrigins: options.corsAllowedOrigins ?? [] },
+    config: {
+      corsAllowedOrigins: options.corsAllowedOrigins ?? [],
+      demo: options.demo,
+      profile: options.profile ?? 'local',
+    },
     logger: options.logger ?? silentLogger,
     verifier: new FakeVerifier(emailOf),
     repositories: { users, brands, retailers, stores },
     services: {
-      platformAdmin: new PlatformAdminService({ brands, users, identity, audit }),
+      platformAdmin: new PlatformAdminService({
+        brands,
+        users,
+        identity,
+        audit,
+        stores,
+        connections,
+        mappings,
+        inventory,
+      }),
       tenantAdmin: new TenantAdminService({ users, retailers, stores, inventory, identity, audit }),
-      account: new AccountService({ stores, inventory, products }),
+      account: new AccountService({ stores, inventory, products, brands, now: options.now }),
       commerceSync,
       catalog: new CatalogService({ products, mappings, inventory }),
       retailImports,
@@ -680,6 +725,7 @@ export function buildTestWorld(
         now: options.now ?? (() => new Date()),
       }),
       demoStorefront: conversation.demoStorefront,
+      demoReset,
     },
     localUploads: options.localUploads === false ? undefined : files,
   });
@@ -714,7 +760,28 @@ export function buildTestWorld(
     reservations,
     outcomes,
     attributionRefs,
+    demoData,
+    demoReset,
   };
+}
+
+/** The memory demo store records what a reset asked for; the Firestore store is tested on the emulator. */
+export class MemoryDemoData implements DemoDataStore {
+  readonly calls: string[] = [];
+  constructor(private readonly brands: MemoryBrands) {}
+  async wipe(brandId: string) {
+    this.calls.push(`wipe:${brandId}`);
+    return { customers: 0 };
+  }
+  async setSettings(brandId: string, settings: Record<string, unknown>) {
+    this.calls.push(`settings:${brandId}`);
+    const brand = this.brands.brands.find((b) => b.brandId === brandId);
+    if (brand) brand.settings = settings;
+  }
+  async writeHistory(brandId: string, history: DemoHistory, customerIds: string[]) {
+    this.calls.push(`history:${brandId}`);
+    return { customers: customerIds.length, outcomes: history.outcomes.length };
+  }
 }
 
 export const bearer = (userId: string) => `Bearer token-${userId}`;

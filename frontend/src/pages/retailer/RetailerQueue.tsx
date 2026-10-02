@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../../api/apiContext';
+import { label as enumLabel } from '../../lib/labels';
 import { errorMessage, useLoad } from '../../components/ConsoleShell';
 
 export interface QueueReservation {
@@ -196,7 +197,7 @@ export function RetailerQueue({ autoPoll, onChanged }: { autoPoll: boolean; onCh
           <li key={r.reservation_id} className="queue-card">
             <div>
               <strong>{label(r)}</strong> {fresh.has(r.reservation_id) && <span className="badge new">New</span>}{' '}
-              <span className="badge">{STATUS_LABEL[r.status] ?? r.status}</span>
+              <span className="badge">{STATUS_LABEL[r.status] ?? enumLabel(r.status)}</span>
             </div>
             <div className="small">
               {r.customer_display} · created {storeTime(r.created_at, r.store_timezone)} · held until{' '}
@@ -209,7 +210,8 @@ export function RetailerQueue({ autoPoll, onChanged }: { autoPoll: boolean; onCh
                 className={`small ${r.last_notification.status === 'SENT' ? 'muted' : 'warn-text'}`}
                 data-testid="notification"
               >
-                Last update: {r.last_notification.event.toLowerCase()} — {NOTIFY_LABEL[r.last_notification.status]}
+                Last update: {enumLabel(r.last_notification.event).toLowerCase()} —{' '}
+                {NOTIFY_LABEL[r.last_notification.status]}
               </div>
             )}
             {r.cancel_reason && (

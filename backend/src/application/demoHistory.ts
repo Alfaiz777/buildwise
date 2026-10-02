@@ -31,6 +31,7 @@ import type {
   IntentRecord,
   RecommendationRecord,
 } from '../ports/conversationRepositories.js';
+import type { DemoHistory } from '../ports/demoData.js';
 import type { OutcomeRecord } from '../ports/outcomes.js';
 import type { ReservationRecord } from '../ports/reservations.js';
 import { intentIdFor } from './intentService.js';
@@ -70,24 +71,10 @@ export interface DemoHistoryInput {
   serum50: HistoryVariant;
 }
 
-export interface DemoHistory {
-  customerRefs: string[];
-  intents: IntentRecord[];
-  conversations: ConversationRecord[];
-  recommendations: RecommendationRecord[];
-  events: CommerceEventRecord[];
-  reservations: ReservationRecord[];
-  outcomes: OutcomeRecord[];
-  /** Hashes of attribution refs used by the synthetic attributed orders. */
-  attributionRefs: {
-    refHash: string;
-    intentId: string;
-    conversationId: string;
-    recommendationId: string;
-    createdAt: string;
-    expiresAt: string;
-  }[];
-}
+export type { DemoHistory } from '../ports/demoData.js';
+
+/** The fixed seed: every seed and reset produces the same history for the same clock. */
+export const DEMO_HISTORY_SEED = 20261001;
 
 /** mulberry32: a tiny deterministic PRNG. */
 export function prng(seed: number) {
@@ -312,6 +299,8 @@ export function generateDemoHistory(input: DemoHistoryInput): DemoHistory {
             open_until: null,
             available_quantity: e.availableQuantity,
             offline_price: lookup.variant.price,
+            stock_updated_at: null,
+            stale: false,
           };
         }),
         excluded: result.excluded

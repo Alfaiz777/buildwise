@@ -491,3 +491,92 @@ A customer holds a product; the store sees it at the top of its queue and confir
 | 3. What goes in? | status + expected_current_status (+ code / reason) | the plan (reserved −q, quantity −q, correction) | the ref from the landing URL; the verified order | journey key + verified evidence | ISO timestamp + IANA timezone | a fixed seed + the live domain functions |
 | 4. What changes? | the reservation's status and timestamps | retailInventory quantity / reserved | the order's journey link and its Outcome | outcomes + OUTCOME_RECORDED | which weekday bucket an event counts in | documents marked demo_history: true |
 | 5. When it fails? | 409 STALE_STATUS / INVALID_TRANSITION | the transaction aborts; nothing is written | the order is recorded unattributed | the second write is a no-op | wrong buckets if the zone is ignored (tested) | the toggle removes it from every panel |
+
+## M7 — Local E2E, hardening and judge-ready
+
+### What I learned
+
+- **An end-to-end test is a contract with the whole product:** the full-journey test drives the platform, brand, store and customer only through the HTTP API on the emulators, so it fails if any layer — auth chain, pipeline, transactions, notifications, outcomes, insights — breaks the journey, not just one unit.
+- **Runtime-agnostic contract suites:** the AI scenarios assert only structured output (action, guardrail status, persisted records, "never" conditions) and take any `AgentRuntime`, so the same suite judges `MockAgentRuntime` now and Gemini in L1 — with a pass rule that tolerates model variance on helpful scenarios (≥ 4/5) but none on safety scenarios (5/5).
+- **Fail gracefully, and say what to do next:** a database outage becomes a retryable `503` with a plain sentence, never a stack trace; a failed send is retried with the same request ID and then shown as "Not delivered"; stale store stock is never claimed as fresh — the reply names when it was last updated.
+- **Prove security rules with tests that enumerate the code:** the audit-completeness test scans `src/routes` for every mutating route, so a new route without an audit entry fails the build; the index test does the same for multi-field Firestore queries; the log test captures every line of a full journey and searches it for PII.
+- **Demo mode without weakening security:** demo users are ordinary users with ordinary scopes; the logins come from configuration at runtime (never the bundle); Reset demo is allowlisted per brand, audited, rate-limited and provably cannot touch another brand.
+- **Configuration as a contract:** the gcp profile validates every required setting together and names the missing ones — never their values — so L1 is configuration plus adapters, not code changes.
+
+### Architecture
+
+```text
+Judge / demo:check ──HTTP──► routes ── auth (token → principal → scope) ──► services ──► ports ──► adapters
+                                                       │
+         DEMO_MODE: GET /api/demo/config (public)      ├─ POST /api/brand/demo/reset → DemoResetService
+                                                       │     wipe (DemoDataStore) → demo settings → CommerceSyncService
+                                                       │     → RetailImportService (judge fixture via FixtureSource)
+                                                       │     → generateDemoHistory → DemoDataStore.writeHistory → audit DEMO_RESET
+seed:demo / seed:live ─────────────────────────────────┘     (the same rebuild())
+Outbound: sendWithRetry (250 ms, 1 s; same outboundRequestId) → FAILED → "Not delivered"
+Errors:   gRPC 14 / 4 → 503 SERVICE_UNAVAILABLE (no stack in any response)
+```
+
+### Files I changed
+
+```text
+backend/test/emulator/full-journey.emulator.test.ts, demo-reset.emulator.test.ts   the journey and Reset on the emulators
+backend/test/contracts/agentScenarioSuite.ts, adapterContracts.ts                   runtime-agnostic suites
+backend/test/{failurePaths,securityHardening,logHygiene,auditCompleteness,secretsScan,indexCompleteness,seedLive,demoReset}.test.ts
+backend/src/application/demoResetService.ts, demoSetup.ts; ports/demoData.ts; adapters/firestore/demoDataStore.ts; adapters/fixtures/
+backend/src/routes/demo.ts, health.ts, platform.ts; middleware/errorHandler.ts; config/env.ts (DEMO_*, gcp contract)
+backend/src/application/conversation/outbound.ts (retries), simulatorService.ts (replay waits), agent/tools.ts + domain/agentReplies.ts (stale stock)
+backend/scripts/demoCheck.ts, seed-live.ts, seedLiveGuard.ts; scripts/secrets-scan.mjs; fixtures/retail/demo-judge-retail.csv
+frontend: LoginPage (demo panel), DemoGuide, PlatformHome (onboarding, suspend with reason), SimulatorPhone (judge ref, presets, Not delivered), RetailerHome (stale), lib/labels.ts, components/States.tsx, per-tab sessions
+docs: 00 (Change 14), 03 (diagram, scaling), 04, 06 (§14.10), 07 (§17), 08 (§13, §15a), 10, 11, 12 (runbook)
+```
+
+### Important code paths
+
+```text
+POST /api/brand/demo/reset → brandDemoRouter → DemoResetService.reset (404 off / 403 not allowlisted / 429) → rebuild()
+GET  /api/platform/brands  → PlatformAdminService.overview → counts per brand + AuditRepository.latestBrandEventAt
+sendAndPersist → sendWithRetry → MESSAGE_SENT { delivery_status }
+errorHandler → fromInfrastructure → 503 | 500 envelope (stack only in local server logs)
+```
+
+### What can fail?
+
+```text
+Reset while judges are mid-journey → their conversations disappear (the dialog says so); stock and history come back
+Two resets at once → the 1/min limiter refuses the second
+A store's stock file is old → "stale" in the console and a dated qualifier in the reply; the guardrail still re-checks numbers
+Database unreachable → 503 with a retry hint; nothing is half-written
+A deploy without a required setting → the service refuses to start and names the setting
+```
+
+### Security implications
+
+```text
+DEMO_MODE never widens a role: Retail / Platform Admins cannot reset; only an allowlisted demo brand can be reset
+Demo passwords: runtime config only; secrets:scan fails if one reaches frontend/dist; seed:live refuses the repo's local password
+Logs: no emails, phones, names, tokens, pickup codes, bw_ref values or message text (tested over a full journey)
+Every mutating route audited (static scan); platform views carry counts only, never customer data
+Per-tab sessions: closing a tab signs it out
+```
+
+### What I still do not understand
+
+```text
+How Gemini's variance will actually land on scenarios 1–7 (L1 runs the suite with runs = 5).
+The right Cloud Scheduler → internal process-due design across many brands (L1).
+```
+
+### Teach-back
+
+Before a stranger sees Buildwise, everything they can do must already have been done by a test. M7 runs the whole story — a platform admin creating a brand, the brand setting up its stores, a customer asking for a product today, a store handing it over with a pickup code, and the brand seeing the sale — through the real API, and checks that every failure along the way ends in a clear next step rather than an error page. It proves the security rules by enumerating the code (every route audited, every query indexed, every log line clean) and gives judges a safe shared demo: their own customer per tab, plenty of stock, short holds, and a reset that can only ever touch the demo brand.
+
+### Five-question self-test
+
+| | End-to-end journey test | Runtime-agnostic contract suite | Graceful failure | Enumerating tests (audit / index / logs) | Safe shared demo |
+|---|---|---|---|---|---|
+| 1. What is it? | One test that drives every role through the HTTP API on the emulators | One scenario set that takes any `AgentRuntime` | Every failure ends in a retryable status and a plain next step | Tests that list the code's routes / queries / log lines and check each | DEMO_MODE logins, judge refs, headroom stock, short holds, Reset |
+| 2. Why needed? | Units can all pass while the journey breaks | The mock and Gemini must meet the same bar | Errors happen; stack traces and silence lose users | A new route or query must not slip through unchecked | Many judges, one demo, no cross-talk or dead stock |
+| 3. What goes in? | Synthetic users, a CSV, storefront clicks, chat messages | A runtime factory and a run count | The infrastructure error (gRPC code, 5xx, stale timestamp) | The source tree, the index file, a captured logger | Config (`DEMO_*`), the judge fixture, the allowlist |
+| 4. What changes? | Nothing outside the emulators | Nothing; it only observes records | The response (503 / FAILED / qualifier), never half-written data | Nothing; it fails the build | Only the allowlisted demo brand's data, audited |
+| 5. When it fails? | The broken step names itself (✘ in `demo:check`) | A scenario reports passes x/n and the run details | The person is told to try again; logs keep the detail | The missing entry is named in the failure | 404 off, 403 other brand/role, 429 too soon |

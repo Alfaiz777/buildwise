@@ -41,6 +41,7 @@ export function retailRouter(account: AccountService, reservations: ReservationS
         availability_status: l.availabilityStatus,
         offline_price: l.offlinePrice,
         last_updated_at: l.lastUpdatedAt,
+        stale: l.stale,
       })),
     });
   });

@@ -2,7 +2,8 @@
 
 How Buildwise runs in the `local` profile and how it is deployed in the `gcp` profile
 (docs/03_TECH_ARCHITECTURE.md §2.2). The main build path is local-first; going live is
-phase L1 (docs/10_EXECUTION_PLAN.md).
+phase L1 (docs/10_EXECUTION_PLAN.md). **The ordered go-live checklist — secrets, IAM,
+indexes, `seed:live`, `demo:check`, rollback — is [docs/12_DEPLOYMENT_RUNBOOK.md](../docs/12_DEPLOYMENT_RUNBOOK.md).**
 
 ```text
 Browser ──► Firebase Hosting ──(/api/** rewrite)──► Cloud Run: buildwise-api ──► Firestore
@@ -33,6 +34,7 @@ Requires Node.js 24 (`.nvmrc`) and Java 21+ (Firestore emulator). No `.env` file
 
 ```bash
 npm install
+cp backend/.env.example backend/.env   # optional: DEMO_MODE on (demo logins + Reset demo)
 
 # terminal 1: Firebase emulators (Auth + Firestore, UI at http://127.0.0.1:4000)
 npm run emulators
@@ -59,9 +61,11 @@ Tests:
 
 ```bash
 npm test               # backend + frontend unit tests (no emulators needed)
-npm run test:emulator  # full auth chain + Firestore rules against the emulators
+npm run test:emulator  # end-to-end on the emulators: full journey, Reset demo, auth chain, races
 npm run typecheck
 npm run build
+npm run secrets:scan   # no credentials in the repo or in frontend/dist
+npm run demo:check     # smoke-walk a running stack (BASE_URL, default http://localhost:8080)
 ```
 
 Windows note: after an emulator run, the Firestore emulator's `java.exe` sometimes keeps port 8085 open, and the next run then fails with "port taken". Find it with `netstat -ano | findstr :8085` and stop that PID.
@@ -128,4 +132,6 @@ single Brand Admin; the Brand Admin creates retailers and provisions one Retail 
 operates only that store (a retailer may own many stores; stores come from retail ingestion).
 
 Smoke test: open the Hosting URL, sign in as the platform admin, and confirm the Platform Admin console loads.
-`GET https://<hosting-domain>/api/health` should return `{"status":"ok"}`.
+`GET https://<hosting-domain>/api/health` should return `{"status":"ok","version":"…","commit":"<git sha>","profile":"gcp"}`.
+For the judged demo, `npm run seed:live` builds the demo brand and users and `npm run demo:check` walks the
+whole journey against the deployment (runbook §8, §10).

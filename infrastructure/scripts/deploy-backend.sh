@@ -8,7 +8,9 @@ REGION="${REGION:-asia-south1}"   # must match firebase.json hosting rewrite reg
 SERVICE="buildwise-api"           # must match firebase.json hosting rewrite serviceId
 REPO="buildwise"
 SERVICE_ACCOUNT="buildwise-api@${PROJECT_ID}.iam.gserviceaccount.com"
-IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${SERVICE}:$(git rev-parse --short HEAD)"
+COMMIT="$(git rev-parse --short HEAD)"
+VERSION="$(node -p "require('./backend/package.json').version")"
+IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${SERVICE}:${COMMIT}"
 
 gcloud builds submit \
   --project "$PROJECT_ID" \
@@ -25,7 +27,7 @@ gcloud run deploy "$SERVICE" \
   --image "$IMAGE" \
   --service-account "$SERVICE_ACCOUNT" \
   --allow-unauthenticated \
-  --set-env-vars "NODE_ENV=production,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},LOG_LEVEL=info" \
+  --set-env-vars "NODE_ENV=production,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},LOG_LEVEL=info,BUILD_VERSION=${VERSION},BUILD_COMMIT=${COMMIT}" \
   --cpu 1 \
   --memory 512Mi \
   --timeout 60 \

@@ -462,11 +462,26 @@ The agent-runtime failure paths (timeout, invalid structure) are also exercised 
 
 When the agent runtime (Gemini) fails, the expected result is the deterministic fallback (`03_TECH_ARCHITECTURE.md` §16.2): a safe reply, `decision_source = DETERMINISTIC_FALLBACK`, no commerce action executed, and no claims about stock, price or policy.
 
+**Where each failure path is tested (M7):**
+
+| Failure | Test | What the person sees |
+|---|---|---|
+| Shopify (commerce) unavailable | `backend/test/failurePaths.test.ts`; `frontend/src/test/routes.test.tsx` | `502 COMMERCE_SYNC_FAILED`, the connection shows `last_error`; checklist "Sync failed — … Try again in a moment." + **Retry sync** |
+| WhatsApp / simulator send 5xx | `failurePaths.test.ts` | 2 retries with the same request ID, then `FAILED`; "Not delivered" on the bubble |
+| Gemini unavailable / timeout / invalid twice | `contracts/agentScenarioSuite.ts` (runtime-agnostic) | deterministic fallback, no commerce action |
+| Firestore unavailable | `failurePaths.test.ts` | `503 SERVICE_UNAVAILABLE` "Buildwise can't reach its database right now. Please try again in a minute." — never a stack trace |
+| Retail file malformed | `failurePaths.test.ts`, `retailIngestion.test.ts` | FAILED report with the code; nothing half-written |
+| Store data stale | `failurePaths.test.ts`, `routes.test.tsx` | "… stock was last updated <time> (store time), so it may have changed."; Retailer "stale" badge |
+| Inventory unavailable / race lost | `agentDomain.test.ts`, emulator `decide-reserve` race, scenario 12 | guardrail blocks; exactly one hold for the last unit |
+| Customer unmatched / invalid token | `intentConversation.test.ts`, emulator `full-journey` step 3 | silently ignored for the customer, audited `INTENT_TOKEN_REJECTED` |
+| Retailer rejects | `fulfilmentFlow.test.ts`, emulator `full-journey` step 6 | apology + one-tap hold at the next eligible store |
+| Webhook replay while processing | `failurePaths.test.ts` | the replay waits (≤ 5 s) and returns the original result; nothing runs twice |
+
 ---
 
 # 14. Production smoke test
 
-After the `gcp` deployment (phases L1–L3), verify:
+After the `gcp` deployment (phases L1–L3), verify — automated by `npm run demo:check` (M7; `backend/scripts/demoCheck.ts`, run with `BASE_URL` against any deployment; runbook `12_DEPLOYMENT_RUNBOOK.md` §10):
 
 ```text
 login
@@ -489,6 +504,21 @@ analytics
 Use the same scenario that appears in the demo video.
 
 A person who did not build the system should be able to follow the flow without internal knowledge.
+
+M7: the judged deployment runs with `DEMO_MODE` on — demo logins on the login page, the 6-step demo guide in the Brand Console and **Reset demo** (`11_INTERFACE_CONTRACT.md`). The walkthrough is rehearsed locally with four tabs (Brand Admin, simulator, Retail Admin — Andheri, Platform Admin).
+
+# 15a. Where the M7 checks live
+
+| Check | Location |
+|---|---|
+| Whole journey through the HTTP API on the emulators (platform → brand → stores → customer → store → OFFLINE / ONLINE outcome → refusal re-offer, customer isolation, log PII) | `backend/test/emulator/full-journey.emulator.test.ts` |
+| AI scenarios 1–12 + prompt injection + timeout / invalid twice, pass rules §7.3 | `backend/test/contracts/agentScenarioSuite.ts` (run by `agentScenarios.test.ts` on the mock; by L1 on ADK + Gemini with `runs: 5`) |
+| Adapter contract suites (commerce, messaging incl. signature rejection, agent, files, events) | `backend/test/contracts/adapterContracts.ts` |
+| docs/07 §15 security tests | `securityHardening.test.ts` (headers, CORS, envelopes, rate limits, gcp refusals), `logHygiene.test.ts`, `auditCompleteness.test.ts` (static route scan), `secretsScan.test.ts`, plus `auth`, `authorize`, `platform`, `brandAdmin` tests |
+| Reset demo | `demoReset.test.ts` (refusals, rate limit, audit), emulator `demo-reset.emulator.test.ts` (same documents as a fresh seed, other brand byte-identical) |
+| Live readiness | `config.test.ts` (gcp settings contract), `indexCompleteness.test.ts` (indexes + Hosting rewrite), `seedLive.test.ts` (guard) |
+| Secrets in the repo or the bundle | `npm run secrets:scan` |
+| A running deployment | `npm run demo:check` |
 
 ---
 

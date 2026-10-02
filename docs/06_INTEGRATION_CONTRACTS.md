@@ -513,7 +513,8 @@ Cloud Run endpoints, grouped by interface:
 
 ```text
 # Public
-GET   /api/health                                  (liveness; no auth, no data)
+GET   /api/health                                  (liveness; no auth: { status, version, commit, profile } — M7)
+GET   /api/demo/config                             (M7: { demo_mode } — plus the demo logins only when DEMO_MODE is on; 30/min per IP)
 
 # Any console user
 GET   /api/me
@@ -550,6 +551,8 @@ GET   /api/brand/conversations                     (list; customer display ref, 
 GET   /api/brand/conversations/:conversationId     (messages, bound intent + web events + follow_up, recommendations)
 GET   /api/brand/intents                           (every intent incl. anonymous; ?type=&follow_up_status=)
 POST  /api/brand/follow-ups/process-due            (process due follow-ups; Cloud Scheduler with OIDC in gcp, L-phase)
+GET   /api/brand/demo                              (M7: { reset_available } for this brand)
+POST  /api/brand/demo/reset                        (M7: Reset demo — DEMO_MODE + allowlisted brand only; 1/min per brand; §14.10)
 
 # Retailer Console (RETAIL_ADMIN, own store only) — §14.9
 GET   /api/retail/stores/:storeId                  (own store; any other store → 404)
@@ -945,7 +948,7 @@ Response `201`: `{ "brand_id": "...", "name": "Brand XYZ", "status": "ACTIVE", "
 { "status": "SUSPENDED", "reason": "..." }
 ```
 
-`status` is `ACTIVE` or `SUSPENDED`. Suspension takes effect on the next request of every `BRAND_ADMIN` and `RETAIL_ADMIN` of that brand.
+`status` is `ACTIVE` or `SUSPENDED`. Suspension takes effect on the next request of every `BRAND_ADMIN` and `RETAIL_ADMIN` of that brand, who get `403 BRAND_INACTIVE` "Your brand is suspended. Contact Buildwise support." (M7). The Platform Admin console asks for the `reason`, which is kept in the audit trail.
 
 ### POST /api/platform/brands/:brandId/admins
 
@@ -963,13 +966,32 @@ Errors: `409 BRAND_ADMIN_ALREADY_PROVISIONED` (the brand already has its Brand A
 
 | Route | Returns |
 |---|---|
-| `GET /api/platform/brands` | brand registry: `brand_id, name, status, created_at, brand_admin_user_id` |
+| `GET /api/platform/brands` | brand registry: `brand_id, name, status, created_at, brand_admin_user_id`, plus (M7) `last_activity_at` (newest brand AuditEvent) and `onboarding`: `brand_admin_provisioned`, `catalog { synced, failed, last_sync_at, product_count }`, `stores { total, with_stock }`, `sku_mapping { auto_matched, needs_attention }`, `retail_admins { provisioned, stores_with_retailer }`, `channel { simulator, whatsapp_number_configured }`. Counts only — no customer, conversation, phone or email fields. |
 | `GET /api/platform/brands/:brandId/retailers` | `retailer_id, name, status, store_count` |
 | `GET /api/platform/brands/:brandId/stores` | `store_id, store_name, city, store_status, retailer_id, retail_admin_user_id` |
 | `GET /api/platform/integrations` | per brand: provider, status, `last_sync_at`, `last_error` code. **No credentials.** |
 | `GET /api/platform/reservations` | `reservation_id, brand_id, store_id, status, quantity, created_at, expires_at`. **No customer fields.** |
 | `GET /api/platform/outcomes/summary` | per brand and period: outcome counts and values by `purchase_type` |
 | `GET /api/platform/audit` | `platformAuditEvents`, newest first |
+
+## 14.10 Demo mode (M7, `00` §11.8 Change 14, G3–G4)
+
+`DEMO_MODE` never weakens authorization: demo users are ordinary users with ordinary scopes.
+
+**`GET /api/demo/config`** (public, 30/min per IP). Off: `{ "demo_mode": false }`. On:
+
+```json
+{ "demo_mode": true, "logins": [{ "email": "...", "password": "...", "role": "BRAND_ADMIN", "title": "...", "hint": "..." }] }
+```
+
+The logins come from configuration (`DEMO_LOGINS`; locally the seeded users), never from the frontend bundle.
+
+**`POST /api/brand/demo/reset`** (`BRAND_ADMIN`). `404` when `DEMO_MODE` is off; `403 DEMO_RESET_NOT_ALLOWED` when the caller's brand is not in `DEMO_BRAND_IDS` (audited `DENIED`); `403` for any other role; `429 RATE_LIMITED` more than once a minute per brand. It wipes that brand's customers, identities, visitors, intents, conversations and messages, recommendations, reservations, outcomes, commerce events, attribution refs, stock, imports, catalogue, mappings and connections (plus its own intent tokens and webhook receipts), keeps the brand, retailers, stores and their Retail Admins, users and the audit trail, then re-runs the catalogue sync, the judge stock fixture import and the synthetic history, and records `DEMO_RESET`. Response `200`:
+
+```json
+{ "brand_id": "brd_demo", "deleted": { "reservations": 73, "...": 0 }, "catalog": { "products": 10, "variants": 18 },
+  "stock": { "status": "COMPLETED", "rows_valid": 33, "rows_invalid": 3 }, "history": { "outcomes": 192, "...": 0 } }
+```
 
 ## 14.7 Brand administration
 

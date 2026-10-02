@@ -14,7 +14,9 @@
     "test": "vitest run --exclude \"test/emulator/**\"",
     "test:emulator": "vitest run test/emulator",
     "seed:platform-admin": "tsx --env-file-if-exists=.env scripts/seed-platform-admin.ts",
-    "seed:demo": "tsx --env-file-if-exists=.env scripts/seed-demo.ts"
+    "seed:demo": "tsx --env-file-if-exists=.env scripts/seed-demo.ts",
+    "demo:check": "tsx scripts/demoCheck.ts",
+    "seed:live": "tsx --env-file-if-exists=.env scripts/seed-live.ts"
   },
   "dependencies": {
     "cors": "^2.8.6",

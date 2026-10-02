@@ -58,6 +58,27 @@ const storeFacts = (s: StoreOption) =>
 export const mapsLink = (latitude: number, longitude: number) =>
   `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
 
+/** "30 Sep, 18:00" in the store's timezone. */
+export function formatStockTime(iso: string, timezone: string): string {
+  const d = new Date(iso);
+  const day = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, day: 'numeric', month: 'short' }).format(d);
+  const time = new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(d);
+  return `${day}, ${time}`;
+}
+
+/** Stale stock is never claimed without saying when it was last updated (Change 14, G1). */
+export function stockNote(s: Pick<StoreOption, 'stale' | 'stock_updated_at' | 'timezone' | 'store_name'>): string {
+  if (!s.stale) return '';
+  return s.stock_updated_at
+    ? ` ${s.store_name}'s stock was last updated ${formatStockTime(s.stock_updated_at, s.timezone)} (store time), so it may have changed.`
+    : ` We don't know when ${s.store_name}'s stock was last updated, so it may have changed.`;
+}
+
 const holdOption = (s: StoreOption) => ({
   option_id: OPTION.hold(s.store_id),
   label: `Hold 1 at ${shortName(s.store_name)} (${storeFacts(s)})`,
@@ -85,7 +106,7 @@ export function storeProposalReply(input: {
   const lastUnit = best.available_quantity === 1 ? ' Only 1 left.' : '';
   const text =
     `${input.prefix ? `${input.prefix} ` : ''}${variantLabel(input.variant)} is available today at ` +
-    `${best.store_name} (${storeFacts(best)}).${lastUnit}${approximateNote(input.origin)} ` +
+    `${best.store_name} (${storeFacts(best)}).${lastUnit}${stockNote(best)}${approximateNote(input.origin)} ` +
     (canHold ? 'I can hold one for you to pick up and pay at the store.' : 'You can pick it up and pay at the store.');
   const options = canHold ? [holdOption(best)] : [];
   if (others.length > 0) options.push({ option_id: OPTION.otherStores, label: 'Other stores' });
@@ -102,7 +123,13 @@ export function otherStoresReply(input: {
 }): Reply {
   const shown = input.stores.slice(0, 3);
   const lines = shown.map(
-    (s) => `• ${s.store_name} — ${storeFacts(s)}${s.available_quantity === 1 ? ', only 1 left' : ''}`,
+    (s) =>
+      `• ${s.store_name} — ${storeFacts(s)}${s.available_quantity === 1 ? ', only 1 left' : ''}` +
+      (s.stale && s.stock_updated_at
+        ? `, stock as of ${formatStockTime(s.stock_updated_at, s.timezone)}`
+        : s.stale
+          ? ', stock update time unknown'
+          : ''),
   );
   const options = input.canHold === false ? [] : shown.map(holdOption);
   if (input.onlineAvailable) options.push({ option_id: OPTION.buyOnline, label: 'Buy online' });
@@ -173,7 +200,7 @@ export function noEligibleStoreReply(input: {
   if (input.alternative) {
     const { variant, store } = input.alternative;
     parts.push(
-      `${variantLabel(variant)} (${formatPrice(variant.price, variant.currency)}) is available today at ${store.store_name} (${storeFacts(store)}).`,
+      `${variantLabel(variant)} (${formatPrice(variant.price, variant.currency)}) is available today at ${store.store_name} (${storeFacts(store)}).${stockNote(store)}`,
     );
     if (input.canHold !== false) options.push(holdOption(store));
   }

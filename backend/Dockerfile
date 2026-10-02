@@ -21,6 +21,8 @@ COPY frontend/package.json frontend/
 RUN npm ci --workspace backend --include-workspace-root=false --omit=dev --ignore-scripts \
   && npm cache clean --force
 COPY --from=build /app/backend/dist backend/dist
+# Reset demo and seed:live read the judge stock fixture at runtime (BundledFixtureSource).
+COPY backend/fixtures backend/fixtures
 
 # Run as the unprivileged user shipped with the node image.
 USER node

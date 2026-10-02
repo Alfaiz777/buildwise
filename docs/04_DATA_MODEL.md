@@ -107,7 +107,10 @@ messaging
 follow_up_policy
 online_store
 outcome_policy
+retail_freshness_hours
 ```
+
+`retail_freshness_hours` (default 24) is how old a store's stock row may be before replies and consoles say when it was last updated (`00` §11.8 Change 14, G1).
 
 `outcome_policy.attribution_window_days` (default 7; the local demo sets `attribution_window_minutes`) is how long a journey stays open for online-order attribution and before it closes as `NONE` (`00` §11.8 Change 13, F5).
 
@@ -1033,6 +1036,8 @@ AuditEvent
 The audit trail should answer:
 
 > What happened, who/what initiated it, what was proposed, what was allowed, and what actually executed?
+
+M7 (audit completeness, `08` §15a): **every mutating route writes at least one AuditEvent** — enforced by a test that scans the routes. Actions added in M7: `CUSTOMER_MESSAGE_RECEIVED` (actor `CUSTOMER`, every inbound message), `AI_DECISION_RECORDED` (actor `AGENT`, result `DENIED` when the guardrail blocked; `reason_code` = action:source[:reason]), `INTENT_EVENT_RECORDED` (storefront events), `DEMO_SHOPPER_LINKED`, `ORDER_RECORDED` (`ATTRIBUTED_BW_REF` / `ATTRIBUTED_SESSION` / `UNATTRIBUTED`), `DUE_WORK_PROCESSED` (counts) and `DEMO_RESET` (`DENIED` for a non-demo brand). Audit events carry IDs and codes only — never contact details or message text. The newest event's `timestamp` is the brand's "last activity" in the Platform Admin console.
 
 ## 18.0 PlatformAuditEvent
 

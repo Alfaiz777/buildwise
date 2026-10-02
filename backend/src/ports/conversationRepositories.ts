@@ -344,4 +344,6 @@ export interface WebhookReceiptRepository {
   ): Promise<{ state: 'NEW' } | { state: 'DUPLICATE'; status: 'PROCESSING' | 'PROCESSED'; result: unknown }>;
   complete(key: string, result: unknown): Promise<void>;
   fail(key: string): Promise<void>;
+  /** M7: the receipt's current state, for a replay that arrives while the first delivery is processing. */
+  peek(key: string): Promise<{ status: 'PROCESSING' | 'PROCESSED' | 'FAILED'; result: unknown } | null>;
 }

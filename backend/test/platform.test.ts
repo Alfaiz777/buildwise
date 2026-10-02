@@ -1,4 +1,5 @@
 import request from 'supertest';
+import { buildScenarioWorld } from './scenarioWorld.js';
 import { describe, expect, it } from 'vitest';
 import { bearer, buildTestWorld } from './helpers.js';
 
@@ -23,11 +24,35 @@ describe('platform administration (/api/platform/*)', () => {
       'brand_admin_user_id',
       'brand_id',
       'created_at',
+      'last_activity_at',
       'name',
+      'onboarding',
       'status',
     ]);
     expect(res.body.brands[0].brand_admin_user_id).toBe('admin_a');
     expect(res.body.brands[2].brand_admin_user_id).toBeNull();
+  });
+
+  it('shows each brand’s onboarding checklist and last activity — counts only, no customer data (M7)', async () => {
+    const s = await buildScenarioWorld();
+    await s.startFromStore('c1', 'hi');
+    await s.share('c1');
+    await s.tap('c1', 'hold:sc_A');
+    const res = await asPlatform(s.world.app).get('/api/platform/brands');
+    const a = res.body.brands.find((b: { brand_id: string }) => b.brand_id === 'brand_A');
+    expect(a.onboarding).toMatchObject({
+      brand_admin_provisioned: true,
+      catalog: { synced: expect.any(Boolean), failed: false },
+      stores: { total: expect.any(Number), with_stock: expect.any(Number) },
+      sku_mapping: { auto_matched: expect.any(Number), needs_attention: expect.any(Number) },
+      retail_admins: { provisioned: expect.any(Number), stores_with_retailer: expect.any(Number) },
+      channel: { simulator: true, whatsapp_number_configured: expect.any(Boolean) },
+    });
+    expect(a.onboarding.stores.with_stock).toBeGreaterThan(0);
+    expect(a.onboarding.retail_admins.provisioned).toBeGreaterThan(0);
+    expect(a.last_activity_at).toEqual(expect.any(String));
+    const text = JSON.stringify(res.body);
+    expect(text).not.toMatch(/@|\+91|\b\d{10}\b|cus_|sim:|conversation|message|customer|reservation_id|pickup/i);
   });
 
   it('creates a brand with a server-generated ID and writes platform + brand audit events', async () => {

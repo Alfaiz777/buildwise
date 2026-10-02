@@ -67,6 +67,8 @@ const store = (id: string, km: number, available: number): StoreOption => ({
   open_until: '21:00',
   available_quantity: available,
   offline_price: 795,
+  stock_updated_at: '2026-10-07T04:00:00.000Z',
+  stale: false,
 });
 
 describe('MockAgentRuntime message rules (docs/05 §9.2)', () => {

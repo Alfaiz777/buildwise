@@ -9,7 +9,7 @@ describe('app foundation', () => {
   it('GET /api/health is public and needs no Firebase', async () => {
     const res = await request(app).get('/api/health');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: 'ok' });
+    expect(res.body).toEqual({ status: 'ok', version: 'dev', commit: null, profile: 'local' });
   });
 
   it('sets a request ID and no-store on every response', async () => {

@@ -459,6 +459,16 @@ export class FirestoreAuditRepository implements AuditRepository {
     await ref.create(data);
   }
 
+  async latestBrandEventAt(brandId: string): Promise<string | null> {
+    const snap = await this.db
+      .collection(`brands/${brandId}/auditEvents`)
+      .orderBy('timestamp', 'desc')
+      .limit(1)
+      .select('timestamp')
+      .get();
+    return snap.empty ? null : isoOrNull(snap.docs[0]!.get('timestamp'));
+  }
+
   async listPlatformEvents(limit: number): Promise<PlatformAuditRecord[]> {
     const snap = await this.db.collection('platformAuditEvents').orderBy('timestamp', 'desc').limit(limit).get();
     return snap.docs.map((doc) => {

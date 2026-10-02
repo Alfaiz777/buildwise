@@ -153,7 +153,10 @@ export class FollowUpService {
     }
   }
 
-  async processDue(brandId: string): Promise<ProcessDueResult> {
+  async processDue(
+    brandId: string,
+    actor: { type: 'USER' | 'SYSTEM'; id: string } = { type: 'SYSTEM', id: 'scheduler' },
+  ): Promise<ProcessDueResult> {
     const brand = await this.deps.brands.getById(brandId);
     const result: ProcessDueResult = {
       abandoned: 0,
@@ -198,6 +201,13 @@ export class FollowUpService {
     }
     // M6: NONE only after the attribution window, and only from this sweep (Change 13, F5).
     if (this.deps.closeJourneys) result.outcomesClosed = await this.deps.closeJourneys(brandId);
+    await this.deps.events.audit(brandId, {
+      action: 'DUE_WORK_PROCESSED',
+      targetType: 'BRAND',
+      targetId: brandId,
+      reasonCode: `sent=${result.sent},suppressed=${result.suppressed},abandoned=${result.abandoned},expired=${result.reservationsExpired},closed=${result.outcomesClosed}`,
+      actor,
+    });
     return result;
   }
 

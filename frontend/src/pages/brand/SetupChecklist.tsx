@@ -36,14 +36,16 @@ export function SetupChecklist(props: {
     {
       title: 'Catalog synced',
       done: connection?.status === 'CONNECTED' && !!connection.last_sync_at,
-      detail: connection?.last_sync_at
-        ? `${connection.product_count} products · ${connection.variant_count} variants · last sync ${formatDateTime(connection.last_sync_at)}`
-        : connection?.last_error
-          ? connection.last_error.message
-          : 'Not synced yet.',
+      detail: connection?.last_error ? (
+        <span role="alert">Sync failed — {connection.last_error.message} Try again in a moment.</span>
+      ) : connection?.last_sync_at ? (
+        `${connection.product_count} products · ${connection.variant_count} variants · last sync ${formatDateTime(connection.last_sync_at)}`
+      ) : (
+        'Not synced yet.'
+      ),
       action: (
         <button type="button" onClick={props.onSync} disabled={props.syncing}>
-          {props.syncing ? 'Syncing…' : 'Sync catalog'}
+          {props.syncing ? 'Syncing…' : connection?.last_error ? 'Retry sync' : 'Sync catalog'}
         </button>
       ),
     },
