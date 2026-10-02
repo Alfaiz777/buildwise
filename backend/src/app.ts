@@ -5,6 +5,7 @@ import type { AccountService } from './application/accountService.js';
 import type { CatalogService } from './application/catalogService.js';
 import type { CommerceSyncService } from './application/commerceSyncService.js';
 import type { ConversationQueryService } from './application/conversationQueryService.js';
+import type { DemoResetService } from './application/demoResetService.js';
 import type { DemoStorefrontService } from './application/demoStorefrontService.js';
 import type { FollowUpService } from './application/followUpService.js';
 import type { IntentService } from './application/intentService.js';
@@ -31,6 +32,7 @@ import { brandsRouter } from './routes/brands.js';
 import { connectionsRouter, integrationsRouter, productsRouter } from './routes/catalog.js';
 import { brandConversationsRouter, simulatorRouter } from './routes/conversations.js';
 import { demoStorefrontRouter } from './routes/demoStorefront.js';
+import { brandDemoRouter, demoRouter } from './routes/demo.js';
 import { healthRouter } from './routes/health.js';
 import { intentsRouter } from './routes/intents.js';
 import { localFilesRouter } from './routes/localFiles.js';
@@ -41,7 +43,7 @@ import { retailImportsRouter } from './routes/retailImports.js';
 import { reservationsRouter } from './routes/reservations.js';
 
 export interface AppDeps {
-  config: Pick<Config, 'corsAllowedOrigins'>;
+  config: Pick<Config, 'corsAllowedOrigins'> & Partial<Pick<Config, 'profile' | 'demo' | 'build'>>;
   logger: Logger;
   verifier: TokenVerifier;
   repositories: {
@@ -67,6 +69,8 @@ export interface AppDeps {
     insights: InsightsService;
     /** LOCAL PROFILE ONLY: the demo storefront (never wired in gcp). */
     demoStorefront?: DemoStorefrontService;
+    /** Reset demo; refuses unless DEMO_MODE is on and the brand is allowlisted. */
+    demoReset?: DemoResetService;
   };
   /** Local profile only: receives browser uploads for LocalFileStorageProvider. */
   localUploads?: LocalUploadReceiver;
@@ -98,7 +102,12 @@ export function createApp(deps: AppDeps): Express {
   app.use(express.json({ limit: '100kb' }));
 
   // Public routes.
-  app.use('/api', healthRouter());
+  app.use(
+    '/api',
+    healthRouter({ version: config.build?.version, commit: config.build?.commit, profile: config.profile }),
+  );
+  // PUBLIC: the judged demo's login panel (DEMO_MODE only returns logins).
+  app.use('/api', demoRouter(config.demo));
   // PUBLIC storefront intent endpoint: origin allowlist + rate limits, no console auth (docs/06 §14.1).
   app.use('/api', intentsRouter(services.intents));
   if (services.demoStorefront) {
@@ -128,6 +137,7 @@ export function createApp(deps: AppDeps): Express {
     brandConversationsRouter(services.conversations, services.followUps, services.handoff),
   );
   tenant.use('/brand', requireScope('BRAND'), insightsRouter(services.insights));
+  if (services.demoReset) tenant.use('/brand', requireScope('BRAND'), brandDemoRouter(services.demoReset));
   tenant.use('/channels/simulator', requireScope('BRAND'), simulatorRouter(services.simulator, services.conversations));
   if (localUploads) tenant.use('/local-files', requireScope('BRAND'), localFilesRouter(localUploads));
   // Retailer Console: store-scoped, RETAIL_ADMIN only.
@@ -138,6 +148,6 @@ export function createApp(deps: AppDeps): Express {
   app.use('/api', api);
 
   app.use(notFoundHandler);
-  app.use(errorHandler(logger));
+  app.use(errorHandler(logger, (config.profile ?? 'local') === 'local'));
   return app;
 }

@@ -30,11 +30,16 @@
  * proactive message. Demo shoppers (mock commerce customers 3002 opted in, 3003 not) are
  * linked when "Sign in as demo shopper" is used on /demo-store.
  *
- * M6: 4 weeks of synthetic history (scripts/demoHistory.ts, every document marked
+ * M6: 4 weeks of synthetic history (application/demoHistory.ts, every document marked
  * demo_history: true) and a 10-minute local attribution window.
  *
- * M5: reservations are enabled (hold 120 min, max 2), and "Buy online" links to the demo
- * storefront product page. The MockAgentRuntime answers in the simulator.
+ * M5: reservations are enabled (max 2; M7: hold DEMO_HOLD_MINUTES, default 20), and
+ * "Buy online" links to the demo storefront product page. MockAgentRuntime answers.
+ *
+ * M7: brd_demo is built by DemoResetService.rebuild() — the same code as "Reset demo" — and
+ * imports fixtures/retail/demo-judge-retail.csv: the same stores and row errors, but shared-demo headroom (Serum 30 ml: Bandra 20, Andheri 25; Powai 0 and Serum
+ * 50 ml none in Mumbai) and Mumbai stores open 00:00–23:59, so a judge in any timezone can
+ * reserve (Change 14, G5). demo-retail.csv (10:00–21:00) stays the fixture for the tests.
  *
  * Every password: buildwise-demo-1
  * Usage: npm run seed:demo   (re-runnable; resets the two fixture brands, upserts the users)
@@ -44,12 +49,12 @@ import { fileURLToPath } from 'node:url';
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 import type { Auth } from 'firebase-admin/auth';
 import { buildContainer } from '../src/composition/container.js';
-import { loadConfig } from '../src/config/env.js';
+import { loadConfig, LOCAL_DEMO_PASSWORD } from '../src/config/env.js';
 import { initFirebase } from '../src/firebase/admin.js';
 import { silentLogger } from '../src/lib/logger.js';
-import { writeDemoHistory } from './demoHistory.js';
+import { demoBrandSettings } from '../src/application/demoSetup.js';
 
-const PASSWORD = 'buildwise-demo-1';
+const PASSWORD = LOCAL_DEMO_PASSWORD;
 const SEED_ACTOR = { type: 'SYSTEM' as const, id: 'seed-demo' };
 
 const config = loadConfig();
@@ -63,35 +68,18 @@ const { commerceSync, retailImports } = container.appDeps.services;
 
 const now = FieldValue.serverTimestamp();
 
-/** Local demo brand settings (docs/04 §3), with short follow-up delays for the demo. */
-const settings = (displayName: string, whatsappNumber: string) => ({
-  allowed_storefront_origins: ['http://localhost:5173'],
-  reservation_policy: { reservations_enabled: true, hold_minutes: 120, max_quantity_per_reservation: 2 },
-  human_handoff_rules: { enabled: true },
-  messaging: { display_name: displayName, whatsapp_number: whatsappNumber }, // placeholder number
-  // M5: the "Buy online" link opens the product on the local demo storefront.
-  online_store: { product_url_template: 'http://localhost:5173/demo-store#product={product_id}' },
-  // M6: short local attribution window so a NONE outcome can be seen during a demo (default 7 days).
-  outcome_policy: { attribution_window_minutes: 10 },
-  follow_up_policy: {
-    inactivity_minutes: 1,
-    frequency_hours: 24,
-    types: {
-      SEARCH_EXPLORATION: { enabled: true, delay_minutes: 2, priority: 'NORMAL' },
-      PRODUCT_CONSIDERATION: { enabled: true, delay_minutes: 2, priority: 'NORMAL' },
-      CART_ABANDONMENT: { enabled: true, delay_minutes: 2, priority: 'NORMAL' },
-      CHECKOUT_ABANDONMENT: { enabled: true, delay_minutes: 1, priority: 'HIGH' },
-      STORE_ORIENTED: { enabled: true, delay_minutes: 1, priority: 'NORMAL' },
-    },
-  },
-});
-
 async function brand(db: Firestore, brandId: string, name: string) {
   await db.doc(`brands/${brandId}`).set({
     brand_id: brandId,
     name,
     status: 'ACTIVE',
-    settings: settings(name, brandId === 'brd_demo' ? '910000000001' : '910000000002'),
+    // The same settings Reset demo writes (application/demoSetup.ts).
+    settings: demoBrandSettings({
+      current: {},
+      brandName: name,
+      holdMinutes: config.demo.holdMinutes,
+      whatsappNumber: brandId === 'brd_demo' ? '910000000001' : '910000000002',
+    }),
     brand_admin_user_id: null,
     created_at: now,
     updated_at: now,
@@ -166,14 +154,22 @@ await retailer(db, 'brd_demo', 'rtl_north', 'North Retail');
 await retailer(db, 'brd_demo', 'rtl_pune', 'Pune Retail');
 await retailer(db, 'brd_other', 'rtl_other', 'Other Brand Retail');
 
-console.log('Catalogue sync (mock commerce):');
-for (const brandId of ['brd_demo', 'brd_other']) {
-  const c = await commerceSync.sync(brandId, SEED_ACTOR);
-  console.log(`  ${brandId}: ${c.productCount} products, ${c.variantCount} variants from ${c.source}`);
-}
+// brd_demo: exactly what "Reset demo" rebuilds — sync, judge stock fixture, synthetic history.
+console.log('brd_demo (same steps as Reset demo):');
+const demo = await container.demoReset.rebuild('brd_demo', SEED_ACTOR);
+console.log(`  catalogue: ${demo.catalog.products} products, ${demo.catalog.variants} variants (mock commerce)`);
+console.log(
+  `  stock: import ${demo.stock.status}, ${demo.stock.rowsValid} rows valid, ${demo.stock.rowsInvalid} row errors`,
+);
+console.log(
+  `  synthetic history (demo_history: true): ${Object.entries(demo.history)
+    .map(([k, v]) => `${k} ${v}`)
+    .join(', ')}`,
+);
 
-console.log('Retail import (stores, stock, SKU mappings):');
-await importRetailFile('brd_demo', 'demo-retail.csv');
+console.log('brd_other (tenant-isolation checks):');
+const other = await commerceSync.sync('brd_other', SEED_ACTOR);
+console.log(`  catalogue: ${other.productCount} products, ${other.variantCount} variants`);
 await importRetailFile('brd_other', 'other-brand-retail.csv');
 
 console.log(`Demo users (password for every user: ${PASSWORD}):`);
@@ -196,13 +192,4 @@ await db.doc('brands/brd_demo').update({ brand_admin_user_id: demoAdmin });
 await db.doc('brands/brd_other').update({ brand_admin_user_id: otherAdmin });
 await db.doc('brands/brd_demo/stores/st_north_1').update({ retail_admin_user_id: north1 });
 await db.doc('brands/brd_demo/stores/st_north_2').update({ retail_admin_user_id: north2 });
-
-// M6: 4 weeks of deterministic, clearly flagged synthetic history for the Outcomes screen.
-const history = await writeDemoHistory(db, { brandId: 'brd_demo', now: new Date() });
-console.log('Synthetic demo history (demo_history: true):');
-console.log(
-  `  ${Object.entries(history.counts)
-    .map(([k, v]) => `${k} ${v}`)
-    .join(', ')}`,
-);
 process.exit(0);

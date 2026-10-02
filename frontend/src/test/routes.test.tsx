@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiContext, type MeResponse } from '../api/apiContext';
@@ -41,7 +41,22 @@ const ME: Record<'platform' | 'brandAdmin' | 'retailAdmin', MeResponse> = {
 
 /** One brand with its Brand Admin already provisioned, one without. */
 const BRANDS = [
-  { brand_id: 'brd_1', name: 'Has Admin', status: 'ACTIVE', created_at: null, brand_admin_user_id: 'u_admin' },
+  {
+    brand_id: 'brd_1',
+    name: 'Has Admin',
+    status: 'ACTIVE',
+    created_at: null,
+    brand_admin_user_id: 'u_admin',
+    last_activity_at: '2026-10-05T06:00:00.000Z',
+    onboarding: {
+      brand_admin_provisioned: true,
+      catalog: { synced: true, failed: false, last_sync_at: '2026-10-05T06:00:00.000Z', product_count: 10 },
+      stores: { total: 5, with_stock: 4 },
+      sku_mapping: { auto_matched: 18, needs_attention: 1 },
+      retail_admins: { provisioned: 2, stores_with_retailer: 4 },
+      channel: { simulator: true, whatsapp_number_configured: true },
+    },
+  },
   { brand_id: 'brd_2', name: 'Needs Admin', status: 'ACTIVE', created_at: null, brand_admin_user_id: null },
 ];
 const BRAND_USERS = [
@@ -167,6 +182,7 @@ const STOCK = {
       available_quantity: 2,
       availability_status: 'LOW_STOCK',
       last_updated_at: '2026-10-05T06:30:00.000Z',
+      stale: true,
     },
   ],
 };
@@ -231,7 +247,7 @@ function apiFor(me: MeResponse, fixtures: Fixtures = FULL): ApiClient {
   return {
     get: get as ApiClient['get'],
     post: post as ApiClient['post'],
-    patch: vi.fn() as ApiClient['patch'],
+    patch: vi.fn(async () => ({})) as ApiClient['patch'],
     upload: upload as ApiClient['upload'],
   };
 }
@@ -296,9 +312,42 @@ describe('scope routing — each of the three roles lands in its own console are
     renderAt('/', signedIn, apiFor(ME.platform));
     expect(await screen.findByText('· Platform Admin')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Brands' })).toBeInTheDocument();
-    expect(screen.getByText('PLATFORM_ADMIN')).toBeInTheDocument();
+    expect(screen.getByText('Platform Admin', { selector: '.badge' })).toBeInTheDocument();
     expect(await screen.findByRole('option', { name: 'Needs Admin' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Has Admin' })).not.toBeInTheDocument();
+  });
+
+  it('PLATFORM_ADMIN sees each brand’s onboarding checklist and last activity, never customer data', async () => {
+    renderAt('/', signedIn, apiFor(ME.platform));
+    const row = (await screen.findByText('Has Admin')).closest('tr')!;
+    expect(within(row).getByText('Active')).toBeInTheDocument();
+    expect(within(row).getByText('10 products')).toBeInTheDocument();
+    expect(within(row).getByText('4 of 5 with stock')).toBeInTheDocument();
+    expect(within(row).getByText('18 matched, 1 need attention')).toBeInTheDocument();
+    expect(within(row).getByText('2 of 4 stores')).toBeInTheDocument();
+    expect(within(row).getByText('WhatsApp number set, simulator')).toBeInTheDocument();
+    expect(within(row).queryByText('none yet')).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/cus_|sim:|\+91|\b\d{10}\b/);
+  });
+
+  it('PLATFORM_ADMIN suspends with a reason (explained first) and can reactivate', async () => {
+    const api = apiFor(ME.platform);
+    renderAt('/', signedIn, api);
+    const row = (await screen.findByText('Has Admin')).closest('tr')!;
+    fireEvent.click(within(row).getByRole('button', { name: 'Suspend' }));
+    const dialog = screen.getByRole('form', { name: 'Suspend Has Admin' });
+    expect(dialog).toHaveTextContent('Your brand is suspended. Contact Buildwise support.');
+    expect(api.patch).not.toHaveBeenCalled();
+    fireEvent.change(within(dialog).getByLabelText('Reason (kept in the audit log)'), {
+      target: { value: 'Unpaid invoice' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Suspend brand' }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith('/api/platform/brands/brd_1', {
+        status: 'SUSPENDED',
+        reason: 'Unpaid invoice',
+      }),
+    );
   });
 
   it('BRAND_ADMIN → Brand Console shows Retailer → Stores → Retail Admin, with no brand-admin or store-ID UI', async () => {
@@ -360,7 +409,9 @@ describe('scope routing — each of the three roles lands in its own console are
     renderAt('/', signedIn, api);
     const row = (await screen.findByText('DBC-VCSERUM-30')).closest('tr')!;
     expect(within(row).getByText('Vitamin C Glow Serum')).toBeInTheDocument();
-    expect(within(row).getByText('low stock')).toBeInTheDocument();
+    expect(within(row).getByText('Low stock')).toBeInTheDocument();
+    expect(within(row).getByText('stale')).toBeInTheDocument(); // older than the brand's freshness window
+    expect(screen.getByText(/Some stock rows are out of date/)).toBeInTheDocument();
     expect(row.textContent).toContain('312'); // quantity 3, reserved 1, available 2
     const paths = (api.get as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
     expect(paths.filter((p: string) => p.includes('/inventory'))).toEqual(['/api/retail/stores/st_1/inventory']);
@@ -409,6 +460,21 @@ describe('Brand Console — M3 catalog & store truth', () => {
     expect(screen.getByText('1 of 2 stores have their Retail Admin')).toBeInTheDocument();
     const items = screen.getAllByRole('listitem').filter((li) => li.closest('.checklist'));
     expect(items.map((li) => li.className)).toEqual(['done', 'done', 'todo', 'todo']);
+  });
+
+  it('setup checklist: a failed sync says so and offers "Retry sync" (docs/08 §13)', async () => {
+    const failed = {
+      ...CONNECTIONS[0],
+      status: 'ERROR',
+      last_error: { code: 'COMMERCE_SYNC_FAILED', message: 'The commerce provider could not be reached.' },
+    };
+    const api = apiFor(ME.brandAdmin, { ...FULL, '/api/brand/connections': { connections: [failed] } });
+    renderAt('/', signedIn, api);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Sync failed — The commerce provider could not be reached. Try again in a moment.',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry sync' }));
+    expect(api.post).toHaveBeenCalledWith('/api/integrations/shopify/sync', {});
   });
 
   it('catalog & mapping: variants with SKU, price and mapping status; unmapped retail SKUs stay visible', async () => {

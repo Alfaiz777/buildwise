@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/authContext';
+import { DemoLoginPanel } from './demo/DemoLoginPanel';
 
 function friendlyAuthError(err: unknown): string {
   const code = (err as { code?: string }).code ?? '';
@@ -73,6 +74,13 @@ export function LoginPage() {
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
+      <DemoLoginPanel
+        onUse={(login) => {
+          setEmail(login.email);
+          setPassword(login.password);
+          setError(null);
+        }}
+      />
     </main>
   );
 }

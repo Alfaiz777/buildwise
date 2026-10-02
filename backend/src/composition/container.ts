@@ -39,6 +39,9 @@ import { AccountService } from '../application/accountService.js';
 import { CatalogService } from '../application/catalogService.js';
 import { CommerceSyncService } from '../application/commerceSyncService.js';
 import { PlatformAdminService } from '../application/platformAdminService.js';
+import { DemoResetService } from '../application/demoResetService.js';
+import { BundledFixtureSource } from '../adapters/fixtures/bundledFixtureSource.js';
+import { FirestoreDemoDataStore } from '../adapters/firestore/demoDataStore.js';
 import { RetailImportService } from '../application/retailImportService.js';
 import { StoreService } from '../application/storeService.js';
 import { TenantAdminService } from '../application/tenantAdminService.js';
@@ -102,12 +105,25 @@ export function createProviders(config: Pick<Config, 'adapters' | 'localDataDir'
   };
 }
 
+/**
+ * Local-only surfaces (docs/07 §19): the demo storefront (with its demo shopper and demo
+ * order endpoints) and the browser upload target exist only in the local profile.
+ */
+export function profileFeatures(config: Pick<Config, 'profile' | 'adapters'>) {
+  return {
+    demoStorefront: config.profile === 'local',
+    localUploads: config.profile === 'local' && config.adapters.fileStorage === 'local',
+  };
+}
+
 export interface Container {
   config: Config;
   providers: Providers;
   appDeps: AppDeps;
   /** StoreService (docs/06 §4); the agent tools apply the same store-truth rules. */
   storeService: StoreService;
+  /** Reset demo; the seed scripts call rebuild() / writeHistory() directly. */
+  demoReset: DemoResetService;
 }
 
 /** `now` is injectable for end-to-end tests (real due_at values without real waiting). */
@@ -126,10 +142,44 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
   const inventory = new FirestoreInventoryRepository(db);
   const connections = new FirestoreConnectionRepository(db);
   const imports = new FirestoreRetailImportRepository(db);
+  const customers = new FirestoreCustomerRepository(db);
+  const commerceSync = new CommerceSyncService({
+    commerce: providers.commerce,
+    products,
+    mappings,
+    connections,
+    audit,
+  });
+  const retailImports = new RetailImportService({
+    files: providers.files,
+    parser: new CsvRetailFileParser(),
+    imports,
+    stores,
+    retailers,
+    products,
+    mappings,
+    inventory,
+    audit,
+  });
+  // Reset demo (Change 14, G4): refuses everything unless DEMO_MODE is on and the brand is allowlisted.
+  const demoReset = new DemoResetService({
+    demo: config.demo,
+    data: new FirestoreDemoDataStore(db),
+    fixtures: new BundledFixtureSource(),
+    files: providers.files,
+    brands,
+    stores,
+    products,
+    customers,
+    commerceSync,
+    retailImports,
+    audit,
+    now: options.now,
+  });
   const conversation = createConversationModule({
     brands,
     products,
-    customers: new FirestoreCustomerRepository(db),
+    customers,
     visitors: new FirestoreVisitorLinkRepository(db),
     intents: new FirestoreIntentRepository(db),
     tokens: new FirestoreIntentTokenRepository(db),
@@ -149,35 +199,35 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     logger,
     now: options.now,
     // The demo storefront and its demo shopper / order endpoints exist only in the local profile.
-    demoStorefront: config.profile === 'local' ? { commerce: providers.commerce } : undefined,
+    demoStorefront: profileFeatures(config).demoStorefront ? { commerce: providers.commerce } : undefined,
   });
 
   return {
     config,
     providers,
     storeService: new StoreService({ stores, inventory }),
+    demoReset,
     appDeps: {
       config,
       logger,
       verifier: new FirebaseTokenVerifier(auth),
       repositories: { users, brands, retailers, stores },
       services: {
-        platformAdmin: new PlatformAdminService({ brands, users, identity, audit }),
-        tenantAdmin: new TenantAdminService({ users, retailers, stores, inventory, identity, audit }),
-        account: new AccountService({ stores, inventory, products }),
-        commerceSync: new CommerceSyncService({ commerce: providers.commerce, products, mappings, connections, audit }),
-        catalog: new CatalogService({ products, mappings, inventory }),
-        retailImports: new RetailImportService({
-          files: providers.files,
-          parser: new CsvRetailFileParser(),
-          imports,
+        platformAdmin: new PlatformAdminService({
+          brands,
+          users,
+          identity,
+          audit,
           stores,
-          retailers,
-          products,
+          connections,
           mappings,
           inventory,
-          audit,
         }),
+        tenantAdmin: new TenantAdminService({ users, retailers, stores, inventory, identity, audit }),
+        account: new AccountService({ stores, inventory, products, brands, now: options.now }),
+        commerceSync,
+        catalog: new CatalogService({ products, mappings, inventory }),
+        retailImports,
         intents: conversation.intents,
         simulator: conversation.simulator,
         conversations: conversation.queries,
@@ -193,8 +243,12 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
           now: options.now ?? (() => new Date()),
         }),
         demoStorefront: conversation.demoStorefront,
+        demoReset,
       },
-      localUploads: providers.files instanceof LocalFileStorageProvider ? providers.files : undefined,
+      localUploads:
+        profileFeatures(config).localUploads && providers.files instanceof LocalFileStorageProvider
+          ? providers.files
+          : undefined,
     },
   };
 }

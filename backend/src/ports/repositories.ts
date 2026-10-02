@@ -342,6 +342,8 @@ export interface AuditRepository {
   recordPlatformEvent(event: PlatformAuditInput): Promise<void>;
   recordBrandEvent(event: BrandAuditInput): Promise<void>;
   listPlatformEvents(limit: number): Promise<PlatformAuditRecord[]>;
+  /** M7: the newest brand AuditEvent's time (the brand's "last activity"), or null. */
+  latestBrandEventAt(brandId: string): Promise<string | null>;
 }
 
 export class MalformedDocumentError extends Error {

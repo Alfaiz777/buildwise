@@ -76,6 +76,9 @@ export interface StoreOption {
   open_until: string | null;
   available_quantity: number;
   offline_price: number | null;
+  /** M7 (Change 14, G1): when this store's stock row was last updated, and whether that is older than the brand allows. */
+  stock_updated_at: string | null;
+  stale: boolean;
 }
 
 export interface ExcludedStoreView {

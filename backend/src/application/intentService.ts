@@ -185,6 +185,13 @@ export class IntentService {
     });
 
     if (replay) return { accepted: true, replay, intent: stored, whatsapp: null };
+    await this.deps.events.audit(brandId, {
+      action: 'INTENT_EVENT_RECORDED',
+      targetType: 'INTENT',
+      targetId: intentId,
+      reasonCode: input.eventType,
+      actor: { type: 'SYSTEM', id: 'storefront' },
+    });
 
     const whatsapp = input.eventType === 'WHATSAPP_CLICK' ? await this.issueToken(brand, stored, now) : null;
     await this.deps.onIntentUpdated?.(stored);

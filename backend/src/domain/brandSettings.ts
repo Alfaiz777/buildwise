@@ -29,6 +29,20 @@ export function resolveMessagingSettings(settings: Record<string, unknown>, bran
   };
 }
 
+export const DEFAULT_RETAIL_FRESHNESS_HOURS = 24;
+
+/** brand.settings.retail_freshness_hours (Change 14, G1): how old stock may be before it is called out. */
+export function resolveFreshnessHours(settings: Record<string, unknown>): number {
+  const h = settings.retail_freshness_hours;
+  return typeof h === 'number' && h > 0 && h <= 24 * 30 ? h : DEFAULT_RETAIL_FRESHNESS_HOURS;
+}
+
+/** True when the stock row is older than the freshness window (or has no timestamp at all). */
+export function isStockStale(lastUpdatedAt: string | null, now: Date, freshnessHours: number): boolean {
+  if (!lastUpdatedAt) return true;
+  return now.getTime() - new Date(lastUpdatedAt).getTime() > freshnessHours * 60 * 60_000;
+}
+
 /** brand.settings.allowed_storefront_origins, exact origin strings only. */
 export function allowedStorefrontOrigins(settings: Record<string, unknown>): string[] {
   const list = settings.allowed_storefront_origins;

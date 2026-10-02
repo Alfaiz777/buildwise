@@ -1,10 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config/env.js';
 
+/** Fake values for every gcp setting (Change 14, G7) — never real secrets. */
+export const GCP_REQUIRED_FAKE = {
+  GCP_REGION: 'asia-south1',
+  VERTEX_MODEL: 'gemini-test-model',
+  VERTEX_LOCATION: 'asia-south1',
+  WHATSAPP_ACCESS_TOKEN: 'fake-wa-token',
+  WHATSAPP_PHONE_NUMBER_ID: '000000000000',
+  WHATSAPP_APP_SECRET: 'fake-app-secret',
+  WHATSAPP_VERIFY_TOKEN: 'fake-verify',
+  SHOPIFY_SHOP_DOMAIN: 'demo-shop.myshopify.com',
+  SHOPIFY_ADMIN_TOKEN: 'fake-shopify-token',
+  SHOPIFY_WEBHOOK_SECRET: 'fake-hook-secret',
+  BIGQUERY_DATASET: 'buildwise_events',
+  GCS_BUCKET: 'buildwise-uploads-test',
+  DEMO_MODE: 'false',
+  CORS_ALLOWED_ORIGINS: 'https://buildwise.example.web.app',
+};
+
 const GCP_REAL = {
   BUILDWISE_PROFILE: 'gcp',
   GOOGLE_CLOUD_PROJECT: 'buildwise-prod',
   NODE_ENV: 'production',
+  ...GCP_REQUIRED_FAKE,
 } as const;
 
 describe('loadConfig — local profile (default)', () => {
@@ -107,6 +126,56 @@ describe('loadConfig — gcp profile and startup guard (docs/07 §19)', () => {
       'whatsapp',
       'simulator',
     ]);
+  });
+
+  it('validates the whole gcp configuration contract at once, naming missing settings but never values', () => {
+    const { WHATSAPP_APP_SECRET: _a, SHOPIFY_ADMIN_TOKEN: _b, ...rest } = GCP_REAL;
+    let message = '';
+    try {
+      loadConfig({ ...rest, VERTEX_MODEL: '  ' });
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toBe(
+      'The gcp profile is missing required settings: VERTEX_MODEL, WHATSAPP_APP_SECRET, SHOPIFY_ADMIN_TOKEN',
+    );
+    expect(message).not.toMatch(/fake-|asia-south1/);
+    expect(loadConfig(GCP_REAL).gcp).toMatchObject({
+      region: 'asia-south1',
+      firestoreDatabase: '(default)',
+      vertex: { model: 'gemini-test-model' },
+      shopify: { shopDomain: 'demo-shop.myshopify.com' },
+      gcsBucket: 'buildwise-uploads-test',
+    });
+    expect(loadConfig({}).gcp).toBeNull(); // the local profile needs none of it
+  });
+
+  it('DEMO_MODE: off by default; local demo logins only when on; deployed logins only from DEMO_LOGINS', () => {
+    expect(loadConfig({}).demo).toEqual({ enabled: false, brandIds: ['brd_demo'], logins: [], holdMinutes: 20 });
+    expect(loadConfig({ DEMO_MODE: 'true' }).demo.logins.map((l) => l.role)).toEqual([
+      'BRAND_ADMIN',
+      'RETAIL_ADMIN',
+      'RETAIL_ADMIN',
+      'PLATFORM_ADMIN',
+    ]);
+    expect(loadConfig({ ...GCP_REAL, DEMO_MODE: 'true' }).demo).toMatchObject({ enabled: true, logins: [] });
+    const logins = JSON.stringify([
+      {
+        email: 'judge@example.test',
+        password: 'judge-pass-1',
+        role: 'BRAND_ADMIN',
+        title: 'Brand',
+        hint: 'Start here.',
+      },
+    ]);
+    expect(loadConfig({ ...GCP_REAL, DEMO_MODE: 'true', DEMO_LOGINS: logins }).demo.logins).toHaveLength(1);
+    expect(() => loadConfig({ DEMO_MODE: 'true', DEMO_LOGINS: '{not json' })).toThrow(
+      'Invalid environment configuration: DEMO_LOGINS',
+    );
+    expect(loadConfig({ DEMO_BRAND_IDS: 'brd_a, brd_b', DEMO_HOLD_MINUTES: '15' }).demo).toMatchObject({
+      brandIds: ['brd_a', 'brd_b'],
+      holdMinutes: 15,
+    });
   });
 
   it('lists every violation at once', () => {

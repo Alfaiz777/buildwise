@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useMe } from '../account/meContext';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/authContext';
+import { label } from '../lib/labels';
 
 const AREA_TITLE = { PLATFORM: 'Platform Admin', BRAND: 'Brand Console', RETAIL: 'Retailer Console' } as const;
 
@@ -25,7 +26,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
         </div>
         <div className="shell-user">
           <span className="small">
-            {me.user.email ?? me.user.user_id} <span className="badge">{me.role}</span>
+            {me.user.email ?? me.user.user_id} <span className="badge">{label(me.role)}</span>
           </span>
           <button type="button" className="secondary" onClick={() => void signOut()}>
             Sign out
@@ -71,7 +72,7 @@ export function SetupLink({ result }: { result: { email: string; role: string; p
   if (!result) return null;
   return (
     <div className="notice" role="status">
-      Provisioned <strong>{result.email}</strong> as {result.role}. Hand over this password-setup link:
+      Provisioned <strong>{result.email}</strong> as {label(result.role)}. Hand over this password-setup link:
       <code className="link">{result.password_setup_link}</code>
     </div>
   );

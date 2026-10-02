@@ -16,7 +16,6 @@ import { buildContainer } from '../../src/composition/container.js';
 import { loadConfig } from '../../src/config/env.js';
 import { initFirebase } from '../../src/firebase/admin.js';
 import { silentLogger } from '../../src/lib/logger.js';
-import { writeDemoHistory } from '../../scripts/demoHistory.js';
 
 const PROJECT = 'demo-buildwise';
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -38,6 +37,7 @@ const clock = { t: Date.parse('2026-10-07T06:30:00.000Z') }; // Wednesday 12:00 
 const advanceMinutes = (m: number) => (clock.t += m * 60_000);
 
 let app: ReturnType<typeof createApp>;
+let container: ReturnType<typeof buildContainer>;
 let db: ReturnType<typeof initFirebase>['db'];
 let auth: ReturnType<typeof initFirebase>['auth'];
 let dataDir = '';
@@ -189,7 +189,8 @@ beforeAll(async () => {
     GOOGLE_CLOUD_PROJECT: PROJECT,
     LOCAL_DATA_DIR: dataDir,
   });
-  app = createApp(buildContainer(config, silentLogger, { now: () => new Date(clock.t) }).appDeps);
+  container = buildContainer(config, silentLogger, { now: () => new Date(clock.t) });
+  app = createApp(container.appDeps);
   ({ auth, db } = initFirebase(PROJECT, config.emulators));
   await seedBrand(A, 'a');
   await seedBrand(B, 'b');
@@ -397,8 +398,8 @@ describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
   }, 60_000);
 
   it('8 · the Outcomes screen totals match the stored records, with demo history included and excluded', async () => {
-    const written = await writeDemoHistory(db, { brandId: A, now: new Date(clock.t) });
-    expect(written.counts.outcomes).toBeGreaterThan(20);
+    const written = await container.demoReset.writeHistory(A);
+    expect(written.outcomes).toBeGreaterThan(20);
     const nowIso = new Date(clock.t).toISOString();
     const fromIso = new Date(clock.t - 28 * 24 * 60 * 60_000).toISOString();
     const stored = (await db.collection(`brands/${A}/outcomes`).get()).docs
@@ -421,7 +422,7 @@ describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
     // Every synthetic document is flagged; live ones never are.
     const reservations = (await db.collection(`brands/${A}/reservations`).get()).docs;
     const flagged = reservations.filter((d) => d.get('demo_history') === true).length;
-    expect(flagged).toBe(written.counts.reservations);
+    expect(flagged).toBe(written.reservations);
     expect(
       reservations
         .filter((d) => d.get('demo_history') !== true)

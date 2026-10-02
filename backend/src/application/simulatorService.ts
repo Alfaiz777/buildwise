@@ -23,6 +23,9 @@ export interface SimulatorResult {
   };
 }
 
+const REPLAY_WAIT_MS = 5_000;
+const REPLAY_POLL_MS = 100;
+
 export const messageJson = (m: MessageRecord) => ({
   message_id: m.messageId,
   direction: m.direction,
@@ -85,7 +88,21 @@ export class SimulatorService {
     if (run.stoppedAt?.stage === 'IDEMPOTENCY') {
       const duplicate = context.data.duplicate;
       if (duplicate?.status === 'PROCESSED' && duplicate.result) return duplicate.result as SimulatorResult;
-      throw new AppError(409, 'MESSAGE_IN_PROGRESS', 'This message is still being processed.', true);
+      // A replay while the first delivery is still running: wait briefly for its result
+      // (Change 14 G2) — the message is never processed twice.
+      const key = receiptKeyFor(context);
+      for (let waited = 0; waited < REPLAY_WAIT_MS; waited += REPLAY_POLL_MS) {
+        await new Promise((resolve) => setTimeout(resolve, REPLAY_POLL_MS));
+        const receipt = await this.deps.receipts.peek(key);
+        if (receipt?.status === 'PROCESSED' && receipt.result) return receipt.result as SimulatorResult;
+        if (!receipt || receipt.status === 'FAILED') break;
+      }
+      throw new AppError(
+        409,
+        'MESSAGE_IN_PROGRESS',
+        'This message is still being processed. Try again in a moment.',
+        true,
+      );
     }
 
     const decision = context.decision;

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useMe } from '../../account/meContext';
 import { useApi, type Store } from '../../api/apiContext';
+import { Loading, ErrorState } from '../../components/States';
+import { label } from '../../lib/labels';
 import { ConsoleShell, Section, useLoad } from '../../components/ConsoleShell';
 import { formatDateTime } from '../brand/types';
 import { RetailerQueue, WeekStrip } from './RetailerQueue';
@@ -24,6 +26,8 @@ interface StockItem {
   available_quantity: number;
   availability_status: string;
   last_updated_at: string | null;
+  /** Older than the brand's retail_freshness_hours (Change 14, G1). */
+  stale?: boolean;
 }
 
 /**
@@ -71,7 +75,7 @@ function RetailerStore({ retailerName, store, autoPoll }: { retailerName: string
           <dt>Address</dt>
           <dd>{store.address ?? <span className="muted">not provided</span>}</dd>
           <dt>Status</dt>
-          <dd>{store.store_status}</dd>
+          <dd>{label(store.store_status)}</dd>
           <dt>Hours</dt>
           <dd>{hoursText(store.store_hours) ?? <span className="muted">not provided</span>}</dd>
         </dl>
@@ -90,44 +94,55 @@ function RetailerStore({ retailerName, store, autoPoll }: { retailerName: string
         <button type="button" className="secondary" onClick={reload}>
           Refresh
         </button>
-        {stock.error && <p className="error">{stock.error}</p>}
+        {stock.error && <ErrorState message={stock.error} onRetry={reload} />}
+        {!stock.data && !stock.error && <Loading what="Loading stock" />}
+        {stock.data?.items.some((i) => i.stale) && (
+          <p className="notice small" role="status">
+            Some stock rows are out of date. Customers are told when the stock was last updated; ask your brand to
+            import a fresh retail file.
+          </p>
+        )}
         {stock.data?.items.length === 0 ? (
           <p className="muted">
             No stock has been imported for this store yet. Your brand imports it from its retail file.
           </p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>SKU</th>
-                <th>Product</th>
-                <th>Quantity</th>
-                <th>Reserved</th>
-                <th>Available</th>
-                <th>Last updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stock.data?.items.map((item) => (
-                <tr key={item.sku}>
-                  <td className="mono">{item.sku}</td>
-                  <td>
-                    {item.product_title ?? '—'}
-                    {item.variant_title && <span className="muted small"> · {item.variant_title}</span>}
-                  </td>
-                  <td>{item.quantity}</td>
-                  <td>{item.reserved_quantity}</td>
-                  <td>
-                    {item.available_quantity}{' '}
-                    {item.availability_status !== 'IN_STOCK' && (
-                      <span className="badge">{item.availability_status.replace('_', ' ').toLowerCase()}</span>
-                    )}
-                  </td>
-                  <td className="small">{formatDateTime(item.last_updated_at)}</td>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">SKU</th>
+                  <th scope="col">Product</th>
+                  <th scope="col">Quantity</th>
+                  <th scope="col">Reserved</th>
+                  <th scope="col">Available</th>
+                  <th scope="col">Stock as of</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {stock.data?.items.map((item) => (
+                  <tr key={item.sku}>
+                    <td className="mono">{item.sku}</td>
+                    <td>
+                      {item.product_title ?? '—'}
+                      {item.variant_title && <span className="muted small"> · {item.variant_title}</span>}
+                    </td>
+                    <td>{item.quantity}</td>
+                    <td>{item.reserved_quantity}</td>
+                    <td>
+                      {item.available_quantity}{' '}
+                      {item.availability_status !== 'IN_STOCK' && (
+                        <span className="badge">{label(item.availability_status)}</span>
+                      )}
+                    </td>
+                    <td className="small">
+                      {formatDateTime(item.last_updated_at)} {item.stale && <span className="badge stale">stale</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
         <p className="muted small">
           Read-only. Reserved = units held for customers at this store (released when a hold is cancelled or expires);

@@ -291,6 +291,10 @@ export class MemoryReceipts implements WebhookReceiptRepository {
     const r = this.receipts.get(key);
     if (r) r.status = 'FAILED';
   }
+  async peek(key: string) {
+    const r = this.receipts.get(key);
+    return r ? { status: r.status, result: clone(r.result) } : null;
+  }
 }
 
 export class MemoryOutcomes implements OutcomeRepository {

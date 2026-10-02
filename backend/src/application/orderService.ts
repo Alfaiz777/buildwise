@@ -72,6 +72,14 @@ export class OrderService {
       at,
     });
 
+    await this.deps.events.audit(input.brandId, {
+      action: 'ORDER_RECORDED',
+      targetType: 'ORDER',
+      targetId: input.externalOrderId,
+      reasonCode: link ? 'ATTRIBUTED_BW_REF' : journeyKey ? 'ATTRIBUTED_SESSION' : 'UNATTRIBUTED',
+      actor: { type: 'SYSTEM', id: input.source === 'SHOPIFY' ? 'shopify-webhook' : 'demo-storefront' },
+    });
+
     let outcomeRecorded = false;
     if (journeyKey && this.deps.outcomes) {
       outcomeRecorded = !!(await this.deps.outcomes.recordFromOrder({

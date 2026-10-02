@@ -3,8 +3,10 @@ import { useApi, type ProvisionedUser, type Role } from '../../api/apiContext';
 import { ConsoleShell, errorMessage, Section, SetupLink, useLoad } from '../../components/ConsoleShell';
 import { BrandNav } from './BrandNav';
 import { CatalogSection } from './CatalogSection';
+import { DemoGuide } from './DemoGuide';
 import { RetailImportSection } from './RetailImportSection';
 import { SetupChecklist } from './SetupChecklist';
+import { label } from '../../lib/labels';
 import { formatDateTime, type BrandStore, type CatalogResponse, type Connection, type RetailImport } from './types';
 
 interface BrandUser {
@@ -32,7 +34,7 @@ interface Retailer {
  * here). Stores come from the retail CSV import (M3): there is no store-ID entry and no
  * store-assignment UI. M3 adds the setup checklist, catalogue & mapping, and retail import.
  */
-export function BrandHome() {
+export function BrandHome({ demoStorefront = false }: { demoStorefront?: boolean }) {
   const api = useApi();
   const users = useLoad(useCallback(() => api.get<{ users: BrandUser[] }>('/api/brand/users'), [api]));
   const retailers = useLoad(useCallback(() => api.get<{ retailers: Retailer[] }>('/api/brand/retailers'), [api]));
@@ -112,6 +114,7 @@ export function BrandHome() {
         </p>
       )}
       <BrandNav />
+      <DemoGuide demoStorefront={demoStorefront} />
       <SetupLink result={provisioned} />
 
       <SetupChecklist
@@ -125,7 +128,7 @@ export function BrandHome() {
       <Section title="Brand administrator">
         {users.error && <p className="error">{users.error}</p>}
         <p>
-          {brandAdmin?.email ?? '—'} <span className="badge">BRAND_ADMIN</span>
+          {brandAdmin?.email ?? '—'} <span className="badge">Brand Admin</span>
         </p>
         <p className="muted small">One Brand Admin per brand, provisioned by the Buildwise platform admin.</p>
       </Section>
@@ -142,7 +145,7 @@ export function BrandHome() {
           <div key={r.retailer_id} className="retailer">
             <h3>
               Retailer: {r.name} <span className="muted small mono">{r.retailer_id}</span>{' '}
-              {r.status !== 'ACTIVE' && <span className="badge">{r.status}</span>}
+              {r.status !== 'ACTIVE' && <span className="badge">{label(r.status)}</span>}
             </h3>
             {storesOf(r.retailer_id).length === 0 ? (
               <p className="muted small">No stores yet. Stores arrive through the retail CSV import.</p>
@@ -165,7 +168,7 @@ export function BrandHome() {
                         {s.store_name} <span className="muted small mono">{s.store_id}</span>
                       </td>
                       <td>{s.city}</td>
-                      <td>{s.store_status}</td>
+                      <td>{label(s.store_status)}</td>
                       <td>{s.sku_count}</td>
                       <td className="small">{formatDateTime(s.stock_updated_at)}</td>
                       <td>

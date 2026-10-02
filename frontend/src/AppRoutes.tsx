@@ -28,7 +28,7 @@ export function AppRoutes({ profile = 'local' }: { profile?: FrontendProfile }) 
             <Route path="/platform" element={<PlatformHome />} />
           </Route>
           <Route element={<ScopeRoute scope="BRAND" />}>
-            <Route path="/brand" element={<BrandHome />} />
+            <Route path="/brand" element={<BrandHome demoStorefront={profile === 'local'} />} />
             <Route path="/brand/conversations" element={<ConversationsPage autoPoll={profile === 'local'} />} />
             <Route path="/brand/outcomes" element={<OutcomesPage />} />
           </Route>

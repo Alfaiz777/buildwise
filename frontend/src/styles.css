@@ -544,3 +544,125 @@ code {
 .suggestions li {
   margin-bottom: 0.5rem;
 }
+
+/* M7: shared states, platform onboarding, demo panels, accessibility, phone width */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.table-scroll {
+  overflow-x: auto;
+}
+.state {
+  margin: 0.5rem 0;
+}
+.error.state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.badge.ok {
+  background: #e6f4ea;
+  color: #1e6b34;
+}
+.badge.stale {
+  background: #fff4e0;
+  color: #7a4a00;
+}
+.onboarding {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+.onboarding .todo > span[aria-hidden] {
+  color: var(--error);
+}
+.demo-panel,
+.demo-guide {
+  border: 1px dashed var(--accent);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+.demo-logins {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.demo-logins li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+.demo-guide ol {
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.delivery-failed {
+  color: var(--error);
+  font-size: 0.75rem;
+}
+@media (prefers-color-scheme: dark) {
+  .badge.ok,
+  .badge.new {
+    background: #12351f;
+    color: #9be3b0;
+  }
+  .badge.warn {
+    background: #3d1414;
+    color: #ffb4ab;
+  }
+  .badge.stale {
+    background: #3a2a0a;
+    color: #ffd38a;
+  }
+  .warn-text {
+    color: #ffb4ab;
+  }
+}
+@media (max-width: 480px) {
+  .shell-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  .shell-main {
+    padding: 0.75rem;
+  }
+  .panel {
+    padding: 0.75rem;
+  }
+  .phone {
+    width: 100%;
+    max-width: none;
+  }
+  .queue-actions button {
+    flex: 1 1 45%;
+  }
+  form.inline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .demo-logins li {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

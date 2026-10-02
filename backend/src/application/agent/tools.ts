@@ -17,7 +17,12 @@ import type {
   VariantView,
 } from '../../domain/agentTools.js';
 import { INTENT_TYPES, type IntentType } from '../../domain/ai.js';
-import { onlineProductUrl, resolveMessagingSettings } from '../../domain/brandSettings.js';
+import {
+  isStockStale,
+  onlineProductUrl,
+  resolveFreshnessHours,
+  resolveMessagingSettings,
+} from '../../domain/brandSettings.js';
 import { primaryLocality, resolveLocality, roundCoordinate } from '../../domain/locality.js';
 import { ACTIVE_RESERVATION_STATUSES, resolveReservationPolicy } from '../../domain/reservationStatus.js';
 import { closingTimeToday, isOpenNow } from '../../domain/storeHours.js';
@@ -314,6 +319,7 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
       base.origin_point = origin;
 
       const stock = await deps.inventory.listByVariant(scope.brandId, input.variant_id);
+      const freshnessHours = resolveFreshnessHours((await deps.brands.getById(scope.brandId))?.settings ?? {});
       const byStore = new Map(stock.map((row) => [row.storeId, row]));
       const candidates = stores.filter((s) => !excludedIds.includes(s.storeId));
       const result = findEligibleStores({
@@ -339,6 +345,8 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
           open_until: closingTimeToday(s.storeHours, now),
           available_quantity: e.availableQuantity,
           offline_price: byStore.get(s.storeId)?.offlinePrice ?? null,
+          stock_updated_at: byStore.get(s.storeId)?.lastUpdatedAt ?? null,
+          stale: isStockStale(byStore.get(s.storeId)?.lastUpdatedAt ?? null, now, freshnessHours),
         };
       });
       base.excluded = result.excluded

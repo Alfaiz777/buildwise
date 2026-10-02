@@ -8,7 +8,7 @@ import type {
   MessageOrigin,
   MessageRecord,
 } from '../../ports/conversationRepositories.js';
-import type { MessagingProvider, OutboundMessage } from '../../ports/messaging.js';
+import type { MessagingProvider, OutboundMessage, SendResult } from '../../ports/messaging.js';
 import type { EventRecorder } from '../eventRecorder.js';
 
 /** A message the application wants to send (channel-neutral, docs/06 §11). */
@@ -27,6 +27,34 @@ export interface OutboundDeps {
   messaging: ReadonlyMap<Channel, MessagingProvider>;
   events: EventRecorder;
   now: () => Date;
+  /** Backoff before each retry (docs/03 §16.2: up to 2 retries). Injectable for tests. */
+  sendRetryDelaysMs?: readonly number[];
+}
+
+export const SEND_RETRY_DELAYS_MS = [250, 1000] as const;
+/** Failures that will not get better by retrying. */
+const PERMANENT = new Set(['CHANNEL_DISABLED', 'INVALID_RECIPIENT', 'OPTED_OUT']);
+
+/**
+ * provider.send with up to 2 retries and exponential backoff, always with the SAME
+ * outbound request ID so the channel can de-duplicate (docs/03 §16.2, Change 14 G2).
+ */
+async function sendWithRetry(
+  provider: MessagingProvider,
+  outbound: OutboundMessage,
+  delays: readonly number[],
+): Promise<SendResult> {
+  let last: SendResult = { status: 'FAILED', externalMessageId: null, errorCode: 'SEND_ERROR' };
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, delays[attempt - 1]));
+    try {
+      last = await provider.send(outbound);
+    } catch {
+      last = { status: 'FAILED', externalMessageId: null, errorCode: 'SEND_ERROR' };
+    }
+    if (last.status !== 'FAILED' || PERMANENT.has(last.errorCode ?? '')) return last;
+  }
+  return last;
 }
 
 /**
@@ -59,7 +87,7 @@ export async function sendAndPersist(
   const provider = deps.messaging.get(conversation.channel);
   const result =
     provider && identity
-      ? await provider.send(outbound)
+      ? await sendWithRetry(provider, outbound, deps.sendRetryDelaysMs ?? SEND_RETRY_DELAYS_MS)
       : { status: 'FAILED' as const, externalMessageId: null, errorCode: 'CHANNEL_DISABLED' };
 
   const message: MessageRecord = {
@@ -89,7 +117,12 @@ export async function sendAndPersist(
     source: 'BUILDWISE',
     customerId: customer.customerId,
     entityReference: messageId,
-    payload: { conversation_id: conversation.conversationId, origin: draft.origin, message_kind: draft.messageKind },
+    payload: {
+      conversation_id: conversation.conversationId,
+      origin: draft.origin,
+      message_kind: draft.messageKind,
+      delivery_status: result.status,
+    },
     idempotencyKey: `MESSAGE_SENT:${messageId}`,
     at: message.timestamp,
   });

@@ -576,6 +576,9 @@ The numbers are prototype defaults.
 | Customer-page endpoints (`/api/page/context`, `/api/stores/nearby`, `POST /api/reservations`) | 30 req/min per IP |
 | Invalid page/intent tokens | after 10 invalid attempts per IP in 10 min → `429` for 10 min |
 | `POST /api/channels/simulator/messages` | 30 req/min per user |
+| `/api/demo-storefront/*` (local only) | 120 req/min per IP |
+| `GET /api/demo/config` (DEMO_MODE) | 30 req/min per IP |
+| `POST /api/brand/demo/reset` (DEMO_MODE) | 1 per minute per brand |
 | AI decisions per conversation | max 10 per 5 min (Firestore-backed counter). Beyond that, no agent runtime call is made and at most one fixed "please wait" reply is sent per window. |
 | Inbound message length | text truncated to 2,000 characters before it reaches the agent runtime |
 | Reservations | `max_quantity_per_reservation` enforced in the transaction (`04_DATA_MODEL.md` §3) |

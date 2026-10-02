@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { PlatformAdminService } from '../application/platformAdminService.js';
+import type { BrandOverview, PlatformAdminService } from '../application/platformAdminService.js';
 import type { ProvisionedUser } from '../application/provisioning.js';
 import { getPlatformPrincipal } from '../auth/authorize.js';
 import { isValidTenantId } from '../domain/principal.js';
@@ -19,6 +19,28 @@ const brandJson = (b: BrandRecord) => ({
   status: b.status,
   created_at: b.createdAt,
   brand_admin_user_id: b.brandAdminUserId,
+});
+
+/** Brand metadata + onboarding counts. Never customers, conversations, messages, phones or emails. */
+const overviewJson = (o: BrandOverview) => ({
+  ...brandJson(o.brand),
+  last_activity_at: o.lastActivityAt,
+  onboarding: {
+    brand_admin_provisioned: !!o.brand.brandAdminUserId,
+    catalog: {
+      synced: o.catalog.synced,
+      failed: o.catalog.failed,
+      last_sync_at: o.catalog.lastSyncAt,
+      product_count: o.catalog.productCount,
+    },
+    stores: { total: o.stores.total, with_stock: o.stores.withStock },
+    sku_mapping: { auto_matched: o.mapping.autoMatched, needs_attention: o.mapping.needsAttention },
+    retail_admins: { provisioned: o.retailAdmins.provisioned, stores_with_retailer: o.retailAdmins.storesWithRetailer },
+    channel: {
+      simulator: true,
+      whatsapp_number_configured: o.channel.whatsappNumberConfigured,
+    },
+  },
 });
 
 export const userJson = (u: ProvisionedUser) => ({
@@ -46,7 +68,7 @@ export function platformRouter(platform: PlatformAdminService): Router {
 
   router.get('/brands', async (_req, res) => {
     getPlatformPrincipal(res);
-    res.json({ brands: (await platform.listBrands()).map(brandJson) });
+    res.json({ brands: (await platform.overview()).map(overviewJson) });
   });
 
   router.post('/brands', async (req, res) => {

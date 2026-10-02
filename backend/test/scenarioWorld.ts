@@ -56,11 +56,19 @@ export async function buildScenarioWorld(
     overrides?: Partial<Record<string, { km?: number; v1?: number; hours?: Record<string, string> }>>;
     reservationsEnabled?: boolean;
     handoffEnabled?: boolean;
+    simulatorProvider?: import('../src/ports/messaging.js').MessagingProvider;
+    logger?: import('../src/lib/logger.js').Logger;
   } = {},
 ) {
   let now = SCENARIO_NOW;
   const clock = options.now ?? (() => now);
-  const world = buildTestWorld({ now: clock, agent: options.agent, aiBudgetMs: options.aiBudgetMs });
+  const world = buildTestWorld({
+    now: clock,
+    agent: options.agent,
+    aiBudgetMs: options.aiBudgetMs,
+    simulatorProvider: options.simulatorProvider,
+    logger: options.logger,
+  });
   await world.commerceSync.sync('brand_A', SYSTEM);
   await world.commerceSync.sync('brand_B', SYSTEM);
 

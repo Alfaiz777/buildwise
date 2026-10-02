@@ -729,6 +729,11 @@ export class FirestoreWebhookReceiptRepository implements WebhookReceiptReposito
     await this.ref(key).update({ status: 'PROCESSED', result: JSON.parse(JSON.stringify(result)) });
   }
 
+  async peek(key: string) {
+    const snap = await this.ref(key).get();
+    return snap.exists ? { status: snap.get('status'), result: snap.get('result') ?? null } : null;
+  }
+
   async fail(key: string) {
     const ref = this.ref(key);
     const snap = await ref.get();

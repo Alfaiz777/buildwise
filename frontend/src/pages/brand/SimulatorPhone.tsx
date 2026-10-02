@@ -38,6 +38,12 @@ export interface SimulatorSend {
     | { type: 'INTERACTIVE_REPLY'; option_id: string };
 }
 
+/** Demo locations in Mumbai (synthetic). Near Powai: Powai has no stock, so Andheri is offered. */
+const LOCATION_PRESETS = [
+  { name: 'Near Powai', latitude: 19.12, longitude: 72.9 },
+  { name: 'Near Bandra', latitude: 19.06, longitude: 72.83 },
+];
+
 /**
  * The simulator, styled as a phone chat (docs/11 §6): messages come from the brand, not
  * from "Buildwise". It always shows the Simulator and runtime badges, and labels each
@@ -56,8 +62,8 @@ export function SimulatorPhone(props: {
   onSend: (send: SimulatorSend) => void;
 }) {
   const [showLocation, setShowLocation] = useState(false);
-  const [lat, setLat] = useState('19.06');
-  const [lng, setLng] = useState('72.83');
+  const [lat, setLat] = useState('19.12');
+  const [lng, setLng] = useState('72.90');
   const lastOptions = [...props.messages].reverse().find((m) => m.direction === 'OUTBOUND')?.options ?? null;
 
   const sendText = (e: FormEvent) => {
@@ -110,7 +116,12 @@ export function SimulatorPhone(props: {
                 📍 Location {m.location.latitude.toFixed(2)}, {m.location.longitude.toFixed(2)}
               </div>
             )}
-            <div className="bubble-time small">{formatDateTime(m.timestamp)}</div>
+            <div className="bubble-time small">
+              {formatDateTime(m.timestamp)}
+              {m.direction === 'OUTBOUND' && m.delivery_status === 'FAILED' && (
+                <span className="delivery-failed"> · Not delivered</span>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -150,6 +161,23 @@ export function SimulatorPhone(props: {
       <button type="button" className="secondary small" onClick={() => setShowLocation((v) => !v)}>
         Share location
       </button>
+      {showLocation && (
+        <div className="phone-input">
+          {LOCATION_PRESETS.map((p) => (
+            <button
+              key={p.name}
+              type="button"
+              className="secondary small"
+              onClick={() => {
+                setLat(String(p.latitude));
+                setLng(String(p.longitude));
+              }}
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
+      )}
       {showLocation && (
         <div className="phone-input">
           <input aria-label="Latitude" value={lat} onChange={(e) => setLat(e.target.value)} />

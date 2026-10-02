@@ -127,7 +127,8 @@ export function brandConversationsRouter(
    * same endpoint will be called by Cloud Scheduler with an OIDC identity (L-phase).
    */
   router.post('/follow-ups/process-due', async (_req, res) => {
-    const result = await followUps.processDue(getBrandPrincipal(res).brandId);
+    const principal = getBrandPrincipal(res);
+    const result = await followUps.processDue(principal.brandId, { type: 'USER', id: principal.userId });
     res.json({
       abandoned: result.abandoned,
       sent: result.sent,

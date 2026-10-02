@@ -132,6 +132,61 @@ Per-adapter overrides exist for isolated integration spikes (`10_EXECUTION_PLAN.
 
 **Profile guard (startup):** the `gcp` profile refuses to start with `mock` commerce, `mock` agent runtime, `local` file storage, a `local` event sink, or Firebase emulator hosts (`07_SECURITY_SPEC.md` §19). The simulator channel is allowed in `gcp` as the approved fallback.
 
+**Configuration contract (M7, Change 14 G7):** in `gcp` every required setting is checked together at startup (`GOOGLE_CLOUD_PROJECT`, `GCP_REGION`, `VERTEX_MODEL`, `VERTEX_LOCATION`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `SHOPIFY_SHOP_DOMAIN`, `SHOPIFY_ADMIN_TOKEN`, `SHOPIFY_WEBHOOK_SECRET`, `BIGQUERY_DATASET`, `GCS_BUCKET`, `DEMO_MODE`, `CORS_ALLOWED_ORIGINS`; `FIRESTORE_DATABASE` defaults to `(default)`). A missing one stops the service with one message that lists the names, never the values.
+
+## 2.3 One core, two profiles (diagram)
+
+```mermaid
+flowchart LR
+  subgraph People
+    C[Customer]
+    BA[Brand Admin]
+    RA[Retail Admin]
+    PA[Platform Admin]
+  end
+
+  subgraph Web["Web (Firebase Hosting / Vite)"]
+    UI[React consoles<br/>Platform · Brand · Retailer]
+    SF[Storefront snippet<br/>or demo store]
+  end
+
+  subgraph Core["Buildwise API (Cloud Run / local Node) — the same code in both profiles"]
+    R[Routes + auth<br/>token → principal → scope]
+    P[ConversationPipeline<br/>11 fixed stages]
+    G[Guardrail + ToolExecutor<br/>writes only after re-check]
+    S[Application services<br/>reservations · fulfilment · outcomes · insights · reset demo]
+  end
+
+  subgraph Ports["Ports → adapters (chosen by BUILDWISE_PROFILE)"]
+    AR[AgentRuntime<br/>local: Mock · gcp: ADK + Gemini]
+    MP[MessagingProvider<br/>local: Simulator · gcp: WhatsApp + Simulator]
+    CP[CommerceProvider<br/>local: Mock · gcp: Shopify]
+    FS[FileStorage<br/>local: disk · gcp: Cloud Storage]
+    ES[EventSink<br/>local: file · gcp: BigQuery]
+  end
+
+  DB[(Firestore<br/>local: emulator)]
+  AU[[Firebase Auth<br/>local: emulator]]
+
+  C -->|chat| MP
+  C --> SF
+  SF -->|intents| R
+  BA & RA & PA --> UI --> R
+  UI -.sign in.-> AU
+  R -.verify ID token.-> AU
+  MP --> P
+  R --> P & S
+  P --> AR
+  AR -->|read tools only| G
+  P --> G --> S
+  S --> DB
+  P --> DB
+  S --> CP & FS & ES
+  P -->|replies| MP
+```
+
+The core never imports an adapter (enforced by `backend/test/architecture.test.ts`); only `composition/container.ts` chooses them. Moving from `local` to `gcp` is configuration plus the real adapters (L1/L2), never a change to the core.
+
 ---
 
 # 3. Frontend
@@ -535,7 +590,8 @@ If the budget is exhausted, the request stops calling the runtime and uses the d
 |---|---|---|
 | Gemini (timeout, 429, 5xx) | 1 retry with jittered backoff, only if the budget remains | Deterministic fallback |
 | Gemini (invalid structured output) | 1 repair attempt with the validation error | Deterministic fallback |
-| WhatsApp send (429, 5xx, network) | up to 2 retries with exponential backoff, same outbound request ID | Message marked `FAILED`; visible in Brand Console |
+| WhatsApp send (429, 5xx, network) | up to 2 retries with exponential backoff (250 ms, 1 s), same outbound request ID — implemented in M7 for every channel | Message marked `FAILED`; shown as "Not delivered" in the Brand Console |
+| Firestore unavailable (gRPC UNAVAILABLE / DEADLINE_EXCEEDED) | the SDK's own retries | `503 SERVICE_UNAVAILABLE`, retryable, "Buildwise can't reach its database right now. Please try again in a minute." (M7) |
 | Shopify API (429, 5xx) | exponential backoff respecting Shopify throttling, up to 3 retries | Sync marked failed on the connection (`last_error`) |
 | Firestore transaction contention | handled by the Firestore SDK transaction retry | Reservation request fails with a retryable error |
 | 4xx validation / auth errors | never retried | Normalized error (`06_INTEGRATION_CONTRACTS.md` §16) |
@@ -587,3 +643,23 @@ For the MVP, HTTP rate limiting may be in-memory per instance. The per-conversat
 # 17. Critical API contracts
 
 The minimal request/response contracts for the critical endpoints are in `06_INTEGRATION_CONTRACTS.md` §14.1–§14.9.
+
+---
+
+# 18. Scaling & production (M7)
+
+The MVP is sized for a judged demo and the first brands; nothing in the core has to change to go further.
+
+| Concern | MVP (now) | Production path |
+|---|---|---|
+| API | Cloud Run, stateless, min 0 / max 5 instances (`deploy-backend.sh`), `asia-south1` | Raise max instances; min 1 for warm starts; one service per region |
+| Database | Firestore Native; every brand under `brands/{brand_id}`; reservations in transactions | Same model; hot documents (a busy store's stock row) stay safe through transactions; composite indexes are checked by `indexCompleteness.test.ts` |
+| HTTP rate limits | in-memory per instance (docs/07 §17 allows it) | Cloud Armor or a shared limiter (Memorystore) once there are many instances |
+| AI cost | per-conversation limit in Firestore; 20 s budget; deterministic fallback | Per-brand monthly budget, model routing (small model first) |
+| Webhooks | idempotent receipts (§16.3), replay waits for the first run | Pub/Sub between the webhook and the pipeline for bursts |
+| Analytics | Firestore + `EventSink` → BigQuery (`gcp`) | BigQuery + Looker dashboards; the Outcomes screen stays the operational view |
+| Files | Cloud Storage, signed uploads | Lifecycle rules; virus scan before import |
+| Shared demo | one allowlisted demo brand, `judge_xxxx` customers, 20-min holds, "Reset demo" | Per-prospect sandbox brands created by the Platform Admin |
+| Operations | `/api/health` with version/commit, structured logs without PII, `demo:check` smoke test | Uptime check on `/api/health`, log-based alerts on 5xx and `FAILED` deliveries, error budget |
+
+**Roadmap after the MVP:** retrieval over product knowledge (Vertex AI Vector Search / RAG) for richer EDUCATE / COMPARE answers; Meta Embedded Signup so a brand connects its own WhatsApp number; a Shopify app install instead of a pasted admin token; POS adapters (a `RetailInventoryProvider` per POS) so store stock is live instead of file-based; per-prospect sandbox brands.
