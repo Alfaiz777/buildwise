@@ -1,8 +1,9 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useApi, type MeResponse, type Scope } from '../api/apiContext';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/authContext';
+import { useToast } from '../components/ui';
 
 const MeContext = createContext<MeResponse | null>(null);
 
@@ -62,9 +63,29 @@ export function MeGate() {
   );
 }
 
-/** "/app" → the signed-in user's own console area ("/" is the public landing page since UI-0). */
+const ACCOUNT_KIND: Record<Scope, string> = {
+  BRAND: 'a Brand account. Taking you to the Brand Console.',
+  RETAIL: 'a Store account. Taking you to the Store Console.',
+  PLATFORM: 'a Qwikspot team account. Taking you to the Platform Console.',
+};
+
+/**
+ * "/app" → the signed-in user's own console ("/" is the public landing page since UI-0).
+ * When sign-in was started from another role's tab (UI-1), says so in a toast: the
+ * backend decides the scope, the tab only chose the copy.
+ */
 export function ScopeHome() {
-  return <Navigate to={HOME_BY_SCOPE[useMe().scope]} replace />;
+  const me = useMe();
+  const toast = useToast();
+  const location = useLocation();
+  const chosen = (location.state as { as?: Scope } | null)?.as;
+  const told = useRef(false);
+  useEffect(() => {
+    if (told.current || !chosen || chosen === me.scope) return;
+    told.current = true;
+    toast.show(`This is ${ACCOUNT_KIND[me.scope]}`, 'info');
+  }, [chosen, me.scope, toast]);
+  return <Navigate to={HOME_BY_SCOPE[me.scope]} replace />;
 }
 
 /**

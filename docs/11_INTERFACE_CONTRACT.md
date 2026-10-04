@@ -39,7 +39,8 @@ All scope is resolved by the backend from the verified Firebase ID token and `us
 
 | Path | Who | What |
 |---|---|---|
-| `/` | anyone | Public landing page: the pitch and the two doors, **Brand login** (`/login?as=brand`) and **Store login** (`/login?as=store`); footer "Qwikspot team sign-in" (`/login?as=platform`). Signed in: "Go to your console". No API call. (UI-0 placeholder; the full page arrives in UI-1.) |
+| `/` | anyone | Public landing page (UI-1): what Qwikspot does in one scroll — hero with an example chat and store card, the problem, how it works, an example story with what the brand, store and shopper each get, For brands / For stores / For shoppers, attract and retain, "AI that proposes, rules that decide", trust, and a final call to action. Doors: **Brand login** (`/login?as=brand`), **Store login** (`/login?as=store`), footer **Qwikspot team sign-in** (`/login?as=platform`). Signed in: **Go to your console** (`/app`). With DEMO_MODE on: **See it as a shopper ↗** (where the shopper demo is routed) and "Demo data is synthetic." Illustrations are labelled **Example**. Works without the API (the only call is the public demo config). Phones: a **Menu** drawer. |
+| `/login` | anyone | Role-aware sign-in (UI-1): **Brand · Store · Qwikspot team** (from `?as=`), copy for that role, "What you'll find here", and the "Try the demo" logins for that role only (DEMO_MODE). The backend still decides the scope: signing in with another role's account goes to that account's console with a toast ("This is a Store account. Taking you to the Store Console."). |
 | `/app` | signed in | Sends the user to their own console (formerly `/`). Sign-in returns here by default. |
 | `/brand/*` · `/store` · `/platform` | by scope | The three consoles. `/retailer` redirects to `/store`. |
 | `/shop` | anyone, local profile | The demo storefront (formerly `/demo-store`, which redirects with its query and fragment, so `qs_ref` links keep working). |
