@@ -146,6 +146,15 @@
 }
 
 @media (max-width: 768px) {
+  /* The demo link and the user controls wrap rather than widen the page. */
+  .shell-top__user {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
+  .shell-top__open {
+    display: none;
+  }
   .shell {
     background: var(--color-bg);
     grid-template-columns: minmax(0, 1fr);

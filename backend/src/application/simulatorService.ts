@@ -31,8 +31,24 @@ export const messageJson = (m: MessageRecord) => ({
   direction: m.direction,
   message_type: m.messageType,
   text: m.text,
-  options: m.options?.map((o) => ({ option_id: o.optionId, label: o.label })) ?? null,
+  options:
+    m.options?.map((o) => ({
+      option_id: o.optionId,
+      label: o.label,
+      ...(o.description ? { description: o.description } : {}),
+      ...(o.section ? { section: o.section } : {}),
+    })) ?? null,
   location: m.location,
+  /** Structured parts (Change 16); null on plain messages and on messages written before UI-2. */
+  parts: m.parts
+    ? {
+        header: m.parts.header ?? null,
+        footer: m.parts.footer ?? null,
+        location: m.parts.location ?? null,
+        cta_url: m.parts.ctaUrl ?? null,
+        list_button: m.parts.listButton ?? null,
+      }
+    : null,
   origin: m.origin,
   message_kind: m.messageKind,
   template_name: m.templateName,
@@ -63,12 +79,22 @@ export class SimulatorService {
     return this.deps.messaging.has('SIMULATOR');
   }
 
-  async handle(principal: BrandPrincipal, body: unknown): Promise<SimulatorResult> {
+  /** The Brand Admin's simulator (docs/06 §14.2): acts inside the caller's own brand. */
+  handle(principal: BrandPrincipal, body: unknown): Promise<SimulatorResult> {
+    return this.handleAsCustomer(principal.brandId, body);
+  }
+
+  /**
+   * One simulator message for `brandId`. Callers decide who may act for which customer:
+   * the Brand Admin route (its own brand) and the shopper channel (Change 16; the customer
+   * ref comes from a verified session token, never from the browser).
+   */
+  async handleAsCustomer(brandId: string, body: unknown): Promise<SimulatorResult> {
     const provider = this.provider();
     let inbound;
     try {
       [inbound] = provider.normalizeInbound({
-        brandId: principal.brandId,
+        brandId,
         receivedAt: this.deps.now().toISOString(),
         body,
       });

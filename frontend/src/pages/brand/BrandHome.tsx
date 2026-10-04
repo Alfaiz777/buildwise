@@ -1,4 +1,5 @@
 import { useCallback, useState, type FormEvent } from 'react';
+import { useMe } from '../../account/meContext';
 import { useApi, type ProvisionedUser, type Role } from '../../api/apiContext';
 import { ConsoleShell, errorMessage, Section, SetupLink, useLoad } from '../../components/ConsoleShell';
 import { CatalogSection } from './CatalogSection';
@@ -33,7 +34,8 @@ interface Retailer {
  * here). Stores come from the retail CSV import (M3): there is no store-ID entry and no
  * store-assignment UI. M3 adds the setup checklist, catalogue & mapping, and retail import.
  */
-export function BrandHome({ demoStorefront = false }: { demoStorefront?: boolean }) {
+export function BrandHome() {
+  const me = useMe();
   const api = useApi();
   const users = useLoad(useCallback(() => api.get<{ users: BrandUser[] }>('/api/brand/users'), [api]));
   const retailers = useLoad(useCallback(() => api.get<{ retailers: Retailer[] }>('/api/brand/retailers'), [api]));
@@ -112,7 +114,7 @@ export function BrandHome({ demoStorefront = false }: { demoStorefront?: boolean
           {error}
         </p>
       )}
-      <DemoGuide demoStorefront={demoStorefront} />
+      {me.scope === 'BRAND' && <DemoGuide brandId={me.brand_id} />}
       <SetupLink result={provisioned} />
 
       <SetupChecklist

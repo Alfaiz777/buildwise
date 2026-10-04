@@ -1,21 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../../api/apiContext';
 import { ConsoleShell, errorMessage, Section, useLoad } from '../../components/ConsoleShell';
 import {
   humanize,
-  parseSimulatorFragment,
   REASON_TEXT,
   type ConversationDetail,
   type ConversationRow,
   type IntentSummary,
-  type SimulatorResponse,
 } from './conversationTypes';
 import { DecisionTrace } from './DecisionTrace';
 import { HandoffPanel, waitingFor } from './HandoffPanel';
 import { IntentPanel } from './IntentPanel';
 import { ReservationsPanel } from './ReservationsPanel';
-import { SimulatorPhone, type SimulatorSend } from './SimulatorPhone';
+import { ChatThread } from '../../components/chat/ChatThread';
+import { EmptyState } from '../../components/ui';
 import { formatDateTime } from './types';
 
 type Filter = 'ALL' | 'HANDOFF' | 'SCHEDULED' | 'SENT' | 'NOT_ELIGIBLE';
@@ -43,49 +41,22 @@ const matches = (row: ConversationRow, filter: Filter) => {
   }
 };
 
-const newMessageId = () =>
-  typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `cm_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
-
-/**
- * Shared-demo safety (Change 14, G5): each browser tab chats as its own customer
- * (`judge_xxxx`, kept in sessionStorage), so judges using the demo at the same time never
- * see each other's conversations in the simulator.
- */
-function judgeRef(): string {
-  const fresh = `judge_${Math.random().toString(36).slice(2, 6)}`;
-  try {
-    const kept = window.sessionStorage.getItem('qs_simulator_ref');
-    if (kept && /^judge_[a-z0-9]{1,8}$/.test(kept)) return kept;
-    window.sessionStorage.setItem('qs_simulator_ref', fresh);
-  } catch {
-    // storage blocked: a fresh ref per page load is still safe
-  }
-  return fresh;
-}
-
 /**
  * Brand Console → "Conversations & intents" (docs/11 §4): conversation list with filters,
  * an Intents tab (every intent, anonymous and not-eligible included), a Reservations tab
  * (M5), the conversation detail with the "Intent & follow-up" panel and the "Why Qwikspot
- * did this" decision trace, and the phone-style simulator.
+ * did this" decision trace, and the read-only transcript — the shopper's own chat, with
+ * internal labels. The simulator left the Brand Console in UI-2 (Change 16): shoppers chat
+ * on /chat; the Brand Admin replies as a person only during a handoff.
  */
 export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) {
   const api = useApi();
-  const location = useLocation();
   const [tab, setTab] = useState<'CONVERSATIONS' | 'INTENTS' | 'RESERVATIONS'>('CONVERSATIONS');
   const [reloadKey, setReloadKey] = useState(0);
   const [filter, setFilter] = useState<Filter>('ALL');
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
-  const [lastDecision, setLastDecision] = useState<SimulatorResponse['decision'] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const prefill = useMemo(() => parseSimulatorFragment(location.hash), [location.hash]);
-  const [customerRef, setCustomerRef] = useState(() => prefill.customer ?? judgeRef());
-  const [draft, setDraft] = useState(prefill.text ?? '');
 
   const list = useLoad(
     useCallback(() => api.get<{ conversations: ConversationRow[] }>('/api/brand/conversations'), [api]),
@@ -113,29 +84,6 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
     setReloadKey((k) => k + 1);
     if (selected) void loadDetail(selected);
   };
-
-  async function send(message: SimulatorSend) {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await api.post<SimulatorResponse>('/api/channels/simulator/messages', {
-        simulator_customer_ref: message.customerRef,
-        client_message_id: newMessageId(),
-        content: message.content,
-      });
-      setLastDecision(res.decision);
-      setDraft('');
-      setSelected(res.conversation_id);
-      list.reload();
-      intents.reload();
-      setReloadKey((k) => k + 1);
-      void loadDetail(res.conversation_id);
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   const [lastRun, setLastRun] = useState<string | null>(null);
   const runDue = useCallback(
@@ -242,10 +190,7 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
                     <button
                       type="button"
                       className={`conversation-item ${r.conversation_id === selected ? 'selected' : ''}`}
-                      onClick={() => {
-                        setSelected(r.conversation_id);
-                        setCustomerRef(r.customer_ref.replace(/^sim:/, ''));
-                      }}
+                      onClick={() => setSelected(r.conversation_id)}
                     >
                       <strong>{r.customer_ref}</strong> <span className="muted small">{humanize(r.channel)}</span>
                       {r.human_handoff && (
@@ -277,19 +222,17 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
           )}
         </Section>
 
-        <Section title={selectedRow ? `Conversation with ${selectedRow.customer_ref}` : 'Simulator'}>
-          <SimulatorPhone
-            brandName={detail?.brand_display_name || 'Your brand'}
-            customerRef={customerRef}
-            onCustomerRefChange={setCustomerRef}
-            draft={draft}
-            onDraftChange={setDraft}
-            messages={detail && detail.customer_ref === `sim:${customerRef}` ? detail.messages : []}
-            intent={detail?.intent ?? null}
-            lastDecision={lastDecision}
-            busy={busy}
-            onSend={(m) => void send(m)}
-          />
+        <Section title={selectedRow ? `Conversation with ${selectedRow.customer_ref}` : 'Conversation'}>
+          {detail ? (
+            <div className="transcript">
+              <ChatThread messages={detail.messages} mode="brand" />
+            </div>
+          ) : (
+            <EmptyState>
+              Select a conversation to read it exactly as the customer sees it. New chats arrive from the shopper demo
+              and WhatsApp.
+            </EmptyState>
+          )}
           {detail?.human_handoff && (
             <HandoffPanel
               conversationId={detail.conversation_id}

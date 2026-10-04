@@ -180,7 +180,7 @@ await step('Store: confirm → ready → arrived → complete with the pickup co
     });
   await move('CONFIRMED', 'PENDING');
   const detail = await api('GET', `/api/brand/conversations/${hold.conversation}`, tokens.brand);
-  const code = (detail.messages as Json[]).map((m) => /Pickup code (\d{6})/.exec(m.text ?? '')?.[1]).find(Boolean);
+  const code = (detail.messages as Json[]).map((m) => /Pickup code:? \*?(\d{6})/.exec(m.text ?? '')?.[1]).find(Boolean);
   must(code, 'the confirmation message carried no pickup code');
   await move('READY', 'CONFIRMED');
   await move('CUSTOMER_ARRIVED', 'READY');

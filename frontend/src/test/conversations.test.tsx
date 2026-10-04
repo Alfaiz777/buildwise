@@ -5,7 +5,7 @@ import { ApiContext, type MeResponse } from '../api/apiContext';
 import type { ApiClient } from '../api/client';
 import { AppRoutes } from '../AppRoutes';
 import { AuthContext, type AuthState } from '../auth/authContext';
-import { countdown, parseSimulatorFragment } from '../pages/brand/conversationTypes';
+import { countdown } from '../pages/brand/conversationTypes';
 
 const ME: MeResponse = {
   scope: 'BRAND',
@@ -155,13 +155,11 @@ describe('Brand Console — Conversations & intents', () => {
     renderAt('/brand/conversations', apiFor());
     fireEvent.click(await screen.findByRole('button', { name: /sim:shopper_3002/ }));
 
-    const phone = await screen.findByLabelText('Simulator');
-    expect(within(phone).getByText('Demo Beauty Co')).toBeInTheDocument();
-    expect(within(phone).getByText('WhatsApp (simulated)')).toBeInTheDocument();
-    expect(within(phone).getByText('Simulator')).toBeInTheDocument();
-    expect(within(phone).getByText('Mock AI, deterministic')).toBeInTheDocument();
-    expect(await within(phone).findByText(/Proactive follow-up · Template/)).toBeInTheDocument();
-    expect(within(phone).getByText('Customer')).toBeInTheDocument();
+    // The read-only transcript: the shopper's chat, with internal labels for the brand.
+    const transcript = await screen.findByRole('log', { name: 'Messages' });
+    expect(await within(transcript).findByText('Follow-up · Template')).toBeInTheDocument();
+    expect(within(transcript).getByText('Customer')).toBeInTheDocument();
+    expect(within(transcript).getByText('Is it good for oily skin?')).toBeInTheDocument();
 
     const panel = screen.getByLabelText('Intent and follow-up');
     expect(within(panel).getByText('Added to cart', { exact: false })).toBeInTheDocument();
@@ -186,21 +184,16 @@ describe('Brand Console — Conversations & intents', () => {
     expect(screen.getByRole('button', { name: /sim:shopper_3002/ })).toBeInTheDocument();
   });
 
-  it('prefills the simulator from the URL fragment and sends through the simulator route', async () => {
+  it('the Brand Console has no simulator: no composer, no customer-ref input, no location presets', async () => {
     const api = apiFor();
-    renderAt('/brand/conversations#customer=shopper_3002&text=START_QWIKSPOT_0123456789ABCDEFGHJKMNPQRS', api);
-    const input = await screen.findByLabelText('Message');
-    expect(input).toHaveValue('START_QWIKSPOT_0123456789ABCDEFGHJKMNPQRS');
-    expect(screen.getByLabelText('Simulator customer')).toHaveValue('shopper_3002');
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    await screen.findByText('Fallback (deterministic)');
-    expect(api.post).toHaveBeenCalledWith(
-      '/api/channels/simulator/messages',
-      expect.objectContaining({
-        simulator_customer_ref: 'shopper_3002',
-        content: { type: 'TEXT', text: 'START_QWIKSPOT_0123456789ABCDEFGHJKMNPQRS' },
-      }),
-    );
+    renderAt('/brand/conversations#customer=shopper_3002&text=hello', api);
+    fireEvent.click(await screen.findByRole('button', { name: /sim:shopper_3002/ }));
+    await screen.findByRole('log', { name: 'Messages' });
+    expect(screen.queryByLabelText('Message')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Simulator customer')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Share location' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
   });
 
   it('"Run due follow-ups" calls process-due and reports the result', async () => {
@@ -214,13 +207,11 @@ describe('Brand Console — Conversations & intents', () => {
     expect(api.post).toHaveBeenCalledWith('/api/brand/follow-ups/process-due', {});
   });
 
-  it('helpers: countdown and fragment parsing', () => {
+  it('helpers: countdown', () => {
     const now = Date.parse('2026-10-05T10:00:00.000Z');
     expect(countdown('2026-10-05T10:01:20.000Z', now)).toBe('in 1m 20s');
     expect(countdown('2026-10-05T10:00:05.000Z', now)).toBe('in 5s');
     expect(countdown('2026-10-05T09:00:00.000Z', now)).toBe('due now');
-    expect(parseSimulatorFragment('#customer=c1&text=hi%20there')).toEqual({ customer: 'c1', text: 'hi there' });
-    expect(parseSimulatorFragment('')).toEqual({ customer: null, text: null });
   });
 });
 

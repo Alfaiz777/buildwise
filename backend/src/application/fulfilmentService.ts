@@ -1,5 +1,12 @@
 import type { NearbyStoresOutput, ProductContextOutput } from '../domain/agentTools.js';
-import { discoveryReply, noEligibleStoreReply, parseOption, variantLabel, type Reply } from '../domain/agentReplies.js';
+import {
+  discoveryReply,
+  noEligibleStoreReply,
+  parseOption,
+  toOutboundOptions,
+  variantLabel,
+  type Reply,
+} from '../domain/agentReplies.js';
 import { messageKindFor } from '../domain/conversationPolicy.js';
 import type { RetailPrincipal } from '../domain/principal.js';
 import {
@@ -105,7 +112,8 @@ export class FulfilmentService {
       await sendAndPersist(this.deps, conversation, customer, {
         text,
         messageType: reply.options?.length ? 'INTERACTIVE' : 'TEXT',
-        options: reply.options?.map((o) => ({ optionId: o.option_id, label: o.label })),
+        options: toOutboundOptions(reply.options),
+        parts: reply.parts,
         origin: 'RESERVATION_UPDATE',
         messageKind: kind,
         templateName: kind === 'TEMPLATE' ? RESERVATION_TEMPLATES[event] : null,
@@ -139,6 +147,7 @@ export class FulfilmentService {
       storeTimezone: store?.storeHours?.timezone ?? 'UTC',
       latitude: store?.latitude ?? null,
       longitude: store?.longitude ?? null,
+      storeAddress: store ? [store.address, store.city].filter(Boolean).join(', ') || null : null,
       productLabel:
         product && variant ? variantLabel({ product_title: product.title, variant_title: variant.title }) : r.sku,
       quantity: r.quantity,

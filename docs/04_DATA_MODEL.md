@@ -114,7 +114,7 @@ retail_freshness_hours
 
 `outcome_policy.attribution_window_days` (default 7; the local demo sets `attribution_window_minutes`) is how long a journey stays open for online-order attribution and before it closes as `NONE` (`00` §11.8 Change 13, F5).
 
-`messaging` holds the brand's `display_name` (the sender name customers see) and its `whatsapp_number` (placeholder locally). `human_handoff_rules.enabled` controls whether a customer can ask for a person.
+`messaging` holds the brand's `display_name` (the sender name customers see) and its `whatsapp_number` (placeholder locally); since Change 16 also `logo_url` (https, or a path on the web origin; shown as the chat's avatar) and `powered_by_footer` (default `true`; `false` removes the "Powered by Qwikspot" footer, `06` §11.1). `human_handoff_rules.enabled` controls whether a customer can ask for a person.
 
 `follow_up_policy` (`00` §11.8 Change 11, D5) — prototype defaults, all configurable:
 
@@ -290,6 +290,7 @@ Product
 - asset_references
 - tags                  (optional string list, e.g. ["serum", "brightening"])
 - attributes            (optional string map, e.g. skin_type, key_ingredients, size)
+- image_url             (optional; Change 16. https, or a path on the web origin such as /demo-products/<slug>.png)
 ```
 
 `tags` and `attributes` are product knowledge used to ground EDUCATE / COMPARE answers (`00` §11.8 Change 10). They come from the commerce source and are passed to the AI in context.
@@ -729,6 +730,8 @@ ConversationMessage
 - origin               (CUSTOMER | AUTOMATED_REPLY | PROACTIVE_FOLLOW_UP | RESERVATION_UPDATE | HUMAN_AGENT)
 - message_kind         (SESSION | TEMPLATE; outbound only)
 - template_name        (TEMPLATE only)
+- options              (outbound: { option_id, label, description?, section? }[] — buttons or list rows; Change 16)
+- parts                (outbound, optional: { header, footer, location, cta_url, list_button }; Change 16, 06 §11.1)
 ```
 
 Message text is stored with any intent token removed and truncated to 2,000 characters.

@@ -117,7 +117,7 @@ describe('docs/08 §13 failure paths (local)', () => {
     await s.startFromStore('c1', 'hi');
     const res = await s.share('c1');
     const text = res.body.outbound_messages[0].text as string;
-    expect(text).toContain('Colaba Store (2.0 km, open until 21:00).');
+    expect(text).toContain('Available today at *Colaba Store*\n2.0 km · open until 21:00');
     expect(text).toContain("Colaba Store's stock was last updated 5 Oct, 09:30 (store time), so it may have changed.");
     // The guardrail still re-verifies the numbers: a hold goes through on verified stock.
     const hold = await s.tap('c1', 'hold:sc_A');

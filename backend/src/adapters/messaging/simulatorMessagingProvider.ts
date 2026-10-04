@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { MessagePartsError, validateMessage } from '../../domain/whatsappLimits.js';
 import type {
   DeliveryStatusUpdate,
   InboundMessage,
@@ -70,6 +71,15 @@ export class SimulatorMessagingProvider implements MessagingProvider {
   async send(message: OutboundMessage): Promise<SendResult> {
     if (!message.externalCustomerRef.startsWith('sim:')) {
       return { status: 'FAILED', externalMessageId: null, errorCode: 'NOT_A_SIMULATOR_CUSTOMER' };
+    }
+    // The simulator renders only what WhatsApp can (Change 16): the same check as the L2 adapter.
+    try {
+      validateMessage(message);
+    } catch (err) {
+      if (err instanceof MessagePartsError) {
+        return { status: 'FAILED', externalMessageId: null, errorCode: 'MESSAGE_PARTS_INVALID' };
+      }
+      throw err;
     }
     return { status: 'DELIVERED', externalMessageId: `sim_${randomUUID()}`, errorCode: null };
   }

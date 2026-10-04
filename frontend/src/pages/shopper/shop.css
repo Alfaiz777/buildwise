@@ -1,0 +1,342 @@
+/* /shop — the brand's demo website with the Qwikspot widget (Change 16). */
+.shop {
+  min-height: 100vh;
+  background: #fffaf3;
+  color: var(--grey-900);
+}
+.shop > .demo-ribbon {
+  border-radius: 0;
+}
+.shop-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-nav);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-6);
+  background: #fff;
+  border-bottom: 1px solid #efe6d8;
+}
+.shop-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #3d2300;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: var(--text-lg);
+  cursor: pointer;
+}
+.shop-brand:hover:not(:disabled) {
+  background: transparent;
+}
+.shop-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  max-width: 28rem;
+  margin: 0;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-full);
+  background: #f6efe4;
+  color: #7a6a55;
+}
+.shop-search input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2) 0;
+  border: 0;
+  background: transparent;
+}
+.shop-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+.shop-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #3d2300;
+}
+.shop-icon:hover:not(:disabled) {
+  background: #f6efe4;
+}
+.shop-count {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: #b45c09;
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+}
+.shop-alert {
+  margin: var(--space-3) var(--space-6) 0;
+}
+.shop-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  max-width: 82rem;
+  margin: 0 auto;
+  padding: var(--space-6);
+}
+.shop--docked .shop-layout {
+  grid-template-columns: minmax(0, 1fr) 400px;
+}
+.shop-main {
+  min-width: 0;
+}
+.shop-hero {
+  padding: var(--space-10) var(--space-8);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(120deg, #fdebc8, #fbd9c9);
+}
+.shop-hero h1 {
+  margin: 0 0 var(--space-2);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  color: #3d2300;
+}
+.shop-hero p {
+  margin: 0;
+  color: #6b4b1f;
+}
+.shop-h2 {
+  margin: var(--space-8) 0 var(--space-4);
+  font-size: var(--text-lg);
+}
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--space-4);
+}
+.shop-card {
+  display: grid;
+  gap: 4px;
+  padding: var(--space-3);
+  border: 1px solid #efe6d8;
+  border-radius: var(--radius-lg);
+  background: #fff;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+}
+.shop-card:hover:not(:disabled) {
+  background: #fff;
+  box-shadow: var(--shadow-md);
+}
+.shop-card .ui-thumb {
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+}
+.shop-price {
+  font-weight: 700;
+  color: #6b4b1f;
+}
+.shop-product {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-8);
+  align-items: start;
+}
+.shop-product > .ui-thumb {
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 1;
+  border-radius: var(--radius-xl);
+}
+.shop-product__info h1 {
+  margin: 0 0 var(--space-3);
+  font-family: Georgia, 'Times New Roman', serif;
+  color: #3d2300;
+}
+.shop-sizes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+  padding: 0;
+  border: 0;
+}
+.shop-sizes legend {
+  margin-bottom: var(--space-2);
+  font-weight: 600;
+}
+.shop-size {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid #e3d6c3;
+  border-radius: var(--radius-full);
+  background: #fff;
+  cursor: pointer;
+}
+.shop-size:has(input:checked) {
+  border-color: #b45c09;
+  background: #fff4e3;
+}
+.shop-buy {
+  width: 100%;
+  min-height: 48px;
+  background: #3d2300;
+}
+.shop-buy:hover:not(:disabled) {
+  background: #5a3608;
+}
+
+/* The Qwikspot widget, as it would sit in a brand's theme. */
+.qs-widget {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px dashed #d8c7ad;
+  border-radius: var(--radius-lg);
+  background: #fff;
+}
+.qs-widget__primary,
+.qs-widget__secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 46px;
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.qs-widget__primary {
+  border: 0;
+  background: var(--teal-700);
+  color: #fff;
+}
+.qs-widget__primary:hover:not(:disabled) {
+  background: var(--teal-800);
+}
+.qs-widget__secondary {
+  border: 1px solid #25d366;
+  background: #fff;
+  color: #128c4b;
+}
+.qs-widget__secondary:hover:not(:disabled) {
+  background: #effcf3;
+  color: #128c4b;
+}
+.qs-widget__powered {
+  justify-self: center;
+  color: #8a7a64;
+  font-size: var(--text-xs);
+}
+.shop-panel {
+  display: grid;
+  gap: var(--space-4);
+  justify-items: start;
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  border: 1px solid #efe6d8;
+}
+.shop-panel h1 {
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+.shop-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.shop-dock {
+  position: sticky;
+  top: 80px;
+  align-self: start;
+}
+.shop-dock .wa-phone {
+  height: min(700px, calc(100vh - 110px));
+}
+.shop-dock__close {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  z-index: 2;
+  background: #fff;
+  box-shadow: var(--shadow-md);
+  border-radius: 50%;
+}
+.shop-controls {
+  display: grid;
+  gap: var(--space-3);
+}
+.shop-controls h3 {
+  margin: var(--space-2) 0 0;
+}
+.shop-controls__list {
+  display: grid;
+  gap: var(--space-2);
+}
+.shop-controls__list .ui-button {
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+}
+
+@media (max-width: 900px) {
+  .shop-product {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .shop-header {
+    flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4);
+  }
+  .shop-search {
+    order: 3;
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .shop-who {
+    display: none;
+  }
+  .shop-layout {
+    padding: var(--space-4);
+  }
+  .shop-hero {
+    padding: var(--space-6) var(--space-5);
+  }
+  .shop-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+  .shop-alert {
+    margin: var(--space-3) var(--space-4) 0;
+  }
+}
+.shopper-unavailable {
+  display: grid;
+  gap: var(--space-3);
+}

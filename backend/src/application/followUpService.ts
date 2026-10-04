@@ -1,6 +1,7 @@
 import { resolveMessagingSettings } from '../domain/brandSettings.js';
 import type { Channel } from '../domain/channels.js';
 import { messageKindFor } from '../domain/conversationPolicy.js';
+import { toOutboundOptions } from '../domain/agentReplies.js';
 import { composeFollowUp } from '../domain/followUpMessages.js';
 import {
   evaluateFollowUp,
@@ -272,6 +273,8 @@ export class FollowUpService {
       productTitle: titles.product,
       variantTitle: titles.variant,
       category: intent.matchedCategory,
+      variantId: titles.variant ? intent.variantId : null,
+      imageUrl: titles.imageUrl,
     });
     const { message: sent } = await sendAndPersist(
       this.deps,
@@ -279,7 +282,9 @@ export class FollowUpService {
       customer,
       {
         text: message.text,
-        messageType: kind === 'TEMPLATE' ? 'TEMPLATE' : 'TEXT',
+        messageType: kind === 'TEMPLATE' ? 'TEMPLATE' : 'INTERACTIVE',
+        options: toOutboundOptions(message.options),
+        parts: message.parts,
         origin: 'PROACTIVE_FOLLOW_UP',
         messageKind: kind,
         templateName: message.templateName,
@@ -350,14 +355,16 @@ export class FollowUpService {
   }
 
   private async titles(brandId: string, intent: IntentRecord) {
-    if (!intent.productId) return { product: null, variant: null };
+    if (!intent.productId) return { product: null, variant: null, imageUrl: null };
     const [products, variants] = await Promise.all([
       this.deps.products.listProducts(brandId),
       this.deps.products.listVariants(brandId),
     ]);
+    const product = products.find((p) => p.productId === intent.productId);
     return {
-      product: products.find((p) => p.productId === intent.productId)?.title ?? null,
+      product: product?.title ?? null,
       variant: variants.find((v) => v.variantId === intent.variantId)?.title ?? null,
+      imageUrl: product?.imageUrl ?? null,
     };
   }
 

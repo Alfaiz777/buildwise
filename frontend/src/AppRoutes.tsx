@@ -6,12 +6,13 @@ import { ToastProvider } from './components/ui';
 import { BrandHome } from './pages/brand/BrandHome';
 import { ConversationsPage } from './pages/brand/ConversationsPage';
 import { OutcomesPage } from './pages/brand/OutcomesPage';
-import { DemoStorePage } from './pages/demo/DemoStorePage';
 import { LandingPage } from './pages/landing/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { PlatformHome } from './pages/platform/PlatformHome';
 import { RetailerHome } from './pages/retailer/RetailerHome';
+import { ChatPage } from './pages/shopper/ChatPage';
+import { ShopPage } from './pages/shopper/ShopPage';
 import { UiKitPage } from './pages/uikit/UiKitPage';
 import type { FrontendProfile } from './config';
 
@@ -22,6 +23,9 @@ import type { FrontendProfile } from './config';
  *   /            public landing          /app      → the signed-in user's own console
  *   /brand/*     Brand Console           /store    Store Console (/retailer redirects)
  *   /platform    Platform Console        /shop     demo storefront (/demo-store redirects)
+ *                                         /chat     the brand's chat, as the shopper sees it
+ * /shop and /chat are routed in every profile (Change 16); in gcp the backend serves them
+ * only with DEMO_MODE on, and the pages say "not available" otherwise.
  */
 export function AppRoutes({ profile = 'local' }: { profile?: FrontendProfile }) {
   const local = profile === 'local';
@@ -30,9 +34,11 @@ export function AppRoutes({ profile = 'local' }: { profile?: FrontendProfile }) 
       <Routes>
         <Route path="/" element={<LandingPage profile={profile} />} />
         <Route path="/login" element={<LoginPage />} />
-        {/* LOCAL PROFILE ONLY: the demo storefront and the UI kit (public, no login). Never routed in gcp. */}
-        {local && <Route path="/shop" element={<DemoStorePage />} />}
-        {local && <Route path="/demo-store" element={<RedirectKeepingUrl to="/shop" />} />}
+        {/* The shopper demo (public, no login): local always; gcp only when the backend serves it. */}
+        <Route path="/shop" element={<ShopPage />} />
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/demo-store" element={<RedirectKeepingUrl to="/shop" />} />
+        {/* LOCAL PROFILE ONLY: the UI kit. */}
         {local && <Route path="/ui-kit" element={<UiKitPage />} />}
         <Route path="/retailer" element={<Navigate to="/store" replace />} />
         <Route element={<ProtectedRoute />}>
@@ -42,7 +48,7 @@ export function AppRoutes({ profile = 'local' }: { profile?: FrontendProfile }) 
               <Route path="/platform" element={<PlatformHome />} />
             </Route>
             <Route element={<ScopeRoute scope="BRAND" />}>
-              <Route path="/brand" element={<BrandHome demoStorefront={local} />} />
+              <Route path="/brand" element={<BrandHome />} />
               <Route path="/brand/conversations" element={<ConversationsPage autoPoll={local} />} />
               <Route path="/brand/outcomes" element={<OutcomesPage />} />
             </Route>

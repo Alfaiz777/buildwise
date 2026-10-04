@@ -53,6 +53,7 @@ const variant: VariantView = {
   price: 795,
   currency: 'INR',
   online_url: 'http://shop.test/products/prd_1',
+  image_url: null,
 };
 const store = (id: string, km: number, available: number): StoreOption => ({
   store_id: id,
@@ -169,11 +170,17 @@ describe('reply builders use verified facts only (Change 12, E3)', () => {
       onlineAvailable: true,
     });
     expect(reply.options).toEqual([
-      { option_id: 'hold:Bandra', label: 'Hold 1 at Bandra (2.1 km, open until 21:00)' },
+      { option_id: 'hold:Bandra', label: 'Hold at Bandra' },
       { option_id: 'other_stores', label: 'Other stores' },
       { option_id: 'buy_online', label: 'Buy online' },
     ]);
     expect(reply.text).not.toMatch(/only 1 left/i);
+    // Change 16: a product card — bold product and price, the store, its facts on one line.
+    expect(reply.text.split('\n').slice(0, 3)).toEqual([
+      '*Vitamin C Glow Serum 30 ml* · ₹795',
+      'Available today at *Bandra Store*',
+      '2.1 km · open until 21:00',
+    ]);
     const last = storeProposalReply({ variant, stores: [store('Tardeo', 4, 1)], origin: null, onlineAvailable: false });
     expect(last.text).toContain('Only 1 left.');
     expect(last.options!.map((o) => o.option_id)).toEqual(['hold:Tardeo']);
@@ -203,7 +210,7 @@ describe('reply builders use verified facts only (Change 12, E3)', () => {
     expect(reply.options!.map((o) => o.option_id)).toEqual(['buy_online']);
     expect(
       otherStoresReply({ variant, stores: [store('A', 1, 5)], onlineAvailable: false, canHold: false }).options,
-    ).toEqual([]);
+    ).toBeUndefined();
   });
 
   it('confirmation: store, address, pickup code, hold-until in the store timezone, maps link, pay at store, cancel', () => {
@@ -233,13 +240,22 @@ describe('reply builders use verified facts only (Change 12, E3)', () => {
       variant,
     };
     const reply = confirmationReply(out, NOW);
-    expect(reply.text).toContain('Bandra Store, Hill Road, Bandra West, Mumbai');
-    expect(reply.text).toContain('Pickup code: 004271');
-    expect(reply.text).toContain('Held until 14:00 (store time).');
-    expect(reply.text).toContain(mapsLink(19.0544, 72.8267));
+    // Change 16: the pickup pass, with the store's location as a location part.
+    expect(reply.text.split('\n')).toEqual([
+      '✅ *On hold for you*',
+      '1 × Vitamin C Glow Serum 30 ml',
+      '*Bandra Store*, Hill Road, Bandra West, Mumbai',
+      'Pickup code: *004271*',
+      'Held until 14:00 (store time) · pay at the store',
+      "The store will confirm when it's ready.",
+    ]);
+    expect(reply.parts?.location).toEqual({
+      name: 'Bandra Store',
+      address: 'Hill Road, Bandra West, Mumbai',
+      latitude: 19.0544,
+      longitude: 72.8267,
+    });
     expect(mapsLink(19.0544, 72.8267)).toBe('https://www.google.com/maps/search/?api=1&query=19.0544,72.8267');
-    expect(reply.text).toContain('Pay at the store.');
-    expect(reply.text).toContain("The store will confirm when it's ready.");
     expect(reply.options).toEqual([{ option_id: 'cancel:res_1', label: 'Cancel reservation' }]);
   });
 
@@ -266,6 +282,7 @@ describe('reply builders use verified facts only (Change 12, E3)', () => {
   });
 
   const sheet = (over: Partial<ProductSheet>): ProductSheet => ({
+    image_url: null,
     product_id: 'prd_1',
     title: 'Vitamin C Glow Serum',
     description: '10% vitamin C serum.',
@@ -300,10 +317,10 @@ describe('reply builders use verified facts only (Change 12, E3)', () => {
       }),
     ).text;
     expect(text).toContain(
-      'Vitamin C Glow Serum — concern: dullness; skin type: all; key ingredients: vitamin C; 30 ml ₹795',
+      '*Vitamin C Glow Serum*\n• Concern: dullness\n• Skin Type: all\n• Key Ingredients: vitamin C\n• Price: 30 ml ₹795',
     );
     expect(text).toContain(
-      'Niacinamide Serum — concern: dullness; skin type: oily; key ingredients: niacinamide; 30 ml ₹649',
+      '*Niacinamide Serum*\n• Concern: dullness\n• Skin Type: oily\n• Key Ingredients: niacinamide\n• Price: 30 ml ₹649',
     );
     expect(text).toMatch(/Which matters more to you/);
   });

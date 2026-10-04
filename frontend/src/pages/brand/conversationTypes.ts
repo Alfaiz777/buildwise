@@ -2,13 +2,32 @@
 
 export type Origin = 'CUSTOMER' | 'AUTOMATED_REPLY' | 'PROACTIVE_FOLLOW_UP' | 'RESERVATION_UPDATE' | 'HUMAN_AGENT';
 
+export interface ChatOption {
+  option_id: string;
+  label: string;
+  /** List rows only (Change 16). */
+  description?: string;
+  section?: string;
+}
+
+/** Structured parts of an outbound message (Change 16): what WhatsApp can render. */
+export interface ChatParts {
+  header: { type: 'IMAGE'; url: string; alt: string } | { type: 'TEXT'; text: string } | null;
+  footer: string | null;
+  location: { name: string; address: string; latitude: number; longitude: number } | null;
+  cta_url: { label: string; url: string } | null;
+  list_button: string | null;
+}
+
 export interface ChatMessage {
   message_id: string;
   direction: 'INBOUND' | 'OUTBOUND';
   message_type: string;
   text: string | null;
-  options: { option_id: string; label: string }[] | null;
+  options: ChatOption[] | null;
   location: { latitude: number; longitude: number } | null;
+  /** Absent on messages written before UI-2. */
+  parts?: ChatParts | null;
   origin: Origin;
   message_kind: 'SESSION' | 'TEMPLATE' | null;
   template_name: string | null;
@@ -144,22 +163,6 @@ export const GUARDRAIL_TEXT: Record<string, string> = {
   AMBIGUOUS: 'Blocked: nothing clear to act on — the customer is asked first.',
 };
 
-export interface SimulatorResponse {
-  conversation_id: string;
-  inbound_message_id: string;
-  outbound_messages: ChatMessage[];
-  decision: {
-    recommendation_id: string | null;
-    action: string;
-    guardrail_status: string | null;
-    runtime: string;
-    decision_source: string | null;
-    guardrail_reason?: string | null;
-    executed_action: { type: string; reservation_id: string | null } | null;
-    policy_reason: string | null;
-  };
-}
-
 /** Plain-words labels for the "Intent & follow-up" panel. */
 export const REASON_TEXT: Record<string, string> = {
   ELIGIBLE: 'Eligible for a follow-up.',
@@ -200,10 +203,4 @@ export function countdown(dueAt: string, now: number): string {
   const s = Math.ceil(ms / 1000);
   const m = Math.floor(s / 60);
   return m > 0 ? `in ${m}m ${s % 60}s` : `in ${s}s`;
-}
-
-/** The simulator prefill carried in the URL fragment (never the query string). */
-export function parseSimulatorFragment(hash: string): { text: string | null; customer: string | null } {
-  const params = new URLSearchParams(hash.replace(/^#/, ''));
-  return { text: params.get('text'), customer: params.get('customer') };
 }

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+  <rect width="600" height="600" fill="#eef7e2"/>
+  <circle cx="470" cy="120" r="70" fill="#8fbf4d" opacity="0.14"/>
+  <circle cx="110" cy="480" r="90" fill="#8fbf4d" opacity="0.10"/>
+  <ellipse cx="300" cy="528" rx="170" ry="22" fill="#000000" opacity="0.08"/>
+  
+    <rect x="300" y="64" width="90" height="22" rx="8" fill="#2a2f36"/>
+    <rect x="286" y="80" width="28" height="70" fill="#2a2f36"/>
+    <rect x="262" y="142" width="76" height="44" rx="10" fill="#3b4451"/>
+    <rect x="196" y="180" width="208" height="320" rx="44" fill="#8fbf4d"/>
+    <rect x="218" y="204" width="24" height="250" rx="12" fill="#ffffff" opacity="0.28"/>
+    
+  <rect x="216" y="300" width="168" height="92" rx="10" fill="#ffffff" opacity="0.94"/>
+  <text x="300" y="334" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+        font-size="15" font-weight="700" letter-spacing="1.5" fill="#4b6b1e">DEMO BEAUTY</text>
+  <text x="300" y="368" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+        font-size="28" font-weight="700" fill="#1c2430">Foaming</text>
+</svg>

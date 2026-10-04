@@ -106,14 +106,25 @@ export function createProviders(config: Pick<Config, 'adapters' | 'localDataDir'
 }
 
 /**
- * Local-only surfaces (docs/07 §19): the demo storefront (with its demo shopper and demo
- * order endpoints) and the browser upload target exist only in the local profile.
+ * Profile-gated surfaces (docs/07 §19, Change 16): the demo storefront and the shopper
+ * channel exist in the local profile, and in gcp only with DEMO_MODE on; the browser upload
+ * target exists only in the local profile.
  */
-export function profileFeatures(config: Pick<Config, 'profile' | 'adapters'>) {
+export function profileFeatures(
+  config: Pick<Config, 'profile' | 'adapters'> & { demo?: Pick<Config['demo'], 'enabled'> },
+) {
+  // The shopper demo (/api/shopper, /api/demo-storefront): local always; gcp only with DEMO_MODE on (Change 16).
+  const shopperDemo = config.profile === 'local' || config.demo?.enabled === true;
   return {
-    demoStorefront: config.profile === 'local',
+    demoStorefront: shopperDemo,
+    shopperDemo,
     localUploads: config.profile === 'local' && config.adapters.fileStorage === 'local',
   };
+}
+
+/** Which brands the shopper demo answers for: any in local; only the demo allowlist in gcp. */
+export function shopperBrandAllowed(config: Pick<Config, 'profile' | 'demo'>): (brandId: string) => boolean {
+  return config.profile === 'local' ? () => true : (brandId) => config.demo.brandIds.includes(brandId);
 }
 
 export interface Container {
@@ -200,6 +211,10 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     now: options.now,
     // The demo storefront and its demo shopper / order endpoints exist only in the local profile.
     demoStorefront: profileFeatures(config).demoStorefront ? { commerce: providers.commerce } : undefined,
+    shopperChannel: profileFeatures(config).shopperDemo
+      ? { sessionSecret: config.shopper.sessionSecret, brandAllowed: shopperBrandAllowed(config) }
+      : undefined,
+    publicOrigin: config.publicWebOrigin,
   });
 
   return {
@@ -243,6 +258,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
           now: options.now ?? (() => new Date()),
         }),
         demoStorefront: conversation.demoStorefront,
+        shopper: conversation.shopper,
         demoReset,
       },
       localUploads:

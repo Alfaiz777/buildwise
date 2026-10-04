@@ -3,7 +3,7 @@
  * built only from verified data (the reservation, the store, the catalogue). A refusal
  * never shows the store's internal note and never blames the customer.
  */
-import { formatHoldUntil, mapsLink, type Reply } from './agentReplies.js';
+import { formatHoldUntil, type Reply } from './agentReplies.js';
 
 export type ReservationUpdateEvent = 'CONFIRMED' | 'READY' | 'REFUSED' | 'EXPIRED';
 
@@ -21,6 +21,8 @@ export interface ReservationFacts {
   storeTimezone: string;
   latitude: number | null;
   longitude: number | null;
+  /** The store's address, for the location part (Change 16). */
+  storeAddress?: string | null;
   productLabel: string;
   quantity: number;
   pickupCode: string;
@@ -29,23 +31,40 @@ export interface ReservationFacts {
 }
 
 const qty = (f: ReservationFacts) => (f.quantity > 1 ? `${f.quantity} × ${f.productLabel}` : f.productLabel);
+const qtyLine = (f: ReservationFacts) => `${f.quantity} × ${f.productLabel}`;
 
 export const RECHECK_OPTION = (variantId: string) => `recheck:${variantId}`;
+
+/** The store's location as a location part (sent as a location message on WhatsApp). */
+const storeLocation = (f: ReservationFacts) =>
+  f.latitude !== null && f.longitude !== null
+    ? {
+        location: {
+          name: f.storeName,
+          address: f.storeAddress || f.storeName,
+          latitude: f.latitude,
+          longitude: f.longitude,
+        },
+      }
+    : undefined;
 
 export function confirmedMessage(f: ReservationFacts, now: Date): Reply {
   return {
     message_type: 'INTERACTIVE',
-    text: `${f.storeName} has confirmed your reservation for ${qty(f)}. Pickup code ${f.pickupCode}, held until ${formatHoldUntil(f.expiresAt, f.storeTimezone, now)} (store time).`,
+    text: [
+      `✅ *${f.storeName} confirmed your hold*`,
+      qtyLine(f),
+      `Pickup code: *${f.pickupCode}* · held until ${formatHoldUntil(f.expiresAt, f.storeTimezone, now)} (store time)`,
+    ].join('\n'),
     options: [{ option_id: `cancel:${f.reservationId}`, label: 'Cancel reservation' }],
   };
 }
 
 export function readyMessage(f: ReservationFacts): Reply {
-  const directions =
-    f.latitude !== null && f.longitude !== null ? ` Directions: ${mapsLink(f.latitude, f.longitude)}` : '';
   return {
     message_type: 'TEXT',
-    text: `Your ${qty(f)} is ready at ${f.storeName}. Show code ${f.pickupCode}.${directions}`,
+    text: [`🛍️ *Ready at ${f.storeName}*`, qtyLine(f), `Show code *${f.pickupCode}* at the counter.`].join('\n'),
+    parts: storeLocation(f),
   };
 }
 

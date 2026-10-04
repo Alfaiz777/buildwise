@@ -1,8 +1,10 @@
-import { LogOut } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { ExternalLink, LogOut } from 'lucide-react';
+import { useCallback, type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useMe } from '../../account/meContext';
+import { useApi } from '../../api/apiContext';
 import { useAuth } from '../../auth/authContext';
+import { useLoad } from '../ConsoleShell';
 import { label } from '../../lib/labels';
 import { Wordmark } from './Wordmark';
 import { CONSOLE_NAME, NAV } from './nav';
@@ -22,6 +24,18 @@ export function AppShell({ children }: { children: ReactNode }) {
         ? me.brand_name
         : 'Qwikspot platform';
   const nav = NAV[me.scope];
+  const api = useApi();
+  // The demo brand's Brand Admin gets a shortcut to the shopper experience (DEMO_MODE only).
+  const demo = useLoad(
+    useCallback(
+      () =>
+        me.scope === 'BRAND'
+          ? api.get<{ reset_available: boolean }>('/api/brand/demo')
+          : Promise.resolve({ reset_available: false }),
+      [api, me.scope],
+    ),
+  );
+  const shopperDemo = me.scope === 'BRAND' && demo.data?.reset_available === true;
 
   return (
     <div className={`shell shell--${me.scope.toLowerCase()}`}>
@@ -32,6 +46,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="shell-top__context">{context}</span>
         </div>
         <div className="shell-top__user">
+          {shopperDemo && me.scope === 'BRAND' && (
+            <a
+              className="ui-button ui-button--accent ui-button--sm"
+              href={`/shop?brand=${encodeURIComponent(me.brand_id)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open shopper demo (new tab)"
+            >
+              <span className="shell-top__open">Open&nbsp;</span>shopper demo{' '}
+              <ExternalLink size={14} aria-hidden="true" />
+            </a>
+          )}
           <span className="shell-top__email">{me.user.email ?? me.user.user_id}</span>
           <span className="ui-pill ui-pill--primary shell-role">{label(me.role)}</span>
           <button type="button" className="ui-button ui-button--ghost ui-button--sm" onClick={() => void signOut()}>

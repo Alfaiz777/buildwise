@@ -284,8 +284,9 @@ describe('docs/08 §7.2 scenarios on MockAgentRuntime (emulator, stores A–E)',
       expires_at: new Date(clock.t + 120 * 60_000).toISOString(),
     });
     expect((await stock(B1, 'sc_A')).reserved_quantity).toBe(before + 1);
-    expect(textOf(res)).toContain(`Pickup code: ${doc.pickup_code}`);
-    expect(textOf(res)).toContain('https://www.google.com/maps/search/?api=1&query=19.017986,72.8');
+    expect(textOf(res)).toContain(`Pickup code: *${doc.pickup_code}*`);
+    // Change 16: directions are a location part (a location message on WhatsApp).
+    expect(res.body.outbound_messages[0].parts.location).toMatchObject({ latitude: 19.017986, longitude: 72.8 });
   });
 
   it('7 · "I want to talk to a person" → HUMAN_HANDOFF; automation stops', async () => {
@@ -337,7 +338,11 @@ describe('docs/08 §7.2 scenarios on MockAgentRuntime (emulator, stores A–E)',
       await c.share();
       const other = await c.say('Do you have this in another store?');
       expect(optionsOf(other)[0]).toBe('hold:sc_E');
-      expect(textOf(other)).toMatch(/Tardeo Store — [^\n]*only 1 left/);
+      // Change 16: other stores are a list; each row describes its store.
+      const tardeo = other.body.outbound_messages[0].options.find(
+        (o: { option_id: string }) => o.option_id === 'hold:sc_E',
+      );
+      expect(tardeo).toMatchObject({ label: 'Tardeo Store', description: expect.stringMatching(/only 1 left/) });
     }
     const results = await Promise.all([c1.tap('hold:sc_E'), c2.tap('hold:sc_E')]);
     const created = results.filter((r) => r.body.decision.executed_action?.type === 'RESERVATION_CREATED');
@@ -533,8 +538,8 @@ describe('demo story (demo-retail.csv)', () => {
     // 3. Hold → pickup code, maps link, hold time.
     const hold = await asha.tap('hold:st_north_2');
     expect(hold.body.decision.executed_action.type).toBe('RESERVATION_CREATED');
-    expect(textOf(hold)).toMatch(/Pickup code: \d{6}/);
-    expect(textOf(hold)).toContain('https://www.google.com/maps/search/?api=1&query=19.1364,72.8296');
+    expect(textOf(hold)).toMatch(/Pickup code: \*\d{6}\*/);
+    expect(hold.body.outbound_messages[0].parts.location).toMatchObject({ latitude: 19.1364, longitude: 72.8296 });
     expect(textOf(hold)).toMatch(/Held until \d{2}:\d{2} \(store time\)/);
 
     // 4. The Andheri Retail Admin sees reserved +1 in the store stock table.

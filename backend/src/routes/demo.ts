@@ -10,18 +10,21 @@ import { RateLimiter } from '../lib/rateLimiter.js';
  * the demo logins from CONFIGURATION (never compiled into the frontend bundle); with it off
  * it returns only { demo_mode: false }. Rate limited per IP.
  */
-export function demoRouter(demo: DemoConfig | undefined): Router {
+export function demoRouter(demo: DemoConfig | undefined, shopperDemoBrand: string | null = null): Router {
   const router = Router();
   const perIp = new RateLimiter(30, 60_000);
   router.get('/demo/config', (req: Request, res) => {
     if (!perIp.hit(req.ip ?? 'unknown'))
       throw new AppError(429, 'RATE_LIMITED', 'Too many requests. Try again in a minute.', true);
+    // Which brand the shopper demo (/shop, /chat) opens, when it exists here (Change 16).
+    const shopperDemo = shopperDemoBrand ? { shopper_demo: { brand_id: shopperDemoBrand } } : {};
     if (!demo?.enabled) {
-      res.json({ demo_mode: false });
+      res.json({ demo_mode: false, ...shopperDemo });
       return;
     }
     res.json({
       demo_mode: true,
+      ...shopperDemo,
       logins: demo.logins.map((l) => ({
         email: l.email,
         password: l.password,

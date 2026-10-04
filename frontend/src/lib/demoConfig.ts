@@ -10,11 +10,15 @@ export interface DemoLogin {
 }
 
 export interface DemoConfigState {
+  /** False until the config answered (or failed). */
+  loaded: boolean;
   demoMode: boolean;
   logins: DemoLogin[];
+  /** The brand the shopper demo (/shop, /chat) opens, when it exists here (Change 16). */
+  shopperDemoBrand: string | null;
 }
 
-const OFF: DemoConfigState = { demoMode: false, logins: [] };
+const OFF: DemoConfigState = { loaded: false, demoMode: false, logins: [], shopperDemoBrand: null };
 
 /**
  * GET /api/demo/config (public; Change 14, G3). Demo logins reach the browser only here,
@@ -26,11 +30,16 @@ export function useDemoConfig(): DemoConfigState {
     let cancelled = false;
     fetch('/api/demo/config')
       .then((res) => (res.ok ? res.json() : null))
-      .then((body: { demo_mode?: boolean; logins?: DemoLogin[] } | null) => {
-        if (cancelled || !body?.demo_mode) return;
-        setState({ demoMode: true, logins: Array.isArray(body.logins) ? body.logins : [] });
+      .then((body: { demo_mode?: boolean; logins?: DemoLogin[]; shopper_demo?: { brand_id?: string } } | null) => {
+        if (cancelled) return;
+        setState({
+          loaded: true,
+          demoMode: body?.demo_mode === true,
+          logins: body?.demo_mode && Array.isArray(body.logins) ? body.logins : [],
+          shopperDemoBrand: typeof body?.shopper_demo?.brand_id === 'string' ? body.shopper_demo.brand_id : null,
+        });
       })
-      .catch(() => undefined);
+      .catch(() => !cancelled && setState({ ...OFF, loaded: true }));
     return () => {
       cancelled = true;
     };
@@ -39,11 +48,12 @@ export function useDemoConfig(): DemoConfigState {
 }
 
 /**
- * Profiles in which the shopper demo (/shop) is routed. Local today; UI-2 adds gcp, where
- * it is served only with DEMO_MODE on for the allowlisted demo brand.
+ * Profiles in which /shop and /chat are routed (Change 16): both. In gcp the backend
+ * serves the shopper demo only with DEMO_MODE on, for the allowlisted demo brand; the page
+ * shows "not available" otherwise.
  */
-export const SHOPPER_DEMO_PROFILES: readonly FrontendProfile[] = ['local'];
+export const SHOPPER_DEMO_PROFILES: readonly FrontendProfile[] = ['local', 'gcp'];
 
-export function shopperDemoAvailable(demoMode: boolean, profile: FrontendProfile): boolean {
-  return demoMode && SHOPPER_DEMO_PROFILES.includes(profile);
+export function shopperDemoAvailable(demo: DemoConfigState, profile: FrontendProfile): boolean {
+  return demo.demoMode && demo.shopperDemoBrand !== null && SHOPPER_DEMO_PROFILES.includes(profile);
 }

@@ -79,6 +79,7 @@ export class CommerceSyncService {
         status: p.status,
         tags: [...p.tags],
         attributes: { ...p.attributes },
+        imageUrl: p.imageUrl ?? null,
       });
       for (const v of p.variants) {
         variants.push({

@@ -38,14 +38,108 @@ const SHOTS = [
   ['brand-overview-banner', 'brand', '/brand'],
   ['brand-overview', 'brand', '/brand', (p) => p.getByRole('button', { name: 'Dismiss this note' }).click()],
   ['brand-conversations', 'brand', '/brand/conversations'],
+  ['shop-home', null, '/shop'],
+  ['shop-controls', null, '/shop', (p) => p.getByRole('button', { name: /Demo controls/ }).click()],
+  ['chat-empty', null, '/chat?brand=brd_demo'],
   ['brand-insights', 'brand', '/brand/outcomes'],
   ['store-today', 'store', '/store'],
   ['platform-overview', 'platform', '/platform'],
 ];
 
+const T = 20_000;
+const shot = async (page, name, vp, fullPage = false) => {
+  await page.waitForTimeout(500);
+  const file = `${OUT}/${name}-${vp.name}.png`;
+  await page.screenshot({ path: file, fullPage });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  written.push(`${file}${overflow ? '  ⚠ horizontal page scroll' : ''}`);
+};
+
+/**
+ * UI-2 shopper journey as a guest: product page → "Need it today?" (docked chat on desktop,
+ * /chat on phones) → Near Powai → store found → other stores (list sheet) → hold (pickup
+ * pass) → the store confirms in its own tab → the store update appears in the chat.
+ */
+async function shopperJourney(vp, newPage, storePage, brandPage) {
+  const page = await newPage();
+  await page.goto(`${BASE}/shop`);
+  await page
+    .getByRole('button', { name: /Vitamin C Glow Serum/ })
+    .first()
+    .click();
+  await shot(page, 'shop-product', vp, true);
+  await page.getByRole('button', { name: /Need it today\? Check a store near you/ }).click();
+  const chat = page.getByRole('region', { name: /^Chat with / });
+  await chat.waitFor({ timeout: T });
+  await shot(page, vp.name === 'desktop' ? 'shop-chat-docked' : 'chat-prefilled', vp);
+  await chat.getByRole('button', { name: 'Send' }).click();
+  await chat.locator('.wa-msg--in').first().waitFor({ timeout: T });
+  await chat.getByRole('button', { name: 'Share location' }).click();
+  await chat.getByRole('menuitem', { name: /Near Powai/ }).click();
+  await chat
+    .getByRole('button', { name: /^Hold / })
+    .last()
+    .waitFor({ timeout: T });
+  await shot(page, 'chat-store-found', vp);
+  // Near Bandra several stores qualify: the reply offers "Other stores" → a list.
+  await chat.getByRole('button', { name: 'Share location' }).click();
+  await chat.getByRole('menuitem', { name: /Near Bandra/ }).click();
+  await chat
+    .locator('.wa-msg--in')
+    .nth(3)
+    .waitFor({ timeout: T })
+    .catch(() => undefined);
+  await page.waitForTimeout(500);
+  const other = chat.getByRole('button', { name: 'Other stores' });
+  if (
+    await other
+      .last()
+      .isEnabled()
+      .catch(() => false)
+  ) {
+    await other.last().click();
+    await chat
+      .getByRole('button', { name: /Choose a store/ })
+      .last()
+      .click();
+    const sheet = page.getByRole('dialog', { name: 'Choose a store' });
+    await sheet.waitFor({ timeout: T });
+    await shot(page, 'chat-list-sheet', vp);
+    const andheri = sheet.getByRole('button', { name: /Andheri/ });
+    await ((await andheri.count()) ? andheri.first() : sheet.locator('.wa-row').first()).click();
+  } else {
+    console.error('(no "Other stores" offered: list shot skipped)');
+    await chat
+      .getByRole('button', { name: /^Hold / })
+      .last()
+      .click();
+  }
+  await chat.getByText('On hold for you').waitFor({ timeout: T });
+  await shot(page, 'chat-pickup-pass', vp);
+  await storePage.goto(`${BASE}/store`);
+  const confirm = storePage.getByRole('button', { name: 'Confirm' }).first();
+  try {
+    await confirm.waitFor({ timeout: T });
+    await confirm.click();
+    await chat.getByText(/confirmed your hold/).waitFor({ timeout: T });
+    await shot(page, 'chat-store-update', vp);
+  } catch {
+    console.error('(no Andheri hold to confirm: store update shot skipped)');
+  }
+  await brandPage.goto(`${BASE}/brand/conversations`);
+  await brandPage
+    .getByRole('button', { name: /sim:judge_/ })
+    .first()
+    .click();
+  await brandPage.getByRole('log', { name: 'Messages' }).waitFor({ timeout: T });
+  await shot(brandPage, 'brand-transcript', vp, true);
+}
+
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch();
 const written = [];
+let followUpChat = null; // Asha's session (sessionStorage), reused for the follow-up shot
+const startedAt = Date.now();
 try {
   for (const vp of VIEWPORTS) {
     const contexts = {};
@@ -79,6 +173,20 @@ try {
       written.push(file);
       await context.close();
     }
+    // A signed-in, opted-in demo shopper starts checkout and leaves (desktop pass only):
+    // the follow-up becomes due after the demo brand's delay; it is shot at the end.
+    let asha = null;
+    if (phase === 'ui-2' && vp.name === 'desktop') {
+      const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+      asha = await context.newPage();
+      await asha.goto(`${BASE}/shop`);
+      await asha.getByRole('button', { name: /Demo controls/ }).click();
+      await asha.getByRole('button', { name: /Sign in as demo shopper: Asha/ }).click();
+      await asha.getByText(/Signed in as Asha/).waitFor({ timeout: T });
+      await asha.getByRole('button', { name: /Demo controls/ }).click();
+      await asha.getByRole('button', { name: /5\. Product → checkout → leave/ }).click();
+      await asha.getByText(/Scenario recorded/).waitFor({ timeout: T });
+    }
     for (const [name, user, path, before, only] of SHOTS) {
       if (only && only !== vp.name) continue;
       const page = await pageFor(user);
@@ -93,6 +201,33 @@ try {
       await page.screenshot({ path: file, fullPage: true });
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
       written.push(`${file}${overflow ? '  ⚠ horizontal page scroll' : ''}`);
+    }
+    if (phase === 'ui-2') {
+      const newPage = async () =>
+        (await browser.newContext({ viewport: { width: vp.width, height: vp.height } })).newPage();
+      await shopperJourney(vp, newPage, await pageFor('store'), await pageFor('brand'));
+      if (asha) {
+        // Inactivity (1 min) + delay (1 min) with a margin, then the brand runs due follow-ups.
+        const wait = startedAt + 150_000 - Date.now();
+        if (wait > 0) await asha.waitForTimeout(wait);
+        const brand = await pageFor('brand');
+        await brand.goto(`${BASE}/brand/conversations`);
+        await brand.getByRole('button', { name: 'Run due follow-ups' }).click();
+        await brand.getByText(/Due follow-ups:/).waitFor({ timeout: T });
+        followUpChat = await asha.evaluate(() => sessionStorage.getItem('qs_shopper_session:brd_demo'));
+      }
+      if (followUpChat) {
+        const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+        await context.addInitScript((v) => sessionStorage.setItem('qs_shopper_session:brd_demo', v), followUpChat);
+        const page = await context.newPage();
+        await page.goto(`${BASE}/chat?brand=brd_demo`);
+        try {
+          await page.getByText('Reply STOP to opt out.', { exact: false }).waitFor({ timeout: T });
+          await shot(page, 'chat-follow-up', vp);
+        } catch {
+          console.error('(no follow-up in the chat: follow-up shot skipped)');
+        }
+      }
     }
   }
 } finally {

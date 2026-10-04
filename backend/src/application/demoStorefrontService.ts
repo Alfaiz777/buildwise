@@ -61,6 +61,7 @@ export class DemoStorefrontService {
         description: p.description,
         category: p.category,
         tags: p.tags,
+        image_url: p.imageUrl ?? null,
         variants: variants
           .filter((v) => v.productId === p.productId && v.status === 'ACTIVE')
           .map((v) => ({

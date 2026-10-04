@@ -220,14 +220,14 @@ describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
       status: 'CONFIRMED',
       notification: { status: 'SENT', message_kind: 'SESSION' },
     });
-    expect((await lastUpdate(A, conversationId)).text).toContain(
-      `Andheri Store has confirmed your reservation for Vitamin C Glow Serum 30 ml. Pickup code ${pickupCode}`,
+    expect((await lastUpdate(A, conversationId)).text).toBe(
+      `✅ *Andheri Store confirmed your hold*\n1 × Vitamin C Glow Serum 30 ml\nPickup code: *${pickupCode}* · held until 14:00 (store time)`,
     );
 
     await move('andheri', id, 'READY', 'CONFIRMED');
-    const ready = (await lastUpdate(A, conversationId)).text as string;
-    expect(ready).toContain(`is ready at Andheri Store. Show code ${pickupCode}.`);
-    expect(ready).toContain('https://www.google.com/maps/search/?api=1&query=19.1364,72.8296');
+    const ready = await lastUpdate(A, conversationId);
+    expect(ready.text).toContain(`Show code *${pickupCode}* at the counter.`);
+    expect(ready.parts.location).toMatchObject({ name: 'Andheri Store', latitude: 19.1364, longitude: 72.8296 });
     expect((await move('andheri', id, 'READY', 'CONFIRMED')).body.error.code).toBe('STALE_STATUS');
     await move('andheri', id, 'CUSTOMER_ARRIVED', 'READY');
 

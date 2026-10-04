@@ -6,6 +6,7 @@ import type { CatalogService } from './application/catalogService.js';
 import type { CommerceSyncService } from './application/commerceSyncService.js';
 import type { ConversationQueryService } from './application/conversationQueryService.js';
 import type { DemoResetService } from './application/demoResetService.js';
+import type { ShopperChannelService } from './application/shopperChannel.js';
 import type { DemoStorefrontService } from './application/demoStorefrontService.js';
 import type { FollowUpService } from './application/followUpService.js';
 import type { IntentService } from './application/intentService.js';
@@ -33,6 +34,7 @@ import { connectionsRouter, integrationsRouter, productsRouter } from './routes/
 import { brandConversationsRouter, simulatorRouter } from './routes/conversations.js';
 import { demoStorefrontRouter } from './routes/demoStorefront.js';
 import { brandDemoRouter, demoRouter } from './routes/demo.js';
+import { shopperRouter } from './routes/shopper.js';
 import { healthRouter } from './routes/health.js';
 import { intentsRouter } from './routes/intents.js';
 import { localFilesRouter } from './routes/localFiles.js';
@@ -71,6 +73,8 @@ export interface AppDeps {
     demoStorefront?: DemoStorefrontService;
     /** Reset demo; refuses unless DEMO_MODE is on and the brand is allowlisted. */
     demoReset?: DemoResetService;
+    /** The shopper demo channel (Change 16): local, or gcp with DEMO_MODE on. */
+    shopper?: ShopperChannelService;
   };
   /** Local profile only: receives browser uploads for LocalFileStorageProvider. */
   localUploads?: LocalUploadReceiver;
@@ -107,12 +111,20 @@ export function createApp(deps: AppDeps): Express {
     healthRouter({ version: config.build?.version, commit: config.build?.commit, profile: config.profile }),
   );
   // PUBLIC: the judged demo's login panel (DEMO_MODE only returns logins).
-  app.use('/api', demoRouter(config.demo));
+  const shopperDemoBrand = services.shopper
+    ? (config.profile ?? 'local') === 'local'
+      ? 'brd_demo'
+      : (config.demo?.brandIds[0] ?? null)
+    : null;
+  app.use('/api', demoRouter(config.demo, shopperDemoBrand));
   // PUBLIC storefront intent endpoint: origin allowlist + rate limits, no console auth (docs/06 §14.1).
   app.use('/api', intentsRouter(services.intents));
   if (services.demoStorefront) {
-    app.use('/api/demo-storefront', demoStorefrontRouter(services.demoStorefront, services.intents));
+    const allowed = (brandId: string) => services.shopper?.isBrandAllowed(brandId) ?? true;
+    app.use('/api/demo-storefront', demoStorefrontRouter(services.demoStorefront, services.intents, allowed));
   }
+  // PUBLIC shopper demo channel (Change 16): signed session tokens, origin allowlist, rate limits.
+  if (services.shopper) app.use('/api/shopper', shopperRouter(services.shopper));
 
   // Everything below requires a verified console user (docs/07_SECURITY_SPEC.md §4.1).
   const api = express.Router();

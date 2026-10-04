@@ -130,7 +130,11 @@ describe('Brand Console — demo guide and Reset demo', () => {
     renderAt('/brand', apiWith({ '/api/brand/demo': { reset_available: true } }, post));
     const guide = (await screen.findByText('Demo guide')).closest('details')!;
     expect(within(guide).getAllByRole('listitem')).toHaveLength(6);
-    expect(within(guide).getByRole('link', { name: 'Open the demo store' })).toHaveAttribute('target', '_blank');
+    const open = within(guide).getByRole('link', { name: 'Open the shopper demo' });
+    expect(open).toHaveAttribute('href', '/shop?brand=brd_demo');
+    expect(open).toHaveAttribute('target', '_blank');
+    // The header offers the shopper demo too (DEMO_MODE, demo brand only).
+    expect(screen.getByRole('link', { name: /Open shopper demo/ })).toHaveAttribute('href', '/shop?brand=brd_demo');
 
     fireEvent.click(within(guide).getByRole('button', { name: 'Reset demo' }));
     const dialog = screen.getByRole('alertdialog');
@@ -157,18 +161,8 @@ describe('Brand Console — demo guide and Reset demo', () => {
   });
 });
 
-describe('shared-demo safety and delivery status in the simulator', () => {
-  it('each tab chats as its own judge_xxxx customer, kept for the tab', async () => {
-    const first = renderAt('/brand/conversations', apiWith({}));
-    const ref = (await screen.findByLabelText('Simulator customer')) as HTMLInputElement;
-    expect(ref.value).toMatch(/^judge_[a-z0-9]{1,8}$/);
-    const kept = ref.value;
-    first.unmount();
-    renderAt('/brand/conversations', apiWith({}));
-    expect(((await screen.findByLabelText('Simulator customer')) as HTMLInputElement).value).toBe(kept);
-  });
-
-  it('a message the channel could not deliver says "Not delivered"', async () => {
+describe('Brand Console transcript — delivery status', () => {
+  it('a message the channel could not deliver says "Not delivered"; no simulator anywhere', async () => {
     const row = {
       conversation_id: 'conv_1',
       customer_ref: 'sim:judge_ab12',
@@ -200,20 +194,12 @@ describe('shared-demo safety and delivery status in the simulator', () => {
         recommendations: [],
       },
     });
-    renderAt('/brand/conversations#customer=judge_ab12', api);
+    renderAt('/brand/conversations', api);
     fireEvent.click(await screen.findByRole('button', { name: /sim:judge_ab12/ }));
-    const phone = await screen.findByLabelText('Simulator');
-    expect(await within(phone).findByText(/Not delivered/)).toBeInTheDocument();
-  });
-
-  it('the location presets fill Near Powai', async () => {
-    renderAt('/brand/conversations', apiWith({}));
-    fireEvent.click(await screen.findByRole('button', { name: 'Share location' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Near Bandra' }));
-    expect(screen.getByLabelText('Latitude')).toHaveValue('19.06');
-    fireEvent.click(screen.getByRole('button', { name: 'Near Powai' }));
-    expect(screen.getByLabelText('Latitude')).toHaveValue('19.12');
-    expect(screen.getByLabelText('Longitude')).toHaveValue('72.9');
+    const transcript = await screen.findByRole('log', { name: 'Messages' });
+    expect(await within(transcript).findByText(/Not delivered/)).toBeInTheDocument();
+    expect(within(transcript).getByText('AI assistant')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Simulator customer')).not.toBeInTheDocument();
   });
 });
 

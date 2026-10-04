@@ -155,6 +155,8 @@ export interface ProductRecord {
   status: string;
   tags: string[];
   attributes: Record<string, string>;
+  /** Absolute URL or a path on the public web origin (Change 16); null when there is none. */
+  imageUrl?: string | null;
 }
 
 /** docs/04_DATA_MODEL.md §8 */

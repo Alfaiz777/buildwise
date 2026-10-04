@@ -8,14 +8,26 @@ import type {
   MessageOrigin,
   MessageRecord,
 } from '../../ports/conversationRepositories.js';
-import type { MessagingProvider, OutboundMessage, SendResult } from '../../ports/messaging.js';
+import { resolveMessagingSettings } from '../../domain/brandSettings.js';
+import { decorateParts } from '../../domain/messageParts.js';
+import { MessagePartsError, validateMessage } from '../../domain/whatsappLimits.js';
+import type { BrandRepository } from '../../ports/repositories.js';
+import type {
+  MessageParts,
+  MessagingProvider,
+  OutboundMessage,
+  OutboundOption,
+  SendResult,
+} from '../../ports/messaging.js';
 import type { EventRecorder } from '../eventRecorder.js';
 
 /** A message the application wants to send (channel-neutral, docs/06 §11). */
 export interface OutboundDraft {
   text: string;
   messageType: 'TEXT' | 'INTERACTIVE' | 'TEMPLATE';
-  options?: { optionId: string; label: string }[];
+  options?: OutboundOption[];
+  /** Structured parts (Change 16): image/text header, footer, location, CTA, list button. */
+  parts?: MessageParts;
   origin: Exclude<MessageOrigin, 'CUSTOMER'>;
   messageKind: MessageKind;
   templateName: string | null;
@@ -29,11 +41,15 @@ export interface OutboundDeps {
   now: () => Date;
   /** Backoff before each retry (docs/03 §16.2: up to 2 retries). Injectable for tests. */
   sendRetryDelaysMs?: readonly number[];
+  /** Brand settings for the "Powered by Qwikspot" footer (Change 16). */
+  brands?: BrandRepository;
+  /** Public web origin that relative media paths resolve against (Change 16). */
+  publicOrigin?: string;
 }
 
 export const SEND_RETRY_DELAYS_MS = [250, 1000] as const;
 /** Failures that will not get better by retrying. */
-const PERMANENT = new Set(['CHANNEL_DISABLED', 'INVALID_RECIPIENT', 'OPTED_OUT']);
+const PERMANENT = new Set(['CHANNEL_DISABLED', 'INVALID_RECIPIENT', 'OPTED_OUT', 'MESSAGE_PARTS_INVALID']);
 
 /**
  * provider.send with up to 2 retries and exponential backoff, always with the SAME
@@ -72,21 +88,46 @@ export async function sendAndPersist(
   const now = deps.now();
   const messageId = sortableId('msg', now);
   const identity = customer.channelIdentities.find((i) => i.channel === conversation.channel);
+  // Channel decoration (Change 16): absolute media URLs and the "Powered by Qwikspot" footer.
+  const settings =
+    draft.options?.length || draft.parts ? ((await deps.brands?.getById(conversation.brandId))?.settings ?? {}) : {};
+  const brandMessaging = resolveMessagingSettings(settings, '');
+  draft = {
+    ...draft,
+    parts: decorateParts({
+      options: draft.options,
+      parts: draft.parts,
+      author: draft.origin,
+      poweredByFooter: brandMessaging.poweredByFooter,
+      publicOrigin: deps.publicOrigin ?? 'http://localhost:5173',
+    }),
+  };
+  // WhatsApp's limits apply on every channel (Change 16): what is stored is what was sent.
+  let valid: { text: string; options?: OutboundOption[]; parts?: MessageParts } | null;
+  try {
+    valid = validateMessage({ text: draft.text, options: draft.options, parts: draft.parts });
+  } catch (err) {
+    if (!(err instanceof MessagePartsError)) throw err;
+    valid = null;
+  }
+  const body = valid ?? { text: draft.text, options: draft.options, parts: draft.parts };
   const outbound: OutboundMessage = {
     brandId: conversation.brandId,
     customerId: customer.customerId,
     conversationId: conversation.conversationId,
     externalCustomerRef: identity?.externalRef ?? '',
     messageType: draft.messageType,
-    text: draft.text,
-    options: draft.options,
+    text: body.text,
+    options: body.options,
+    parts: body.parts,
     actionReference: draft.actionReference,
     outboundRequestId: messageId,
   };
 
   const provider = deps.messaging.get(conversation.channel);
-  const result =
-    provider && identity
+  const result: SendResult = !valid
+    ? { status: 'FAILED', externalMessageId: null, errorCode: 'MESSAGE_PARTS_INVALID' }
+    : provider && identity
       ? await sendWithRetry(provider, outbound, deps.sendRetryDelaysMs ?? SEND_RETRY_DELAYS_MS)
       : { status: 'FAILED' as const, externalMessageId: null, errorCode: 'CHANNEL_DISABLED' };
 
@@ -96,9 +137,10 @@ export async function sendAndPersist(
     conversationId: conversation.conversationId,
     direction: 'OUTBOUND',
     messageType: draft.messageType,
-    text: draft.text,
-    options: draft.options ?? null,
+    text: body.text,
+    options: body.options ?? null,
     location: null,
+    parts: body.parts ?? null,
     origin: draft.origin,
     messageKind: draft.messageKind,
     templateName: draft.templateName,
