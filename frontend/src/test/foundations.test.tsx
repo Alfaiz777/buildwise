@@ -93,22 +93,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('public landing page (/)', () => {
-  it('renders without sign-in and without calling the API; the doors lead to the right sign-in', async () => {
-    app('/');
-    expect(screen.getByRole('heading', { name: /Your shopper wants it today/ })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Brand login' })).toHaveAttribute('href', '/login?as=brand');
-    expect(screen.getByRole('link', { name: 'Store login' })).toHaveAttribute('href', '/login?as=store');
-    expect(screen.getByRole('link', { name: 'Qwikspot team sign-in' })).toHaveAttribute('href', '/login?as=platform');
-    expect(noApi.get).not.toHaveBeenCalled();
-  });
-
-  it('a signed-in visitor sees "Go to your console" (→ /app), not the login doors', () => {
-    app('/', { user: { uid: 'u', email: 'u@test' } });
-    expect(screen.getByRole('link', { name: /Go to your console/ })).toHaveAttribute('href', '/app');
-    expect(screen.queryByRole('link', { name: 'Brand login' })).not.toBeInTheDocument();
-  });
-});
+// The public landing page is covered by landing.test.tsx (UI-1).
 
 describe('route map', () => {
   it('/app sends each user to their own console; a Retail Admin lands on /store', async () => {

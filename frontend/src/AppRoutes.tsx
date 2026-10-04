@@ -28,7 +28,7 @@ export function AppRoutes({ profile = 'local' }: { profile?: FrontendProfile }) 
   return (
     <ToastProvider>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<LandingPage profile={profile} />} />
         <Route path="/login" element={<LoginPage />} />
         {/* LOCAL PROFILE ONLY: the demo storefront and the UI kit (public, no login). Never routed in gcp. */}
         {local && <Route path="/shop" element={<DemoStorePage />} />}

@@ -358,6 +358,12 @@
   gap: var(--space-2);
   width: min(24rem, calc(100vw - 2 * var(--space-4)));
 }
+@media (max-width: 768px) {
+  /* Above the consoles' bottom tab bar. */
+  .ui-toasts {
+    bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+}
 .ui-toast {
   display: flex;
   align-items: center;

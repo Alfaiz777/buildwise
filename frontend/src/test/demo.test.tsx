@@ -90,7 +90,7 @@ afterEach(() => {
 describe('login page — "Try the demo" (DEMO_MODE)', () => {
   it('shows the demo logins from GET /api/demo/config; "Use" fills the form', async () => {
     const fetchMock = mockDemoConfig({ demo_mode: true, logins: LOGINS });
-    renderAt('/login', apiWith({}), { user: null });
+    renderAt('/login?as=store', apiWith({}), { user: null });
     const panel = await screen.findByRole('region', { name: 'Try the demo' });
     expect(fetchMock).toHaveBeenCalledWith('/api/demo/config');
     expect(within(panel).getByText('Retail Admin — Andheri Store')).toBeInTheDocument();

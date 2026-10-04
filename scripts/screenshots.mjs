@@ -25,12 +25,16 @@ const USERS = {
   platform: 'platform@qwikspot.test',
 };
 
-/** [file name, user or null, path, optional action before the shot] */
+/** [file name, user or null, path, optional action before the shot, only on this viewport] */
 const SHOTS = [
   ['landing', null, '/'],
-  ['login', null, '/login'],
+  ['landing-menu', null, '/', (p) => p.getByRole('button', { name: 'Menu' }).click(), 'phone'],
+  ['login-brand', null, '/login?as=brand'],
+  ['login-store', null, '/login?as=store'],
+  ['login-team', null, '/login?as=platform'],
   ['ui-kit-light', null, '/ui-kit'],
   ['ui-kit-dark', null, '/ui-kit', (p) => p.getByRole('button', { name: /Dark theme/ }).click()],
+  ['landing-signed-in', 'brand', '/'],
   ['brand-overview-banner', 'brand', '/brand'],
   ['brand-overview', 'brand', '/brand', (p) => p.getByRole('button', { name: 'Dismiss this note' }).click()],
   ['brand-conversations', 'brand', '/brand/conversations'],
@@ -61,10 +65,28 @@ try {
       }
       return contexts[user ?? 'anon'];
     };
-    for (const [name, user, path, before] of SHOTS) {
+    // A Store account signing in from the Brand tab: lands in the Store Console with a toast.
+    {
+      const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+      const page = await context.newPage();
+      await page.goto(`${BASE}/login?as=brand`);
+      await page.getByLabel('Email').fill(USERS.store);
+      await page.getByLabel('Password').fill(PASSWORD);
+      await page.getByRole('button', { name: 'Sign in' }).click();
+      await page.getByText('This is a Store account').waitFor({ timeout: 20_000 });
+      const file = `${OUT}/login-mismatch-toast-${vp.name}.png`;
+      await page.screenshot({ path: file });
+      written.push(file);
+      await context.close();
+    }
+    for (const [name, user, path, before, only] of SHOTS) {
+      if (only && only !== vp.name) continue;
       const page = await pageFor(user);
       await page.goto(`${BASE}${path}`);
-      await page.waitForLoadState('networkidle');
+      // Pages that poll (store queue, conversations) never go fully idle: wait briefly, then shoot.
+      await page
+        .waitForLoadState('networkidle', { timeout: 8_000 })
+        .catch(() => console.error(`(still loading: ${name})`));
       if (before) await before(page);
       await page.waitForTimeout(400);
       const file = `${OUT}/${name}-${vp.name}.png`;
