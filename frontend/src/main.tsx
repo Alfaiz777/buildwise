@@ -7,7 +7,13 @@ import { AppRoutes } from './AppRoutes';
 import { FirebaseAuthProvider } from './auth/FirebaseAuthProvider';
 import { readConfig } from './config';
 import { initFirebaseAuth } from './lib/firebase';
+import './styles/tokens.css';
+import './styles/base.css';
 import './styles.css';
+import './components/ui/ui.css';
+import './components/shell/shell.css';
+import './pages/landing/landing.css';
+import './pages/uikit/uikit.css';
 
 const config = readConfig(import.meta.env);
 const auth = initFirebaseAuth(config);

@@ -1,7 +1,6 @@
 import { useCallback, useState, type FormEvent } from 'react';
 import { useApi, type ProvisionedUser, type Role } from '../../api/apiContext';
 import { ConsoleShell, errorMessage, Section, SetupLink, useLoad } from '../../components/ConsoleShell';
-import { BrandNav } from './BrandNav';
 import { CatalogSection } from './CatalogSection';
 import { DemoGuide } from './DemoGuide';
 import { RetailImportSection } from './RetailImportSection';
@@ -113,7 +112,6 @@ export function BrandHome({ demoStorefront = false }: { demoStorefront?: boolean
           {error}
         </p>
       )}
-      <BrandNav />
       <DemoGuide demoStorefront={demoStorefront} />
       <SetupLink result={provisioned} />
 

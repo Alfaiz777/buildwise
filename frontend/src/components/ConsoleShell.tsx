@@ -1,41 +1,14 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { useMe } from '../account/meContext';
 import { ApiError } from '../api/client';
-import { useAuth } from '../auth/authContext';
 import { label } from '../lib/labels';
+import { AppShell } from './shell/AppShell';
 
-const AREA_TITLE = { PLATFORM: 'Platform Admin', BRAND: 'Brand Console', RETAIL: 'Retailer Console' } as const;
-
-/** Header + frame shared by the three console areas. */
+/**
+ * Every console page renders inside ConsoleShell. Since UI-0 it is the new AppShell
+ * (header, sidebar / bottom tabs, role banner); pages did not change.
+ */
 export function ConsoleShell({ children }: { children: ReactNode }) {
-  const me = useMe();
-  const { signOut } = useAuth();
-  const context =
-    me.scope === 'RETAIL'
-      ? `${me.retailer_name} · ${me.brand_name}`
-      : me.scope === 'BRAND'
-        ? me.brand_name
-        : 'Qwikspot platform';
-
-  return (
-    <div className="shell">
-      <header className="shell-header">
-        <div>
-          <strong>Qwikspot</strong> <span className="muted">· {AREA_TITLE[me.scope]}</span>
-          <div className="muted small">{context}</div>
-        </div>
-        <div className="shell-user">
-          <span className="small">
-            {me.user.email ?? me.user.user_id} <span className="badge">{label(me.role)}</span>
-          </span>
-          <button type="button" className="secondary" onClick={() => void signOut()}>
-            Sign out
-          </button>
-        </div>
-      </header>
-      <main className="shell-main">{children}</main>
-    </div>
-  );
+  return <AppShell>{children}</AppShell>;
 }
 
 export function Section({ title, id, children }: { title: string; id?: string; children: ReactNode }) {

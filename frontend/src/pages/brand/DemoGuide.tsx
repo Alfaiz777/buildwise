@@ -54,7 +54,7 @@ export function DemoGuide({ demoStorefront }: { demoStorefront: boolean }) {
           <em>Need it today? Check a store near you</em>. The WhatsApp hand-off opens the simulator in a new tab with
           the message ready (sign in there as the Brand Admin if asked).{' '}
           {demoStorefront ? (
-            <a href="/demo-store" {...newTab}>
+            <a href="/shop" {...newTab}>
               Open the demo store
             </a>
           ) : (

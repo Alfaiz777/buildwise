@@ -1,0 +1,198 @@
+/* Console shell (UI-0): header, sidebar (desktop) / bottom tabs (phone), role accent. */
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-lg);
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+.wordmark--lg {
+  font-size: var(--text-2xl);
+}
+
+.shell {
+  --role: var(--role-brand);
+  min-height: 100vh;
+  /* The sidebar column's surface and border run the full page height. */
+  background: linear-gradient(
+    to right,
+    var(--color-surface) calc(var(--sidebar-width) - 1px),
+    var(--color-border) calc(var(--sidebar-width) - 1px) var(--sidebar-width),
+    var(--color-bg) var(--sidebar-width)
+  );
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-rows: var(--header-height) 1fr;
+  grid-template-areas:
+    'top top'
+    'nav body';
+}
+.shell--retail {
+  --role: var(--role-store);
+}
+.shell--platform {
+  --role: var(--role-platform);
+}
+
+.shell-top {
+  grid-area: top;
+  position: sticky;
+  top: 0;
+  z-index: var(--z-nav);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 0 var(--space-5);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: inset 0 3px 0 var(--role);
+}
+.shell-top__brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.shell-top__console {
+  font-weight: 600;
+  color: var(--role);
+  white-space: nowrap;
+}
+.shell-top__context {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shell-top__user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.shell-top__email {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-nav {
+  grid-area: nav;
+  position: sticky;
+  top: var(--header-height);
+  align-self: start;
+  height: calc(100vh - var(--header-height));
+  padding: var(--space-4) var(--space-3);
+}
+.shell-nav ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-1);
+}
+.shell-nav__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  text-decoration: none;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.shell-nav__link:hover {
+  background: var(--color-surface-sunken);
+  color: var(--color-text);
+}
+.shell-nav__link.active {
+  background: color-mix(in srgb, var(--role) 12%, transparent);
+  color: var(--role);
+}
+
+.shell-body {
+  grid-area: body;
+  min-width: 0;
+}
+.shell-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-4) var(--space-6) 0;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--role) 10%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--role) 25%, transparent);
+  font-size: var(--text-sm);
+}
+.shell-banner span {
+  flex: 1;
+}
+.shell .shell-main {
+  max-width: var(--content-max);
+  margin: 0;
+  padding: var(--space-6);
+  display: grid;
+  gap: var(--space-5);
+}
+
+@media (max-width: 768px) {
+  .shell {
+    background: var(--color-bg);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      'top'
+      'body'
+      'nav';
+  }
+  .shell-top {
+    height: auto;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+  }
+  .shell-top__brand {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .shell-top__email {
+    display: none;
+  }
+  .shell-nav {
+    position: sticky;
+    top: auto;
+    bottom: 0;
+    height: auto;
+    padding: var(--space-1) var(--space-2) calc(var(--space-1) + env(safe-area-inset-bottom));
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    z-index: var(--z-nav);
+  }
+  .shell-nav ul {
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+  }
+  .shell-nav__link {
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-2) var(--space-1);
+    font-size: 0.6875rem;
+    text-align: center;
+  }
+  .shell-banner {
+    margin: var(--space-3) var(--space-4) 0;
+  }
+  .shell .shell-main {
+    padding: var(--space-4);
+  }
+}

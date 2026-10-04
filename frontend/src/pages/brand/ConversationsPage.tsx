@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useApi } from '../../api/apiContext';
 import { ConsoleShell, errorMessage, Section, useLoad } from '../../components/ConsoleShell';
-import { BrandNav } from './BrandNav';
 import {
   humanize,
   parseSimulatorFragment,
@@ -179,7 +178,6 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
 
   return (
     <ConsoleShell>
-      <BrandNav />
       {error && (
         <p role="alert" className="error">
           {error}

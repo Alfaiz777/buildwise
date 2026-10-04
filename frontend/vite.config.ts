@@ -7,9 +7,10 @@ export default defineConfig({
   server: {
     port: 5173,
     // Same-origin API in development, mirroring the Firebase Hosting → Cloud Run
-    // rewrite in production. The backend runs on :8080.
+    // rewrite in production. The backend runs on :8080 (QWIKSPOT_API_PROXY overrides it,
+    // e.g. for the screenshot run against an isolated backend).
     proxy: {
-      '/api': 'http://localhost:8080',
+      '/api': process.env.QWIKSPOT_API_PROXY ?? 'http://localhost:8080',
     },
   },
   test: {

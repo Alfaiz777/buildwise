@@ -1,6 +1,11 @@
 import type { ReactNode } from 'react';
 
-/** One look for loading, empty and error states on every screen (M7 polish). */
+/**
+ * M7 state helpers, kept for the screens not yet redesigned. New screens use
+ * components/ui (Skeleton, EmptyState, ErrorState); ErrorState is shared.
+ */
+export { ErrorState } from './ui/States';
+
 export function Loading({ what = 'Loading' }: { what?: string }) {
   return (
     <p className="muted state" role="status" aria-live="polite">
@@ -11,17 +16,4 @@ export function Loading({ what = 'Loading' }: { what?: string }) {
 
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="muted state empty">{children}</p>;
-}
-
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <div className="error state" role="alert">
-      <span>{message}</span>
-      {onRetry && (
-        <button type="button" className="secondary" onClick={onRetry}>
-          Try again
-        </button>
-      )}
-    </div>
-  );
 }

@@ -1,41 +1,15 @@
+/*
+ * Console styles (M1–M7). Since UI-0 the legacy variables below are aliases of the design
+ * tokens (styles/tokens.css), so every existing screen picks up the Qwikspot look.
+ */
 :root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --text: #1c2430;
-  --muted: #5f6b7a;
-  --border: #d9dee5;
-  --accent: #1f5eff;
-  --error: #b42318;
-  color-scheme: light;
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #11151b;
-    --surface: #1a2029;
-    --text: #e6eaf0;
-    --muted: #9aa5b4;
-    --border: #2c3542;
-    --accent: #6d9bff;
-    --error: #ff8a80;
-    color-scheme: dark;
-  }
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
+  --bg: var(--color-bg);
+  --surface: var(--color-surface);
+  --text: var(--color-text);
+  --muted: var(--color-text-muted);
+  --border: var(--color-border);
+  --accent: var(--color-primary);
+  --error: var(--danger);
 }
 
 .card {
@@ -83,11 +57,17 @@ input {
 button {
   padding: 0.6rem 1rem;
   border: 0;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
   font: inherit;
+  font-weight: 550;
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+button:hover:not(:disabled) {
+  background: var(--color-primary-hover);
 }
 
 button:disabled {
@@ -96,9 +76,13 @@ button:disabled {
 }
 
 button.secondary {
-  background: transparent;
-  color: var(--accent);
+  background: var(--color-surface);
+  color: var(--color-primary);
   border: 1px solid var(--border);
+}
+
+button.secondary:hover:not(:disabled) {
+  background: var(--color-primary-soft);
 }
 
 dl {
@@ -124,38 +108,12 @@ dd {
 .error {
   color: var(--error);
 }
-
-/* Console shell (Platform / Brand / Retailer) */
-.shell-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1.5rem;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-}
-
-.shell-user {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.shell-main {
-  max-width: 64rem;
-  margin: 0 auto;
-  padding: 1.5rem 1rem;
-  display: grid;
-  gap: 1.25rem;
-}
-
 .panel {
-  padding: 1.25rem;
+  padding: var(--space-5);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   overflow-x: auto;
 }
 
@@ -285,23 +243,6 @@ code {
 .report {
   margin-top: 1rem;
 }
-
-.brand-nav {
-  display: flex;
-  gap: 1rem;
-}
-
-.brand-nav a {
-  color: var(--muted);
-  text-decoration: none;
-  padding-bottom: 0.25rem;
-}
-
-.brand-nav a.active {
-  color: inherit;
-  border-bottom: 2px solid var(--accent);
-}
-
 .conversations-layout {
   display: grid;
   grid-template-columns: minmax(16rem, 1fr) minmax(20rem, 1.3fr);
@@ -546,17 +487,6 @@ code {
 }
 
 /* M7: shared states, platform onboarding, demo panels, accessibility, phone width */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -639,14 +569,6 @@ code {
   }
 }
 @media (max-width: 480px) {
-  .shell-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-  .shell-main {
-    padding: 0.75rem;
-  }
   .panel {
     padding: 0.75rem;
   }
