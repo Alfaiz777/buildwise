@@ -35,6 +35,18 @@ Brand                       e.g. Dot & Key
 
 All scope is resolved by the backend from the verified Firebase ID token and `users/{uid}` (`07` §4.1). No interface sends, or is trusted to send, a `brand_id`, `retailer_id` or `store_id` that defines its own scope. A hand-edited `users/{uid}` grants nothing: a Retail Admin is accepted only as the recorded admin of the store it names.
 
+## 1a. Routes and the console shell (Interface Refresh UI-0)
+
+| Path | Who | What |
+|---|---|---|
+| `/` | anyone | Public landing page: the pitch and the two doors, **Brand login** (`/login?as=brand`) and **Store login** (`/login?as=store`); footer "Qwikspot team sign-in" (`/login?as=platform`). Signed in: "Go to your console". No API call. (UI-0 placeholder; the full page arrives in UI-1.) |
+| `/app` | signed in | Sends the user to their own console (formerly `/`). Sign-in returns here by default. |
+| `/brand/*` · `/store` · `/platform` | by scope | The three consoles. `/retailer` redirects to `/store`. |
+| `/shop` | anyone, local profile | The demo storefront (formerly `/demo-store`, which redirects with its query and fragment, so `qs_ref` links keep working). |
+| `/ui-kit` | anyone, local profile | Every UI component in every state, with example content. |
+
+Every console shares one shell: a header (Qwikspot, the console's name — Brand Console, Store Console, Platform Console — the brand or store context, the user, the role in words, Sign out), a left sidebar on desktop and a bottom tab bar on phones (≤ 768 px), and a role accent colour (brand teal, store indigo, platform violet). On the first visit to a console a one-line **role banner** says who the user is there ("You run Andheri Store for Demo Beauty Co via North Retail. Holds from customers arrive here."); dismissing it is remembered per browser and console. Success messages appear as toasts; errors stay inline next to what failed.
+
 ## 2. Shared states (all three consoles)
 
 | State | Behaviour |

@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useApi } from '../../api/apiContext';
 import { ConsoleShell, Section, useLoad } from '../../components/ConsoleShell';
-import { BrandNav } from './BrandNav';
 import { humanize } from './conversationTypes';
 
 export interface InsightsResponse {
@@ -80,7 +79,6 @@ export function OutcomesPage() {
 
   return (
     <ConsoleShell>
-      <BrandNav />
       <Section title="Outcomes & insights">
         <div className="filters">
           {([7, 28] as const).map((n) => (

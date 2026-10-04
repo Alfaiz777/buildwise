@@ -1,0 +1,197 @@
+/*
+ * Qwikspot design tokens (Interface Refresh UI-0). Every colour, space, radius, shadow,
+ * type size, layer and duration used by the consoles comes from here.
+ * Primary: deep teal. Accent (calls to action): warm amber. Role accents tell people
+ * which console they are in. Text colours meet WCAG AA on their intended surfaces.
+ */
+:root {
+  /* Primary — deep teal */
+  --teal-50: #effaf8;
+  --teal-100: #d5f2ec;
+  --teal-200: #aae4d9;
+  --teal-300: #74cfc0;
+  --teal-400: #3fb3a3;
+  --teal-500: #1f978a;
+  --teal-600: #157a71;
+  --teal-700: #13625c;
+  --teal-800: #134f4b;
+  --teal-900: #123f3c;
+
+  /* Accent — warm amber (text on amber is always --amber-ink) */
+  --amber-50: #fff8eb;
+  --amber-100: #feeac7;
+  --amber-300: #fcc35a;
+  --amber-400: #fbae2c;
+  --amber-500: #f59a0b;
+  --amber-700: #b45c09;
+  --amber-ink: #3d2300;
+
+  /* Neutrals */
+  --grey-0: #ffffff;
+  --grey-25: #fbfcfd;
+  --grey-50: #f5f7f9;
+  --grey-100: #eceff3;
+  --grey-200: #dde2e8;
+  --grey-300: #c4ccd5;
+  --grey-500: #6b7685;
+  --grey-600: #535d6b;
+  --grey-700: #3b4451;
+  --grey-800: #252c36;
+  --grey-900: #161b22;
+
+  /* Semantic */
+  --success: #1c7c43;
+  --success-bg: #e6f5ec;
+  --warning: #9a5b00;
+  --warning-bg: #fff4dc;
+  --danger: #b42318;
+  --danger-bg: #fdecea;
+  --info: #1f5fbf;
+  --info-bg: #e8f0fc;
+
+  /* Role accents */
+  --role-brand: var(--teal-600);
+  --role-store: #4f46b8;
+  --role-platform: #6b4fa0;
+
+  /* Surfaces and text (themeable) */
+  --color-bg: var(--grey-50);
+  --color-surface: var(--grey-0);
+  --color-surface-2: var(--grey-25);
+  --color-surface-sunken: var(--grey-100);
+  --color-border: var(--grey-200);
+  --color-border-strong: var(--grey-300);
+  --color-text: var(--grey-900);
+  --color-text-muted: var(--grey-600);
+  --color-primary: var(--teal-600);
+  --color-primary-hover: var(--teal-700);
+  --color-primary-soft: var(--teal-50);
+  --color-on-primary: #ffffff;
+  --color-accent: var(--amber-400);
+  --color-accent-hover: var(--amber-300);
+  --color-on-accent: var(--amber-ink);
+  --color-focus: var(--teal-500);
+
+  /* Spacing — 4 px scale */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 999px;
+
+  /* Shadow */
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.06);
+  --shadow-md: 0 4px 12px rgb(16 24 40 / 0.08), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow-lg: 0 16px 40px rgb(16 24 40 / 0.16);
+
+  /* Type */
+  --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Plus Jakarta Sans Variable', var(--font-sans);
+  --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+  --text-4xl: 3rem;
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+
+  /* Layers */
+  --z-nav: 20;
+  --z-drawer: 40;
+  --z-dialog: 50;
+  --z-toast: 60;
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Layout */
+  --sidebar-width: 232px;
+  --header-height: 60px;
+  --content-max: 76rem;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-bg: #0f1419;
+    --color-surface: #161c23;
+    --color-surface-2: #1b222b;
+    --color-surface-sunken: #11171d;
+    --color-border: #2a333e;
+    --color-border-strong: #3a4552;
+    --color-text: #e7ecf1;
+    --color-text-muted: #9aa6b4;
+    --color-primary: var(--teal-400);
+    --color-primary-hover: var(--teal-300);
+    --color-primary-soft: #12302d;
+    --color-on-primary: #06201d;
+    --color-focus: var(--teal-300);
+    --success: #6fd49a;
+    --success-bg: #12301f;
+    --warning: #f6c56b;
+    --warning-bg: #352710;
+    --danger: #ff8a80;
+    --danger-bg: #3a1714;
+    --info: #8fb6f5;
+    --info-bg: #142640;
+    --role-brand: var(--teal-400);
+    --role-store: #8e88f0;
+    --role-platform: #b39be0;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #0f1419;
+  --color-surface: #161c23;
+  --color-surface-2: #1b222b;
+  --color-surface-sunken: #11171d;
+  --color-border: #2a333e;
+  --color-border-strong: #3a4552;
+  --color-text: #e7ecf1;
+  --color-text-muted: #9aa6b4;
+  --color-primary: var(--teal-400);
+  --color-primary-hover: var(--teal-300);
+  --color-primary-soft: #12302d;
+  --color-on-primary: #06201d;
+  --color-focus: var(--teal-300);
+  --success: #6fd49a;
+  --success-bg: #12301f;
+  --warning: #f6c56b;
+  --warning-bg: #352710;
+  --danger: #ff8a80;
+  --danger-bg: #3a1714;
+  --info: #8fb6f5;
+  --info-bg: #142640;
+  --role-brand: var(--teal-400);
+  --role-store: #8e88f0;
+  --role-platform: #b39be0;
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+  }
+}

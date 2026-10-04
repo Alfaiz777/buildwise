@@ -15,7 +15,7 @@ export function useMe(): MeResponse {
 export const HOME_BY_SCOPE: Record<Scope, string> = {
   PLATFORM: '/platform',
   BRAND: '/brand',
-  RETAIL: '/retailer',
+  RETAIL: '/store',
 };
 
 type State = { kind: 'loading' } | { kind: 'ready'; me: MeResponse } | { kind: 'error'; error: ApiError | null };
@@ -62,7 +62,7 @@ export function MeGate() {
   );
 }
 
-/** "/" → the signed-in user's own console area. */
+/** "/app" → the signed-in user's own console area ("/" is the public landing page since UI-0). */
 export function ScopeHome() {
   return <Navigate to={HOME_BY_SCOPE[useMe().scope]} replace />;
 }

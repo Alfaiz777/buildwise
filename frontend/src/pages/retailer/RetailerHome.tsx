@@ -40,7 +40,7 @@ interface StockItem {
  */
 export function RetailerHome({ autoPoll = false }: { autoPoll?: boolean }) {
   const me = useMe();
-  if (me.scope !== 'RETAIL') return <Navigate to="/" replace />;
+  if (me.scope !== 'RETAIL') return <Navigate to="/app" replace />;
   return <RetailerStore retailerName={me.retailer_name} store={me.store} autoPoll={autoPoll} />;
 }
 

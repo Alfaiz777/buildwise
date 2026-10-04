@@ -269,7 +269,7 @@ const signedIn = { user: { uid: 'u', email: 'u@test' } };
 
 describe('authentication gate', () => {
   it('shows a loading state while Firebase restores the session', () => {
-    renderAt('/', { loading: true }, apiFor(ME.platform));
+    renderAt('/app', { loading: true }, apiFor(ME.platform));
     expect(screen.getByText('Loading…')).toBeInTheDocument();
   });
 
@@ -296,7 +296,7 @@ describe('authentication gate', () => {
         'req-1',
       );
     }) as ApiClient['get'];
-    renderAt('/', signedIn, api);
+    renderAt('/app', signedIn, api);
     expect(await screen.findByText('Your account has not been set up for Qwikspot yet.')).toBeInTheDocument();
     expect(screen.getByText('Reference: req-1')).toBeInTheDocument();
   });
@@ -309,16 +309,16 @@ describe('authentication gate', () => {
 
 describe('scope routing — each of the three roles lands in its own console area', () => {
   it('PLATFORM_ADMIN → Platform Admin; Brand Admin provisioning offers only brands without one', async () => {
-    renderAt('/', signedIn, apiFor(ME.platform));
-    expect(await screen.findByText('· Platform Admin')).toBeInTheDocument();
+    renderAt('/app', signedIn, apiFor(ME.platform));
+    expect(await screen.findByText('Platform Console')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Brands' })).toBeInTheDocument();
-    expect(screen.getByText('Platform Admin', { selector: '.badge' })).toBeInTheDocument();
+    expect(screen.getByText('Platform Admin', { selector: '.shell-role' })).toBeInTheDocument();
     expect(await screen.findByRole('option', { name: 'Needs Admin' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Has Admin' })).not.toBeInTheDocument();
   });
 
   it('PLATFORM_ADMIN sees each brand’s onboarding checklist and last activity, never customer data', async () => {
-    renderAt('/', signedIn, apiFor(ME.platform));
+    renderAt('/app', signedIn, apiFor(ME.platform));
     const row = (await screen.findByText('Has Admin')).closest('tr')!;
     expect(within(row).getByText('Active')).toBeInTheDocument();
     expect(within(row).getByText('10 products')).toBeInTheDocument();
@@ -332,7 +332,7 @@ describe('scope routing — each of the three roles lands in its own console are
 
   it('PLATFORM_ADMIN suspends with a reason (explained first) and can reactivate', async () => {
     const api = apiFor(ME.platform);
-    renderAt('/', signedIn, api);
+    renderAt('/app', signedIn, api);
     const row = (await screen.findByText('Has Admin')).closest('tr')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Suspend' }));
     const dialog = screen.getByRole('form', { name: 'Suspend Has Admin' });
@@ -351,8 +351,8 @@ describe('scope routing — each of the three roles lands in its own console are
   });
 
   it('BRAND_ADMIN → Brand Console shows Retailer → Stores → Retail Admin, with no brand-admin or store-ID UI', async () => {
-    renderAt('/', signedIn, apiFor(ME.brandAdmin));
-    expect(await screen.findByText('· Brand Console')).toBeInTheDocument();
+    renderAt('/app', signedIn, apiFor(ME.brandAdmin));
+    expect(await screen.findByText('Brand Console')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create retailer' })).toBeInTheDocument();
     expect(await screen.findByText('Bandra Store')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Retailer: North Retail/ })).toBeInTheDocument();
@@ -365,7 +365,7 @@ describe('scope routing — each of the three roles lands in its own console are
   });
 
   it('a store with a Retail Admin shows it and offers no provisioning; a store without one offers it', async () => {
-    renderAt('/', signedIn, apiFor(ME.brandAdmin));
+    renderAt('/app', signedIn, apiFor(ME.brandAdmin));
     const bandra = (await screen.findByText('Bandra Store')).closest('tr')!;
     expect(within(bandra).getByText('owner@north.test')).toBeInTheDocument();
     expect(within(bandra).queryByRole('button')).not.toBeInTheDocument();
@@ -380,7 +380,7 @@ describe('scope routing — each of the three roles lands in its own console are
 
   it('provisioning is store-based and shows the local password-setup link', async () => {
     const api = apiFor(ME.brandAdmin);
-    renderAt('/', signedIn, api);
+    renderAt('/app', signedIn, api);
     fireEvent.click(await screen.findByRole('button', { name: 'Provision Retail Admin for Andheri Store' }));
     fireEvent.change(screen.getByLabelText('Retail admin email for Andheri Store'), {
       target: { value: 'owner-andheri@north.test' },
@@ -392,9 +392,10 @@ describe('scope routing — each of the three roles lands in its own console are
   });
 
   it('RETAIL_ADMIN → Retailer Console with exactly its one store and no store picker', async () => {
-    renderAt('/', signedIn, apiFor(ME.retailAdmin));
+    renderAt('/app', signedIn, apiFor(ME.retailAdmin));
     expect(await screen.findByText('Your store')).toBeInTheDocument();
-    expect(screen.getByText('North Retail · Brand A')).toBeInTheDocument();
+    expect(screen.getByText('Bandra Store · Brand A')).toBeInTheDocument();
+    expect(screen.getByRole('note')).toHaveTextContent('You run Bandra Store for Brand A via North Retail.');
     expect(screen.getByText('Bandra Store')).toBeInTheDocument();
     expect(screen.getByText('North Retail')).toBeInTheDocument();
     expect(screen.getByText('Hill Road, Bandra')).toBeInTheDocument();
@@ -406,7 +407,7 @@ describe('scope routing — each of the three roles lands in its own console are
 
   it('RETAIL_ADMIN → Store stock shows only its own store (read-only)', async () => {
     const api = apiFor(ME.retailAdmin);
-    renderAt('/', signedIn, api);
+    renderAt('/app', signedIn, api);
     const row = (await screen.findByText('DBC-VCSERUM-30')).closest('tr')!;
     expect(within(row).getByText('Vitamin C Glow Serum')).toBeInTheDocument();
     expect(within(row).getByText('Low stock')).toBeInTheDocument();
@@ -419,17 +420,17 @@ describe('scope routing — each of the three roles lands in its own console are
   });
 
   it('RETAIL_ADMIN → Store stock empty state', async () => {
-    renderAt('/', signedIn, apiFor(ME.retailAdmin, EMPTY));
+    renderAt('/app', signedIn, apiFor(ME.retailAdmin, EMPTY));
     expect(await screen.findByText(/No stock has been imported for this store yet/)).toBeInTheDocument();
   });
 
   it.each([
-    ['/platform', ME.brandAdmin, '· Brand Console'],
-    ['/retailer', ME.brandAdmin, '· Brand Console'],
-    ['/brand', ME.retailAdmin, '· Retailer Console'],
-    ['/platform', ME.retailAdmin, '· Retailer Console'],
-    ['/retailer', ME.platform, '· Platform Admin'],
-    ['/brand', ME.platform, '· Platform Admin'],
+    ['/platform', ME.brandAdmin, 'Brand Console'],
+    ['/retailer', ME.brandAdmin, 'Brand Console'],
+    ['/brand', ME.retailAdmin, 'Store Console'],
+    ['/platform', ME.retailAdmin, 'Store Console'],
+    ['/retailer', ME.platform, 'Platform Console'],
+    ['/brand', ME.platform, 'Platform Console'],
   ])('visiting %s with the wrong scope redirects to the user’s own area', async (path, me, expected) => {
     renderAt(path, signedIn, apiFor(me));
     expect(await screen.findByText(expected)).toBeInTheDocument();
@@ -439,7 +440,7 @@ describe('scope routing — each of the three roles lands in its own console are
 describe('Brand Console — M3 catalog & store truth', () => {
   it('setup checklist: an empty brand sees every step to do, each with its action', async () => {
     const api = apiFor(ME.brandAdmin, EMPTY);
-    renderAt('/', signedIn, api);
+    renderAt('/app', signedIn, api);
     // Each panel loads independently: wait for every one of them (no ordering assumptions).
     expect(await screen.findByText('Not synced yet.')).toBeInTheDocument();
     expect(await screen.findByText('No store stock imported yet.')).toBeInTheDocument();
@@ -453,7 +454,7 @@ describe('Brand Console — M3 catalog & store truth', () => {
   });
 
   it('setup checklist: done steps show their facts; open issues stay to do', async () => {
-    renderAt('/', signedIn, apiFor(ME.brandAdmin));
+    renderAt('/app', signedIn, apiFor(ME.brandAdmin));
     expect(await screen.findByText(/10 products · 18 variants · last sync/)).toBeInTheDocument();
     expect(screen.getByText(/1 of 2 stores with stock · stock as of/)).toBeInTheDocument();
     expect(screen.getByText('18 auto-matched · 1 need attention')).toBeInTheDocument();
@@ -469,7 +470,7 @@ describe('Brand Console — M3 catalog & store truth', () => {
       last_error: { code: 'COMMERCE_SYNC_FAILED', message: 'The commerce provider could not be reached.' },
     };
     const api = apiFor(ME.brandAdmin, { ...FULL, '/api/brand/connections': { connections: [failed] } });
-    renderAt('/', signedIn, api);
+    renderAt('/app', signedIn, api);
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Sync failed — The commerce provider could not be reached. Try again in a moment.',
     );
@@ -478,7 +479,7 @@ describe('Brand Console — M3 catalog & store truth', () => {
   });
 
   it('catalog & mapping: variants with SKU, price and mapping status; unmapped retail SKUs stay visible', async () => {
-    renderAt('/', signedIn, apiFor(ME.brandAdmin));
+    renderAt('/app', signedIn, apiFor(ME.brandAdmin));
     const row = (await screen.findByText('Vitamin C Glow Serum')).closest('tr')!;
     expect(within(row).getByText('DBC-VCSERUM-30')).toBeInTheDocument();
     expect(within(row).getByText('₹795')).toBeInTheDocument();
@@ -489,7 +490,7 @@ describe('Brand Console — M3 catalog & store truth', () => {
 
   it('retail import: create → upload the file → process → report with row errors', async () => {
     const api = apiFor(ME.brandAdmin);
-    renderAt('/', signedIn, api);
+    renderAt('/app', signedIn, api);
     const input = await screen.findByLabelText('Retail CSV file');
     const file = new File(['store_id\n'], 'demo-retail.csv', { type: 'text/csv' });
     fireEvent.change(input, { target: { files: [file] } });
@@ -509,7 +510,7 @@ describe('Brand Console — M3 catalog & store truth', () => {
   });
 
   it('import history opens a past report; stores show SKU count and last stock update', async () => {
-    renderAt('/', signedIn, apiFor(ME.brandAdmin));
+    renderAt('/app', signedIn, apiFor(ME.brandAdmin));
     fireEvent.click(await screen.findByRole('button', { name: 'View report' }));
     expect(await screen.findByLabelText('Import report')).toBeInTheDocument();
     const bandra = screen.getByText('Bandra Store').closest('tr')!;
