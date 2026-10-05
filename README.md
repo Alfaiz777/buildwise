@@ -19,29 +19,43 @@ npm run dev:backend          # terminal 2: API on :8080
 npm run dev:frontend         # terminal 3: http://localhost:5173
 ```
 
-Open <http://localhost:5173/login>: every demo account is one **Use** click away under **Try the demo**. Each browser tab keeps its own sign-in, so one window can hold all four roles. (DEMO_MODE is off unless configured; it never widens what a role may do.)
+Open <http://localhost:5173>. Five surfaces, all on synthetic data:
 
-| Account | Role | What to look at |
+| Surface | Where | Who it is for |
 |---|---|---|
-| Brand Admin — Demo Beauty Co | `admin@demo-brand.test` | Demo guide, simulator, decision trace, Outcomes & insights |
-| Retail Admin — Bandra Store | `retail-admin-north-1@qwikspot.test` | Bandra's reservation queue and stock only |
-| Retail Admin — Andheri Store | `retail-admin-north-2@qwikspot.test` | Andheri's queue — the demo hold lands here |
-| Platform Admin | `platform@qwikspot.test` | Brands, onboarding checklist, last activity, suspend — never customer data |
+| **Landing** | `/` | Anyone: what Qwikspot does, Brand / Store login, "See it as a shopper" |
+| **Shopper demo** | `/shop` (the brand's website with the Qwikspot widget) and `/chat` (the brand's WhatsApp chat) | A shopper — no login; each tab is its own synthetic shopper |
+| **Brand Console** | `/brand` | The brand: results, conversations with their journey and "why", reservations, insights, network, settings |
+| **Store Console** | `/store` | One store: today's holds (Next up), why each hold came, history, stock, demand near the store |
+| **Platform Console** | `/platform` | The Qwikspot team: brands, the retail network and the audit — aggregates only, never a customer |
+
+The login page lists every demo account under **Try the demo** (DEMO_MODE; it never widens what a role may do). Each browser tab keeps its own sign-in, so one window can hold every role.
+
+| Account | Email | Opens |
+|---|---|---|
+| Brand Admin — Demo Beauty Co | `admin@demo-brand.test` | Brand Console |
+| Retail Admin — Andheri Store | `retail-admin-north-2@qwikspot.test` | Store Console — the demo hold lands here |
+| Retail Admin — Bandra Store | `retail-admin-north-1@qwikspot.test` | Store Console (Bandra only) |
+| Platform Admin | `platform@qwikspot.test` | Platform Console |
 
 Local demo password: `qwikspot-demo-1` (emulators only; a deployed demo uses its own secret).
 
-### The 4-tab walkthrough
+### The 10-minute judge script
 
-| Tab | Steps |
-|---|---|
-| **1 · Brand Admin** (`/brand`) | Open the **Demo guide**. Step 1 opens the demo store. |
-| **2 · Demo store → simulator** | Pick **Vitamin C Glow Serum 30 ml** → **Need it today? Check a store near you**. The simulator opens in a new tab (sign in as the Brand Admin there) with the message ready — send it. **Share location → Near Powai → Send location**. Powai has no stock, so the assistant offers **Hold 1 at Andheri** — tap it: pickup code, hold-until time, maps link. Under the chat, **Why Qwikspot did this** shows eligible and excluded stores with reasons, the guardrail's fresh re-check and every tool call. |
-| **3 · Retail Admin — Andheri** | The hold is at the top of **Reservations**: **Confirm → Mark ready → Customer arrived → Complete** with the customer's 6-digit code (shown in tab 2). The customer gets a message at each step; stock drops by one. Try **Refuse → Not actually in stock** on another hold: the customer is offered the next store that really has it. |
-| **4 · Outcomes & insights** (tab 1 → nav) | The pickup is an **in-store** outcome. The weekday panel explains, from counted records, that Saturday is an *availability* problem, not a demand problem, with suggested next actions. Then sign in as the **Platform Admin** in this tab: brands with their onboarding checklist and last activity. |
+Start from a clean demo: **Brand Console → Overview → Demo guide → Reset demo** (it asks first; it resets the shared demo for everyone and removes every judge's chats and demo shoppers). Then:
 
-Done? **Reset demo** in the Brand Admin's demo guide puts the shared demo back to its seeded state (after a confirmation — it resets the demo for everyone).
+| # | Where | Do | You should see |
+|---|---|---|---|
+| 1 | Landing | **See it as a shopper** | The brand's demo store |
+| 2 | Shopper demo | **Vitamin C Glow Serum** → 30 ml → **Need it today? Check a store near you** → send | The brand's chat (docked on desktop, full screen on a phone) |
+| 3 | Chat | **📍 → Near Powai**, then **Hold at Andheri** | Powai is out of stock, so Andheri is offered with the product card; then the pickup pass, pickup code and the store's location |
+| 4 | New tab: **Store login** (Andheri) | **Confirm → Mark ready → Customer arrived → Complete** with the code from the chat | Each step appears in the shopper's chat; "Why this hold came to you" on the card |
+| 5 | **Brand login** → Conversations | Open the conversation | The journey from the website to "Picked up at Andheri Store — in-store purchase", and why Andheri was offered |
+| 6 | Brand → Insights | — | The funnel, the weekday reading (an availability problem, not a demand problem), suggestions linked to the store |
+| 7 | Shopper demo → **Demo controls** | **Sign in as Asha** → add the serum to the bag → leave; ~3 minutes later Brand → Conversations → **Process due work now** | The cart follow-up arrives in Asha's chat, with quick replies. Every "Sign in as Asha" is its own synthetic customer |
+| 8 | **Platform login** | Overview → Retail network → System | Results across brands as counts, store health flags, and how Qwikspot runs today (Mock AI, simulator, mock catalogue) |
 
-`npm run demo:check` walks the same journey over HTTP and prints ✔ / ✘ per step (`BASE_URL` points it at a deployment).
+`node scripts/judge-script.mjs` runs exactly these steps through the UI — starting with Reset demo, at 1440 px and 390 px — and writes the screenshot set in [docs/screenshots/](docs/screenshots/README.md). `npm run demo:check` walks the core journey over HTTP and prints ✔ / ✘ per step (`BASE_URL` points it at a deployment).
 
 ## How it is built
 
@@ -49,7 +63,7 @@ Done? **Reset demo** in the Brand Admin's demo guide puts the shared demo back t
 flowchart LR
   C[Customer] -->|WhatsApp / simulator| P
   SF[Storefront snippet] -->|intents| API
-  UI[React consoles: Platform · Brand · Retailer] -->|Firebase ID token| API
+  UI[React: landing · shopper demo · Brand · Store · Platform consoles] -->|Firebase ID token / shopper session| API
   subgraph API[Qwikspot API — Cloud Run or local Node, same code]
     P[ConversationPipeline] --> A[AgentRuntime<br/>Mock locally · ADK + Gemini live]
     A -->|read tools| G[Guardrail: re-check on fresh data]
@@ -63,7 +77,7 @@ flowchart LR
 - **Multi-tenant by construction:** scope comes only from the verified token and the user record — never from a client-supplied `brand_id`. Retail Admins see exactly one store.
 - **Safety:** the agent's writes run only after the guardrail; reservations change stock in one transaction; every mutating route is audited; logs carry IDs, never PII or message text.
 
-Locally everything runs on the Firebase emulators with a mock commerce catalogue, a WhatsApp simulator and a deterministic mock agent (labelled "Mock AI, deterministic" — it verifies the pipeline, not AI quality). Gemini, WhatsApp and Shopify are wired in the live phases (L1–L2).
+Locally everything runs on the Firebase emulators with a mock commerce catalogue, a WhatsApp simulator (it renders only what WhatsApp can) and a deterministic mock agent (labelled "Mock AI · deterministic" — it verifies the pipeline, not AI quality). Gemini, WhatsApp and Shopify are wired in the live phases (L1–L2).
 
 ## Checks
 
@@ -77,18 +91,19 @@ npm run demo:check                                       # smoke-walk a running 
 ## Repository and docs
 
 ```text
-frontend/        React + TypeScript + Vite — the three consoles, the simulator, the demo store
+frontend/        React + TypeScript + Vite — landing, shopper demo (/shop, /chat), Brand · Store · Platform consoles
 backend/         Node.js 24 + TypeScript + Express — domain / application / ports / adapters
 infrastructure/  Firestore rules and indexes, Cloud Build, deploy scripts
-docs/            The specification (00–11) and the deployment runbook (12)
+docs/            The specification (00–11), the deployment runbook (12) and the screenshot set (docs/screenshots)
 ```
 
-- What each console shows: [docs/11_INTERFACE_CONTRACT.md](docs/11_INTERFACE_CONTRACT.md)
+- What each surface shows, and its states: [docs/11_INTERFACE_CONTRACT.md](docs/11_INTERFACE_CONTRACT.md)
+- Screenshots of the judge script (desktop and phone): [docs/screenshots/](docs/screenshots/README.md)
 - Architecture, scaling and roadmap: [docs/03_TECH_ARCHITECTURE.md](docs/03_TECH_ARCHITECTURE.md)
 - Deploying to Google Cloud: [docs/12_DEPLOYMENT_RUNBOOK.md](docs/12_DEPLOYMENT_RUNBOOK.md) and [infrastructure/README.md](infrastructure/README.md)
 - Milestones and what each one taught: [docs/10_EXECUTION_PLAN.md](docs/10_EXECUTION_PLAN.md), [docs/09_LEARNING_LOG.md](docs/09_LEARNING_LOG.md)
 
-Status: M1–M7 complete on the local profile (the core product, hardened and judge-ready); L1–L3 (Google Cloud, real integrations, live verification) follow.
+Status: M1–M7 and the Interface Refresh (UI-0 – UI-6) complete on the local profile; L1–L3 (Google Cloud, real integrations, live verification) follow.
 
 ## Core loop
 

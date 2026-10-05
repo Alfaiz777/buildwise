@@ -38,5 +38,5 @@ temp/
 # Local profile data (LocalFileStorageProvider, LocalEventSink)
 .data/
 
-# Playwright screenshots (per phase; the final set is committed under docs/screenshots in UI-6)
+# Playwright review screenshots (per phase); the committed set is docs/screenshots (scripts/judge-script.mjs)
 .screenshots/

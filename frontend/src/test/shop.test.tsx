@@ -259,6 +259,11 @@ describe('/shop — the demo store with the Qwikspot widget', () => {
       brand_id: 'brd_demo',
       shopper_id: 'gid://shopify/Customer/3002',
     });
+    // UI-6: the session comes first, and the sign-in carries it — so the server links this
+    // browser to the session's own customer, never a shared one.
+    const signIn = calls.find((c) => c.url === '/api/demo-storefront/shopper-sign-in')!;
+    expect(calls.indexOf(session)).toBeLessThan(calls.indexOf(signIn));
+    expect((signIn.init!.headers as Record<string, string>)['X-Qwikspot-Shopper-Session']).toMatch(/^tok_\d+$/);
     expectNoRefSent(calls);
   });
 });

@@ -76,6 +76,11 @@ export class ShopperChat {
     this.session = read(brandId);
   }
 
+  /** UI-6: the current session token, for the demo storefront's shopper sign-in. */
+  get sessionToken(): string | null {
+    return (this.session ?? this.memory)?.token ?? null;
+  }
+
   get brand(): ShopperBrand | null {
     return (this.session ?? this.memory)?.brand ?? null;
   }

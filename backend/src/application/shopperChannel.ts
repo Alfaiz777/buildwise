@@ -6,7 +6,9 @@
  * Identity: the server issues a signed, short-lived session token that carries the
  * customer ref; the browser never chooses a ref. Without a shopper the server makes a
  * fresh `judge_xxxxxxxx`; "sign in as demo shopper" accepts only the synthetic commerce
- * customers and maps them server-side. No new collection: the token is self-verifying.
+ * customers and gives EACH session its own ref (`shopper_3002_xxxxxxxx`, UI-6), so two
+ * visitors who both pick Asha never share a customer or a conversation. No new
+ * collection: the token is self-verifying.
  *
  * Availability (routes/shopper.ts): local profile always; gcp only with DEMO_MODE on and
  * only for the allowlisted demo brands.
@@ -26,6 +28,8 @@ export interface ShopperSession {
   brandId: string;
   customerRef: string;
   expiresAt: string;
+  /** UI-6: the synthetic shopper this session signed in as (null for a guest). */
+  shopperId: string | null;
 }
 
 export interface ShopperChannelDeps {
@@ -45,6 +49,7 @@ export interface ShopperChannelDeps {
 }
 
 const b64 = (data: Buffer | string) => Buffer.from(data).toString('base64url');
+const randomRef = () => [...randomBytes(8)].map((b) => BASE32[b % BASE32.length]).join('');
 
 export class ShopperChannelService {
   private readonly secret: Buffer;
@@ -83,15 +88,22 @@ export class ShopperChannelService {
       if (!DEMO_SHOPPER_IDS.includes(input.shopperId)) {
         throw new AppError(404, 'UNKNOWN_SHOPPER', 'This demo shopper does not exist.');
       }
-      customerRef = shopperRef(input.shopperId);
+      // A fresh customer per session (UI-6): never the shared synthetic shopper's ref.
+      customerRef = `${shopperRef(input.shopperId)}_${randomRef()}`;
     } else {
-      const bytes = randomBytes(8);
-      customerRef = `judge_${[...bytes].map((b) => BASE32[b % BASE32.length]).join('')}`;
+      customerRef = `judge_${randomRef()}`;
     }
     const now = this.deps.now();
     const expiresAt = new Date(now.getTime() + SHOPPER_SESSION_TTL_MS);
     const payload = b64(
-      JSON.stringify({ v: 1, b: brand.brandId, r: customerRef, iat: now.getTime(), exp: expiresAt.getTime() }),
+      JSON.stringify({
+        v: 1,
+        b: brand.brandId,
+        r: customerRef,
+        ...(input.shopperId ? { s: input.shopperId } : {}),
+        iat: now.getTime(),
+        exp: expiresAt.getTime(),
+      }),
     );
     await this.deps.audit.recordBrandEvent({
       brandId: brand.brandId,
@@ -127,7 +139,7 @@ export class ShopperChannelService {
     const expected = Buffer.from(this.sign(payload));
     const given = Buffer.from(signature);
     if (expected.length !== given.length || !timingSafeEqual(expected, given)) throw this.invalid();
-    let data: { v?: number; b?: string; r?: string; exp?: number };
+    let data: { v?: number; b?: string; r?: string; s?: string; exp?: number };
     try {
       data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     } catch {
@@ -138,7 +150,8 @@ export class ShopperChannelService {
     }
     if (data.exp <= this.deps.now().getTime()) throw this.invalid();
     if (!this.deps.brandAllowed(data.b) || !/^[A-Za-z0-9_-]{1,64}$/.test(data.r)) throw this.invalid();
-    return { brandId: data.b, customerRef: data.r, expiresAt: new Date(data.exp).toISOString() };
+    const shopperId = typeof data.s === 'string' && DEMO_SHOPPER_IDS.includes(data.s) ? data.s : null;
+    return { brandId: data.b, customerRef: data.r, expiresAt: new Date(data.exp).toISOString(), shopperId };
   }
 
   /** A shopper message → the simulator channel, as this session's customer. */

@@ -2,7 +2,8 @@
 /**
  * Playwright screenshots of every screen at desktop (1440 px) and phone (390 px) widths,
  * for the Interface Refresh phase reviews. Needs a running local stack (emulators, seed,
- * backend, Vite). Output: .screenshots/<phase>/ (git-ignored; UI-6 commits the final set).
+ * backend, Vite). Output: .screenshots/<phase>/ (git-ignored). The committed set in
+ * docs/screenshots/ comes from scripts/judge-script.mjs (UI-6).
  *
  *   BASE_URL=http://localhost:5173 node scripts/screenshots.mjs ui-0
  *

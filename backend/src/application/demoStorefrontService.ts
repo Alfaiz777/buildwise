@@ -81,17 +81,25 @@ export class DemoStorefrontService {
         shopper_id: c.externalCustomerId,
         first_name: c.firstName,
         marketing_consent: c.marketingConsent,
-        simulator_customer_ref: shopperRef(c.externalCustomerId),
       }));
   }
 
-  async signInShopper(brandId: string, input: { shopperId: string; visitorId: string; webSessionId: string }) {
+  /**
+   * Links this browser to a demo shopper. With `sessionRef` (UI-6: the shopper demo's
+   * signed session for this shopper) the link goes to THAT session's own customer — same
+   * consent and commerce link as the synthetic shopper, but its own conversation. Without
+   * it, the shared synthetic customer (reachable only through the brand-scoped simulator).
+   */
+  async signInShopper(
+    brandId: string,
+    input: { shopperId: string; visitorId: string; webSessionId: string; sessionRef?: string | null },
+  ) {
     const shopper = DEMO_SHOPPER_IDS.includes(input.shopperId)
       ? await this.deps.commerce.getCustomer(input.shopperId)
       : null;
     if (!shopper) throw new AppError(404, 'UNKNOWN_SHOPPER', 'This demo shopper does not exist.');
     const at = this.now().toISOString();
-    const ref = shopperRef(shopper.externalCustomerId);
+    const ref = input.sessionRef ?? shopperRef(shopper.externalCustomerId);
     const { customer } = await this.deps.customers.findOrCreateByIdentity(
       brandId,
       { channel: 'SIMULATOR', externalRef: `sim:${ref}` },
@@ -126,7 +134,6 @@ export class DemoStorefrontService {
       shopper_id: shopper.externalCustomerId,
       first_name: shopper.firstName,
       marketing_consent: shopper.marketingConsent,
-      simulator_customer_ref: ref,
     };
   }
 

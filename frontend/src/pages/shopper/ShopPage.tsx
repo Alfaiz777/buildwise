@@ -4,7 +4,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Drawer, ProductThumb } from '../../components/ui';
 import { useDemoConfig } from '../../lib/demoConfig';
 import { label } from '../../lib/labels';
-import { ShopperChat } from '../../lib/shopperApi';
+import { SHOPPER_SESSION_HEADER, ShopperChat } from '../../lib/shopperApi';
+import { usePageTitle } from '../../lib/pageTitle';
 import { ShopperPhone } from './ShopperPhone';
 import { ShopperUnavailable } from './ShopperUnavailable';
 
@@ -84,6 +85,7 @@ type View =
   | { page: 'done' };
 
 export function ShopPage({ tracker: injected }: { tracker?: IntentTracker }) {
+  usePageTitle('Demo Beauty Co · Demo store');
   const demo = useDemoConfig();
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -185,14 +187,22 @@ export function ShopPage({ tracker: injected }: { tracker?: IntentTracker }) {
   const signIn = async (s: Shopper) => {
     if (!tracker || !brandId || !chat) return;
     const ids = tracker.ids();
+    // UI-6: a fresh chat session for this demo shopper first — the server gives it its own
+    // customer — then the sign-in links this browser to THAT customer (never a shared one).
+    try {
+      await chat.start(s.shopper_id);
+    } catch {
+      return setError('Sign-in failed.');
+    }
     const res = await fetch('/api/demo-storefront/shopper-sign-in', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(chat.sessionToken ? { [SHOPPER_SESSION_HEADER]: chat.sessionToken } : {}),
+      },
       body: JSON.stringify({ brand_id: brandId, shopper_id: s.shopper_id, ...ids }),
     });
     if (!res.ok) return setError('Sign-in failed.');
-    // The chat continues as this demo shopper: the server issues the identity.
-    await chat.start(s.shopper_id).catch(() => undefined);
     localStorage.setItem(SHOPPER_KEY, JSON.stringify(s));
     setShopper(s);
     setDocked(null);

@@ -120,7 +120,7 @@ describe('login page — "Try the demo" (DEMO_MODE)', () => {
 });
 
 describe('Brand Console — demo guide and Reset demo', () => {
-  it('the demo brand sees the 6-step guide; Reset asks first, then resets and reports', async () => {
+  it('the demo brand sees the 8-step judge script; Reset asks first, then resets and reports', async () => {
     const post = vi.fn(async () => ({
       brand_id: 'brd_demo',
       catalog: { products: 10, variants: 18 },
@@ -129,7 +129,11 @@ describe('Brand Console — demo guide and Reset demo', () => {
     }));
     renderAt('/brand', apiWith({ '/api/brand/demo': { reset_available: true } }, post));
     const guide = (await screen.findByText('Demo guide')).closest('details')!;
-    expect(within(guide).getAllByRole('listitem')).toHaveLength(6);
+    expect(within(guide).getAllByRole('listitem')).toHaveLength(8);
+    expect(within(guide).getByRole('link', { name: 'Open a platform sign-in tab' })).toHaveAttribute(
+      'href',
+      '/login?as=platform',
+    );
     const open = within(guide).getByRole('link', { name: 'Open the shopper demo' });
     expect(open).toHaveAttribute('href', '/shop?brand=brd_demo');
     expect(open).toHaveAttribute('target', '_blank');

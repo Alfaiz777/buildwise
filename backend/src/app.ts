@@ -136,7 +136,15 @@ export function createApp(deps: AppDeps): Express {
   app.use('/api', intentsRouter(services.intents));
   if (services.demoStorefront) {
     const allowed = (brandId: string) => services.shopper?.isBrandAllowed(brandId) ?? true;
-    app.use('/api/demo-storefront', demoStorefrontRouter(services.demoStorefront, services.intents, allowed));
+    app.use(
+      '/api/demo-storefront',
+      demoStorefrontRouter(
+        services.demoStorefront,
+        services.intents,
+        allowed,
+        services.shopper ? (token) => services.shopper!.verify(token) : undefined,
+      ),
+    );
   }
   // PUBLIC shopper demo channel (Change 16): signed session tokens, origin allowlist, rate limits.
   if (services.shopper) app.use('/api/shopper', shopperRouter(services.shopper));

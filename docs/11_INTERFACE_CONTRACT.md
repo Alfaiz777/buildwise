@@ -1,6 +1,6 @@
 # Qwikspot — Interface Contract
 
-Status: added in M2.1, updated in M2.2, M3, M4, M5, M6 and M7 (post-M0, `00_M0_SPECIFICATION_FREEZE.md` §11.8 Changes 8–14).
+Status: added in M2.1, updated in M2.2, M3, M4, M5, M6 and M7 (post-M0, `00_M0_SPECIFICATION_FREEZE.md` §11.8 Changes 8–14) and in the Interface Refresh UI-0 – UI-6 (Change 16; §0 lists the five surfaces).
 
 This document states, for each of the four frozen interfaces, who uses it, what it may show and do **today (end of M7)**, and how it behaves when it is empty, unauthorized, loading or failing. It describes the current contract only. It adds no features, and it never overrides `01`–`08`: roles and scopes come from `04_DATA_MODEL.md` §4, routes from `06_INTEGRATION_CONTRACTS.md` §14, and enforcement from `07_SECURITY_SPEC.md` §4.
 
@@ -12,6 +12,20 @@ Interface names are frozen:
 | Brand Console | `BRAND_ADMIN` | one brand |
 | Retailer Console | `RETAIL_ADMIN` | one physical store: `brand_id` + `retailer_id` + `store_id` |
 | Customer AI Channel / WhatsApp | customer (channel principal, not a role) | own conversation, context and resources |
+
+## 0. The five surfaces (Interface Refresh, Change 16)
+
+The four frozen interfaces are reached through five surfaces. Every page has a designed **loading** state (skeleton), **empty** state (what it means and the next action), **error** state (what happened, Try again) and **success** state (toast or inline line).
+
+| Surface | Routes | For | Shows | Never shows | Demo-only parts |
+|---|---|---|---|---|---|
+| **Landing** | `/`, `/login?as=brand\|store\|platform`, `/app` | Anyone | What Qwikspot does (illustrations labelled "Example"), the two doors (Brand login, Store login), Qwikspot team sign-in | Any data; it calls only the public demo config | "See it as a shopper" and "Try the demo" logins (DEMO_MODE) |
+| **Shopper demo** | `/shop`, `/chat` | A shopper (no login) | The brand's store with the Qwikspot widget; the brand's chat with structured messages, store updates and follow-ups (§6) | Internal labels, other shoppers' chats, any console data | The whole surface: local, and gcp with DEMO_MODE for the demo brand only; "Demo controls"; "Demo · synthetic data" ribbon |
+| **Brand Console** | `/brand`, `/brand/conversations` (`?c=`), `/brand/reservations`, `/brand/insights`, `/brand/network`, `/brand/settings` | `BRAND_ADMIN` | Results, attention, conversations with journey and why, reservations, insights, network, read-only settings (§4) | Other brands; customer phone numbers | Demo guide, Reset demo, "Open shopper demo" (demo brand, DEMO_MODE) |
+| **Store Console** | `/store`, `/store/history`, `/store/stock`, `/store/demand` | `RETAIL_ADMIN` (one store) | Next up, the queue with why each hold came, history, read-only stock, demand near the store (§5) | Customer identity (masked), the customer's location or messages, other stores' numbers | — |
+| **Platform Console** | `/platform`, `/platform/brands`, `/platform/network`, `/platform/audit`, `/platform/system` | `PLATFORM_ADMIN` | Brand and store aggregates, onboarding with next steps, store health flags, the audit, how Qwikspot runs (§3) | Customers, messages, phones, emails, pickup codes, stock lines, Store Admin identities | — |
+
+Every console page sets the tab title "<page> · <console> · Qwikspot". Phones (390 px) never scroll sideways: tables scroll inside their card, the chat fills the screen, the consoles use a bottom tab bar. The judge script (README, §4 demo guide) walks the surfaces in the order above; `docs/screenshots/` shows each step at desktop and phone width.
 
 ## 1. Ownership model the interfaces rely on
 

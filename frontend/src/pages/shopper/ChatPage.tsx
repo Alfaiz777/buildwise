@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useDemoConfig } from '../../lib/demoConfig';
 import { ShopperChat } from '../../lib/shopperApi';
+import { usePageTitle } from '../../lib/pageTitle';
 import { ShopperPhone } from './ShopperPhone';
 import { ShopperUnavailable } from './ShopperUnavailable';
 
@@ -11,6 +12,7 @@ import { ShopperUnavailable } from './ShopperUnavailable';
  * (`#text=…`, never the query string, so it stays out of server logs).
  */
 export function ChatPage() {
+  usePageTitle('Chat · Demo Beauty Co');
   const demo = useDemoConfig();
   const [params] = useSearchParams();
   const location = useLocation();

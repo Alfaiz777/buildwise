@@ -1,3 +1,5 @@
+import type { ShopperSession } from '../application/shopperChannel.js';
+import { SHOPPER_SESSION_HEADER } from './shopper.js';
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import type { DemoStorefrontService } from '../application/demoStorefrontService.js';
@@ -40,6 +42,8 @@ export function demoStorefrontRouter(
   demo: DemoStorefrontService,
   intents: IntentService,
   brandAllowed: (brandId: string) => boolean = () => true,
+  /** UI-6: verifies the shopper demo's session token (ShopperChannelService.verify). */
+  verifySession?: (token: string | undefined) => ShopperSession,
 ): Router {
   const router = Router();
   const perIp = new RateLimiter(120, 60_000);
@@ -71,11 +75,24 @@ export function demoStorefrontRouter(
     limit(req);
     const body = parseInput(SignIn, req.body);
     const brand = await brandFor(req, body.brand_id);
+    // UI-6: the shopper demo signs in with its session — the visitor is linked to that
+    // session's own customer. A session for another shopper or brand is refused.
+    const token = req.get(SHOPPER_SESSION_HEADER);
+    let sessionRef: string | null = null;
+    if (token !== undefined) {
+      if (!verifySession) throw Errors.notFound();
+      const session = verifySession(token);
+      if (session.brandId !== brand.brandId || session.shopperId !== body.shopper_id) {
+        throw new AppError(403, 'SHOPPER_SESSION_MISMATCH', 'This chat session belongs to another shopper.');
+      }
+      sessionRef = session.customerRef;
+    }
     res.json(
       await demo.signInShopper(brand.brandId, {
         shopperId: body.shopper_id,
         visitorId: body.visitor_id,
         webSessionId: body.web_session_id,
+        sessionRef,
       }),
     );
   });

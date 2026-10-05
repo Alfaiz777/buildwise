@@ -68,7 +68,8 @@ describe('follow-up engine (docs/00 §11.8 Change 11)', () => {
   it('opted-in shopper, cart abandonment: nothing before due_at; after it, one personalised template message from the brand', async () => {
     const { world, advance } = await setup();
     const signedIn = await signIn(world, 'asha', OPTED_IN);
-    expect(signedIn.body).toMatchObject({ marketing_consent: 'OPTED_IN', simulator_customer_ref: 'shopper_3002' });
+    expect(signedIn.body).toMatchObject({ marketing_consent: 'OPTED_IN' });
+    expect(signedIn.body).not.toHaveProperty('simulator_customer_ref');
     await event(world, 'asha', { event_type: 'PRODUCT_VIEW', shopify_variant_id: SERUM_30 });
     await event(world, 'asha', { event_type: 'ADD_TO_CART', shopify_variant_id: SERUM_30 });
 

@@ -217,6 +217,7 @@ describe('Audit', () => {
   it('shows brand names, the actor role, the reason and the result, with filters', async () => {
     renderAt('/platform/audit');
     const table = await screen.findByRole('table', { name: 'Platform audit' });
+    expect(document.title).toBe('Audit · Platform Console · Qwikspot'); // UI-6 tab titles
     const row = within(table).getByText('Brand suspended').closest('tr')!;
     expect(row).toHaveTextContent('New Brand');
     expect(row).toHaveTextContent('Platform Admin');
