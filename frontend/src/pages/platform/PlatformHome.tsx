@@ -1,278 +1,140 @@
-import { useCallback, useState, type FormEvent } from 'react';
-import { useApi, type ProvisionedUser } from '../../api/apiContext';
-import { ConsoleShell, errorMessage, Section, SetupLink, useLoad } from '../../components/ConsoleShell';
-import { Empty, ErrorState, Loading } from '../../components/States';
-import { label } from '../../lib/labels';
-import { formatDateTime } from '../brand/types';
+import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useApi } from '../../api/apiContext';
+import { ConsoleShell, useLoad } from '../../components/ConsoleShell';
+import { Card, ErrorState, KpiTile, Skeleton } from '../../components/ui';
+import { formatPrice } from '../brand/types';
+import { nextStep, pctText, type Brand, type NetworkResponse } from './platformTypes';
 
-interface Onboarding {
-  brand_admin_provisioned: boolean;
-  catalog: { synced: boolean; failed: boolean; last_sync_at: string | null; product_count: number };
-  stores: { total: number; with_stock: number };
-  sku_mapping: { auto_matched: number; needs_attention: number };
-  retail_admins: { provisioned: number; stores_with_retailer: number };
-  channel: { simulator: boolean; whatsapp_number_configured: boolean };
-}
-interface Brand {
-  brand_id: string;
-  name: string;
-  status: 'ACTIVE' | 'SUSPENDED';
-  created_at: string | null;
-  brand_admin_user_id: string | null;
-  last_activity_at?: string | null;
-  onboarding?: Onboarding;
-}
-
-/** The onboarding checklist as short, readable facts (counts only, never customer data). */
-function OnboardingList({ o }: { o: Onboarding }) {
-  const r = o.retail_admins;
-  const items: [string, boolean, string][] = [
-    ['Brand Admin', o.brand_admin_provisioned, o.brand_admin_provisioned ? 'provisioned' : 'not provisioned'],
-    [
-      'Catalog',
-      o.catalog.synced,
-      o.catalog.failed ? 'last sync failed' : o.catalog.synced ? `${o.catalog.product_count} products` : 'not synced',
-    ],
-    ['Stores', o.stores.with_stock > 0, `${o.stores.with_stock} of ${o.stores.total} with stock`],
-    [
-      'SKU mapping',
-      o.sku_mapping.auto_matched > 0 && o.sku_mapping.needs_attention === 0,
-      `${o.sku_mapping.auto_matched} matched, ${o.sku_mapping.needs_attention} need attention`,
-    ],
-    [
-      'Retail Admins',
-      r.stores_with_retailer > 0 && r.provisioned === r.stores_with_retailer,
-      `${r.provisioned} of ${r.stores_with_retailer} stores`,
-    ],
-    [
-      'Channel',
-      o.channel.whatsapp_number_configured || o.channel.simulator,
-      o.channel.whatsapp_number_configured ? 'WhatsApp number set, simulator' : 'simulator only',
-    ],
-  ];
+/** Period and synthetic-history controls shared by the platform's aggregate pages. */
+export function PeriodControls(props: {
+  days: 7 | 28;
+  onDays: (d: 7 | 28) => void;
+  includeHistory: boolean;
+  onHistory: (v: boolean) => void;
+}) {
   return (
-    <ul className="onboarding small">
-      {items.map(([name, done, detail]) => (
-        <li key={name} className={done ? 'done' : 'todo'}>
-          <span aria-hidden="true">{done ? '✓' : '○'}</span> {name}: <span className="muted">{detail}</span>
-          <span className="sr-only">{done ? ' (done)' : ' (to do)'}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="overview-head">
+      <div className="filters" role="group" aria-label="Period">
+        {([7, 28] as const).map((n) => (
+          <button
+            key={n}
+            type="button"
+            className={props.days === n ? '' : 'secondary'}
+            aria-pressed={props.days === n}
+            onClick={() => props.onDays(n)}
+          >
+            Last {n} days
+          </button>
+        ))}
+      </div>
+      <label className="small">
+        <input type="checkbox" checked={props.includeHistory} onChange={(e) => props.onHistory(e.target.checked)} />{' '}
+        Include synthetic history
+      </label>
+    </div>
   );
-}
-interface AuditEvent {
-  audit_id: string;
-  action: string;
-  target_brand_id: string | null;
-  target_id: string;
-  timestamp: string | null;
 }
 
 /**
- * Platform Admin minimum (M2): brands, suspend/reactivate, each brand's single
- * Brand Admin (only the Platform Admin provisions it), platform audit.
- * Platform scope never shows customer data.
+ * Platform Console → Overview (docs/11 §3; Change 16, UI-5): what Qwikspot achieves across
+ * every brand, as aggregates — never a customer. Each tile is defined in docs/11 §3.
  */
 export function PlatformHome() {
   const api = useApi();
+  const [days, setDays] = useState<7 | 28>(7);
+  const [includeHistory, setIncludeHistory] = useState(true);
+  const network = useLoad(
+    useCallback(
+      () => api.get<NetworkResponse>(`/api/platform/network?days=${days}&include_history=${includeHistory}`),
+      [api, days, includeHistory],
+    ),
+  );
   const brands = useLoad(useCallback(() => api.get<{ brands: Brand[] }>('/api/platform/brands'), [api]));
-  const audit = useLoad(useCallback(() => api.get<{ events: AuditEvent[] }>('/api/platform/audit?limit=10'), [api]));
-  const [name, setName] = useState('');
-  const [adminBrand, setAdminBrand] = useState('');
-  const [adminEmail, setAdminEmail] = useState('');
-  const [provisioned, setProvisioned] = useState<ProvisionedUser | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = () => {
-    brands.reload();
-    audit.reload();
-  };
-
-  async function run(action: () => Promise<unknown>) {
-    setError(null);
-    try {
-      await action();
-      refresh();
-    } catch (err) {
-      setError(errorMessage(err));
-    }
-  }
-
-  const createBrand = (event: FormEvent) => {
-    event.preventDefault();
-    void run(async () => {
-      await api.post('/api/platform/brands', { name });
-      setName('');
-    });
-  };
-
-  const provisionAdmin = (event: FormEvent) => {
-    event.preventDefault();
-    void run(async () => {
-      setProvisioned(
-        await api.post<ProvisionedUser>(`/api/platform/brands/${adminBrand}/admins`, { email: adminEmail }),
-      );
-      setAdminEmail('');
-    });
-  };
-
-  const needingAdmin = brands.data?.brands.filter((b) => !b.brand_admin_user_id) ?? [];
-
-  // Suspending asks for a reason (kept in the audit trail); reactivating does not.
-  const [suspending, setSuspending] = useState<Brand | null>(null);
-  const [reason, setReason] = useState('');
-  const setStatus = (brand: Brand, status: 'ACTIVE' | 'SUSPENDED', why?: string) =>
-    run(async () => {
-      await api.patch(`/api/platform/brands/${brand.brand_id}`, why ? { status, reason: why } : { status });
-      setSuspending(null);
-      setReason('');
-    });
-  const confirmSuspend = (event: FormEvent) => {
-    event.preventDefault();
-    if (suspending) void setStatus(suspending, 'SUSPENDED', reason.trim());
-  };
+  const d = network.data;
+  const t = d?.totals;
+  const synthetic = !!d && d.demo_history.included && d.demo_history.records > 0;
+  const attention = (brands.data?.brands ?? [])
+    .map((b) => ({
+      brand: b,
+      step: nextStep(b),
+      flagged: d?.brands.find((x) => x.brand_id === b.brand_id)?.stores_flagged ?? 0,
+    }))
+    .filter((x) => x.step !== 'Live.' || x.flagged > 0);
 
   return (
     <ConsoleShell>
-      {error && (
-        <p role="alert" className="error">
-          {error}
+      <PeriodControls days={days} onDays={setDays} includeHistory={includeHistory} onHistory={setIncludeHistory} />
+      {network.error && <ErrorState message={network.error} onRetry={network.reload} />}
+      {!t && !network.error && <Skeleton lines={2} label="Loading results" />}
+      {t && (
+        <section className="kpi-grid" aria-label="Across all brands">
+          <KpiTile label="Active brands" value={t.brands_active} sub={`${t.retailers} retailers`} />
+          <KpiTile label="Stores live" value={t.stores_live} sub={`of ${t.stores_total} stores`} />
+          <KpiTile label="Holds" value={t.holds} sub="reserved at a store" synthetic={synthetic} />
+          <KpiTile label="Store pickups" value={t.pickups} sub="offline sales" synthetic={synthetic} />
+          <KpiTile
+            label="Offline sales value"
+            value={formatPrice(t.offline_value.amount, t.offline_value.currency)}
+            sub="quantity × store price"
+            estimated
+            synthetic={synthetic}
+          />
+          <KpiTile
+            label="Attributed online orders"
+            value={t.online_orders}
+            sub={`${formatPrice(t.online_value.amount, t.online_value.currency)} est.`}
+            synthetic={synthetic}
+          />
+          <KpiTile label="Completion" value={pctText(t.completion_pct)} sub="of finished holds" synthetic={synthetic} />
+          <KpiTile label="Fill rate" value={pctText(t.fill_pct)} sub="nearest store had stock" synthetic={synthetic} />
+          <KpiTile
+            label="Unmet demand"
+            value={t.unmet_demand}
+            sub="lookups no store could serve"
+            synthetic={synthetic}
+          />
+          <KpiTile label="Follow-ups sent" value={t.follow_ups_sent} synthetic={synthetic} />
+        </section>
+      )}
+      {synthetic && (
+        <p className="muted small">
+          Includes synthetic demo history ({d!.demo_history.records} generated records). Untick to see only live
+          activity. Counts only — the platform never sees customers.
         </p>
       )}
 
-      <Section title="Brands">
-        <p className="muted small">
-          Onboarding and last activity per brand. The platform never sees customers or conversations.
-        </p>
-        {brands.error && <ErrorState message={brands.error} onRetry={brands.reload} />}
-        {!brands.data && !brands.error && <Loading what="Loading brands" />}
-        {brands.data && brands.data.brands.length === 0 && <Empty>No brands yet. Create the first one below.</Empty>}
-        {brands.data && brands.data.brands.length > 0 && (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Brand</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Onboarding</th>
-                  <th scope="col">Last activity</th>
-                  <th scope="col">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {brands.data.brands.map((brand) => (
-                  <tr key={brand.brand_id}>
-                    <td>
-                      {brand.name}
-                      <div className="mono small muted">{brand.brand_id}</div>
-                    </td>
-                    <td>
-                      <span className={brand.status === 'ACTIVE' ? 'badge ok' : 'badge warn'}>
-                        {label(brand.status)}
-                      </span>
-                    </td>
-                    <td>
-                      {brand.onboarding ? (
-                        <OnboardingList o={brand.onboarding} />
-                      ) : brand.brand_admin_user_id ? (
-                        'Brand Admin provisioned'
-                      ) : (
-                        <span className="muted">Brand Admin not provisioned</span>
-                      )}
-                    </td>
-                    <td className="small">
-                      {brand.last_activity_at ? (
-                        formatDateTime(brand.last_activity_at)
-                      ) : (
-                        <span className="muted">none yet</span>
-                      )}
-                    </td>
-                    <td>
-                      {brand.status === 'ACTIVE' ? (
-                        <button type="button" className="secondary" onClick={() => setSuspending(brand)}>
-                          Suspend
-                        </button>
-                      ) : (
-                        <button type="button" className="secondary" onClick={() => void setStatus(brand, 'ACTIVE')}>
-                          Reactivate
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {suspending && (
-          <form className="notice" onSubmit={confirmSuspend} aria-label={`Suspend ${suspending.name}`}>
-            <p>
-              Suspend <strong>{suspending.name}</strong>? Its users lose access to every console and see "Your brand is
-              suspended. Contact Qwikspot support." Customers are not messaged. You can reactivate at any time.
-            </p>
-            <label>
-              Reason (kept in the audit log)
-              <input required maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} />
-            </label>
-            <div className="inline">
-              <button type="submit">Suspend brand</button>
-              <button type="button" className="secondary" onClick={() => setSuspending(null)}>
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
-        <form className="inline" onSubmit={createBrand}>
-          <input
-            aria-label="New brand name"
-            placeholder="New brand name"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <button type="submit">Create brand</button>
-        </form>
-      </Section>
-
-      <Section title="Provision a brand's Brand Admin">
-        <p className="muted small">Exactly one Brand Admin per brand. Brands that already have one are not listed.</p>
-        <form className="inline" onSubmit={provisionAdmin}>
-          <select aria-label="Brand" required value={adminBrand} onChange={(e) => setAdminBrand(e.target.value)}>
-            <option value="">Select brand…</option>
-            {needingAdmin.map((b) => (
-              <option key={b.brand_id} value={b.brand_id}>
-                {b.name}
-              </option>
+      <Card title="Brands needing attention">
+        {!brands.data ? (
+          <Skeleton lines={2} />
+        ) : attention.length === 0 ? (
+          <p className="attention-empty">
+            <CheckCircle2 size={18} aria-hidden="true" /> Every brand is live and no store is flagged.
+          </p>
+        ) : (
+          <ul className="attention-list">
+            {attention.map(({ brand, step, flagged }) => (
+              <li key={brand.brand_id} className="attention attention--warning">
+                <AlertTriangle size={16} aria-hidden="true" />
+                <span>
+                  <strong>{brand.name}</strong>
+                  {step !== 'Live.' && <> — {step} </>}
+                  {flagged > 0 && (
+                    <>
+                      {' '}
+                      <Link to={`/platform/network?brand=${encodeURIComponent(brand.brand_id)}`}>
+                        {flagged} store{flagged === 1 ? '' : 's'} flagged →
+                      </Link>
+                    </>
+                  )}
+                  {step !== 'Live.' && flagged === 0 && <Link to="/platform/brands">Open brands →</Link>}
+                </span>
+              </li>
             ))}
-          </select>
-          <input
-            aria-label="Admin email"
-            type="email"
-            placeholder="admin@brand.example"
-            required
-            value={adminEmail}
-            onChange={(e) => setAdminEmail(e.target.value)}
-          />
-          <button type="submit">Provision Brand Admin</button>
-        </form>
-        <SetupLink result={provisioned} />
-      </Section>
-
-      <Section title="Platform audit (latest)">
-        {audit.error && <ErrorState message={audit.error} onRetry={audit.reload} />}
-        {audit.data && audit.data.events.length === 0 && <Empty>No platform actions yet.</Empty>}
-        <ul className="list">
-          {audit.data?.events.map((e) => (
-            <li key={e.audit_id}>
-              {label(e.action)} · brand <span className="mono">{e.target_brand_id ?? '—'}</span> ·{' '}
-              <span className="muted">{e.timestamp ? formatDateTime(e.timestamp) : 'just now'}</span>
-            </li>
-          ))}
-        </ul>
-      </Section>
+          </ul>
+        )}
+      </Card>
     </ConsoleShell>
   );
 }

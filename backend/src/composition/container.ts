@@ -151,6 +151,8 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
   const users = new FirestoreUserRepository(db);
   const brands = new FirestoreBrandRepository(db);
   const retailers = new FirestoreRetailerRepository(db);
+  const reservationRepo = new FirestoreReservationRepository(db);
+  const insightsReader = new FirestoreInsightsReader(db);
   const stores = new FirestoreStoreRepository(db);
   const audit = new FirestoreAuditRepository(db);
   const identity = new FirebaseIdentityAdmin(auth);
@@ -209,7 +211,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     messaging: providers.messaging,
     stores,
     inventory,
-    reservations: new FirestoreReservationRepository(db),
+    reservations: reservationRepo,
     outcomes: new FirestoreOutcomeRepository(db),
     attributionRefs: new FirestoreAttributionRefRepository(db),
     agent: providers.agent,
@@ -243,6 +245,10 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
           connections,
           mappings,
           inventory,
+          reader: insightsReader,
+          retailers,
+          reservations: reservationRepo,
+          now: options.now,
         }),
         tenantAdmin: new TenantAdminService({ users, retailers, stores, inventory, identity, audit }),
         account: new AccountService({ stores, inventory, products, brands, now: options.now }),
@@ -258,7 +264,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         handoff: conversation.handoff,
         brandSettings: new BrandSettingsQuery({ brands, channelMode: channelModeOf(config) }),
         insights: new InsightsService({
-          reader: new FirestoreInsightsReader(db),
+          reader: insightsReader,
           stores,
           retailers,
           products,

@@ -47,7 +47,7 @@ import { retailImportsRouter } from './routes/retailImports.js';
 import { reservationsRouter } from './routes/reservations.js';
 
 export interface AppDeps {
-  config: Pick<Config, 'corsAllowedOrigins'> & Partial<Pick<Config, 'profile' | 'demo' | 'build'>>;
+  config: Pick<Config, 'corsAllowedOrigins'> & Partial<Pick<Config, 'profile' | 'demo' | 'build' | 'adapters'>>;
   logger: Logger;
   verifier: TokenVerifier;
   repositories: {
@@ -112,7 +112,18 @@ export function createApp(deps: AppDeps): Express {
   // Public routes.
   app.use(
     '/api',
-    healthRouter({ version: config.build?.version, commit: config.build?.commit, profile: config.profile }),
+    healthRouter({
+      version: config.build?.version,
+      commit: config.build?.commit,
+      profile: config.profile,
+      adapters: config.adapters
+        ? {
+            agent_runtime: config.adapters.agentRuntime === 'adk_gemini' ? 'GEMINI' : 'MOCK',
+            channels: config.adapters.messagingChannels.map((c) => (c === 'whatsapp' ? 'WHATSAPP' : 'SIMULATOR')),
+            commerce: config.adapters.commerce === 'shopify' ? 'SHOPIFY' : 'MOCK',
+          }
+        : undefined,
+    }),
   );
   // PUBLIC: the judged demo's login panel (DEMO_MODE only returns logins).
   const shopperDemoBrand = services.shopper

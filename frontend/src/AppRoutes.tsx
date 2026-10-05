@@ -12,7 +12,9 @@ import { SettingsPage } from './pages/brand/SettingsPage';
 import { LandingPage } from './pages/landing/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { PlatformBrands } from './pages/platform/PlatformBrands';
 import { PlatformHome } from './pages/platform/PlatformHome';
+import { PlatformAudit, PlatformNetwork, PlatformSystem } from './pages/platform/PlatformPages';
 import { RetailerHome, StoreHistory, StoreStock } from './pages/retailer/RetailerHome';
 import { StoreDemand } from './pages/retailer/StoreDemand';
 import { ChatPage } from './pages/shopper/ChatPage';
@@ -50,6 +52,10 @@ export function AppRoutes({ profile = 'local' }: { profile?: FrontendProfile }) 
             <Route path="/app" element={<ScopeHome />} />
             <Route element={<ScopeRoute scope="PLATFORM" />}>
               <Route path="/platform" element={<PlatformHome />} />
+              <Route path="/platform/brands" element={<PlatformBrands />} />
+              <Route path="/platform/network" element={<PlatformNetwork />} />
+              <Route path="/platform/audit" element={<PlatformAudit />} />
+              <Route path="/platform/system" element={<PlatformSystem />} />
             </Route>
             <Route element={<ScopeRoute scope="BRAND" />}>
               <Route path="/brand" element={<BrandHome />} />

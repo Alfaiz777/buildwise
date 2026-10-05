@@ -583,6 +583,10 @@ code {
     flex-direction: column;
     align-items: stretch;
   }
+  /* In a column the 12rem flex basis would become a height. */
+  form.inline input {
+    flex: 0 0 auto;
+  }
   .demo-logins li {
     flex-direction: column;
     align-items: flex-start;
@@ -933,4 +937,14 @@ ul.plain {
   .badge.new {
     animation: ui-rise var(--duration-base) var(--ease-out);
   }
+}
+
+/* ---------------------------------------------------------------- Platform Console (UI-5) */
+.flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.contents {
+  display: contents;
 }

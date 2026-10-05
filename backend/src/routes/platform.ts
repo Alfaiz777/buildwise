@@ -57,6 +57,15 @@ const SetStatus = z.object({
 });
 const ProvisionAdmin = z.object({ email: z.string().trim().email().max(254) });
 const AuditQuery = z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) });
+const NetworkQuery = z.object({
+  days: z.enum(['7', '28']).default('7'),
+  include_history: z.enum(['true', 'false']).default('true'),
+});
+const networkOptions = (query: unknown) => {
+  const q = NetworkQuery.safeParse(query);
+  if (!q.success) throw Errors.invalidRequest('Period must be 7 or 28 days.');
+  return { days: Number(q.data.days) as 7 | 28, includeHistory: q.data.include_history === 'true' };
+};
 
 function brandIdParam(value: unknown): string {
   if (typeof value !== 'string' || !isValidTenantId(value)) throw Errors.notFound();
@@ -91,16 +100,33 @@ export function platformRouter(platform: PlatformAdminService): Router {
     res.status(201).json(userJson(user));
   });
 
+  /**
+   * UI-5 retail view (docs/07 §4.2): brand and store AGGREGATES only — counts, rates,
+   * estimated values and health flags. Never customers, messages, phones, emails, pickup
+   * codes, stock lines or Store Admin identities.
+   */
+  router.get('/network', async (req, res) => {
+    getPlatformPrincipal(res);
+    res.json(await platform.network(networkOptions(req.query)));
+  });
+
+  router.get('/brands/:brandId/network', async (req, res) => {
+    getPlatformPrincipal(res);
+    res.json(await platform.brandNetwork(brandIdParam(req.params.brandId), networkOptions(req.query)));
+  });
+
   router.get('/audit', async (req, res) => {
     getPlatformPrincipal(res);
     const { limit } = parseInput(AuditQuery, req.query);
-    const events = await platform.listAudit(limit);
+    const events = await platform.auditView(limit);
     res.json({
       events: events.map((e) => ({
         audit_id: e.auditId,
         actor_id: e.actorId,
+        actor_role: e.actorRole,
         action: e.action,
         target_brand_id: e.targetBrandId,
+        target_brand_name: e.targetBrandName,
         target_type: e.targetType,
         target_id: e.targetId,
         result: e.result,
