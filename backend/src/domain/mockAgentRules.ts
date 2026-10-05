@@ -21,8 +21,10 @@ export type MockRule =
 const INJECTION =
   /\b(ignore (all |your |previous |the )*(instructions|rules|prompt)|system prompt|developer mode|jailbreak|private data|personal data|api key|password|credentials?|admin access|all customers|other customers?|another customer'?s?|someone else'?s?|other people'?s?)\b/i;
 const CANCEL = /\b(cancel|don'?t need (it|the (hold|reservation)) anymore)\b/i;
-const HOLD = /\b(reserve|hold|book) (it|one|this|that|1|a unit)\b|^\s*(reserve|hold)( it)?\s*[.!]?\s*$/i;
-const BUY_ONLINE = /\b(buy|order) (it )?online\b/i;
+// "Pick up today" / "Home delivery" typed instead of tapped (judge-test fixes) map to the same choices.
+const HOLD =
+  /\b(reserve|hold|book) (it|one|this|that|1|a unit)\b|^\s*(reserve|hold)( it)?\s*[.!]?\s*$|^\s*pick (it )?up( today)?\s*[.!]?\s*$/i;
+const BUY_ONLINE = /\b(buy|order) (it )?online\b|\bhome delivery\b|^\s*deliver( it)?( to me)?\s*[.!]?\s*$/i;
 const OTHER_STORE = /\b(another|other|different) (store|shop|branch|location)s?\b/i;
 const STORE_SEARCH =
   /\b(today|tonight|right now|asap|urgent(ly)?|nearby|near me|near by|close to me|closest|nearest|in store|pick ?up|store near|shop near|available near|get it near|need it)\b/i;

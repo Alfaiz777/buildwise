@@ -243,6 +243,13 @@ describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
 
     const done = await move('andheri', id, 'COMPLETED', 'CUSTOMER_ARRIVED', { pickup_code: pickupCode });
     expect(done.status).toBe(200);
+    // Judge-test fixes: one plain-text thank-you from the brand (inside the 24-hour window), no footer.
+    expect(done.body.notification).toMatchObject({ status: 'SENT', event: 'COMPLETED', message_kind: 'SESSION' });
+    const thanks = await lastUpdate(A, conversationId);
+    expect(thanks.text).toMatch(
+      /^Thanks for picking up \*Vitamin C Glow Serum 30 ml\* at Andheri Store\. Enjoy it! — /,
+    );
+    expect(thanks.parts?.footer ?? null).toBeNull();
     expect(await stock(A, 'st_north_2')).toMatchObject({ quantity: 4, reserved_quantity: 0 });
     const outcomes = (await db.collection(`brands/${A}/outcomes`).where('reservation_id', '==', id).get()).docs.map(
       (d) => d.data(),
@@ -260,6 +267,35 @@ describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
       .where('event_type', '==', 'OUTCOME_RECORDED')
       .get();
     expect(outcomeEvents.size).toBe(1);
+  }, 60_000);
+
+  it('2b · refusal with no other store within 10 km → the nearest within 25 km is offered with its distance; the hold is allowed; the store sees why', async () => {
+    // Near Powai: Powai is out of stock, Andheri (7.6 km) takes the hold, Bandra is 10.6 km away.
+    const kiran = customer('a', A, 'kiran_m6');
+    const { id, conversationId } = await hold(kiran, A, NEAR_POWAI, 'st_north_2');
+    const refused = await move('andheri', id, 'CANCELLED', 'PENDING', { cancel_reason: 'DAMAGED' });
+    expect(refused.body.notification).toMatchObject({ status: 'SENT', event: 'REFUSED' });
+    const offer = await lastUpdate(A, conversationId);
+    expect(offer.text).toContain('No other store near you has it. The nearest one is *Bandra Store*, 10.6 km away.');
+    expect(offer.text).toContain('🏬 Pick up today at *Bandra Store*, 10.6 km');
+    expect(offer.text).toContain('🚚 Home delivery in 4–5 days');
+    expect(offer.options.map((o: { option_id: string; label: string }) => [o.option_id, o.label])).toEqual([
+      ['hold:st_north_1', 'Pick up today'],
+      ['buy_online', 'Home delivery'],
+    ]);
+    const conversation = (await db.doc(`brands/${A}/conversations/${conversationId}`).get()).data()!;
+    expect(conversation.pending_proposal).toMatchObject({ store_id: 'st_north_1', radius_km: 25 });
+    const tap = await kiran.tap('hold:st_north_1');
+    expect(tap.body.decision.executed_action.type).toBe('RESERVATION_CREATED');
+    const second = tap.body.decision.executed_action.reservation_id as string;
+    const card = (await as('bandra').get('/api/reservations?view=active')).body.reservations.find(
+      (r: { reservation_id: string }) => r.reservation_id === second,
+    );
+    expect(card.why_here.text).toBe(
+      "Andheri Store couldn't fulfil the customer's hold, so it came to you — 10.6 km from the customer.",
+    );
+    // Release the hold so later tests see the seeded stock.
+    await move('bandra', second, 'CANCELLED', 'PENDING', { cancel_reason: 'DAMAGED' });
   }, 60_000);
 
   it('3 · refusal NOT_ACTUALLY_IN_STOCK → apology + hold at the next store → tap → new reservation; the refusing store shows unavailable', async () => {
@@ -305,6 +341,8 @@ describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
   it('4 · a refusal when no other store qualifies → online / alternative and UNMET_DEMAND', async () => {
     const neha = customer('b', B, 'neha_m6');
     const { id, conversationId } = await hold(neha, B, NEAR_POWAI, 'st_north_2');
+    // Bandra (10.6 km, within the 25 km extended radius) would otherwise be offered: empty it.
+    await db.doc(`brands/${B}/retailInventory/st_north_1__DBC-VCSERUM-30`).update({ quantity: 0 });
     await move('andheriB', id, 'CANCELLED', 'PENDING', { cancel_reason: 'DAMAGED' });
     const message = await lastUpdate(B, conversationId);
     expect(message.text).toContain(

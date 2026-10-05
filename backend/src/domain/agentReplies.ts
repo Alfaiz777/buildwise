@@ -12,6 +12,7 @@ import type {
   StoreOption,
   VariantView,
 } from './agentTools.js';
+import { deliveryPhrase } from './brandSettings.js';
 
 /** A tap-able choice. A description or section turns the choices into a list (Change 16). */
 export interface ReplyOption {
@@ -40,6 +41,14 @@ export const OPTION = {
   /** "Talk to a person" on a follow-up (Change 16): the existing human-handoff path. */
   handoff: 'handoff',
 } as const;
+
+/** The two ways to get it (judge-test fixes): the buttons of a store card. */
+export const PICKUP_LABEL = 'Pick up today';
+export const DELIVERY_LABEL = 'Home delivery';
+
+/** "Home delivery in 4–5 days" — only when the product can be bought online. */
+export const deliveryLine = (v: Pick<VariantView, 'delivery_days'>) =>
+  v.delivery_days ? `Home delivery in ${deliveryPhrase(v.delivery_days)}` : null;
 
 export type ParsedOption =
   | { kind: 'HOLD'; storeId: string }
@@ -131,8 +140,10 @@ function approximateNote(origin: { approximate: boolean; locality: string | null
 }
 
 /**
- * Store found (Change 16): a product card — image header, "*Product* · price", the store
- * and its facts — with Hold · Other stores · Buy online.
+ * Store found (Change 16; judge-test fixes): a product card — image header, "*Product* ·
+ * price" and the choice: "Pick up today at *Store*, 2.1 km · open until 21:00" vs "Home
+ * delivery in 4–5 days" — with Pick up today · Home delivery · Other stores (≤ 3 buttons).
+ * `farther` says the store is beyond the normal radius (offered after a refusal).
  */
 export function storeProposalReply(input: {
   variant: VariantView;
@@ -142,24 +153,31 @@ export function storeProposalReply(input: {
   /** False when the brand has reservations switched off: no Hold option is offered. */
   canHold?: boolean;
   prefix?: string;
+  farther?: boolean;
 }): Reply {
   const [best, ...others] = input.stores;
   if (!best) throw new Error('storeProposalReply needs at least one eligible store');
   const canHold = input.canHold !== false;
+  const delivery = input.onlineAvailable ? deliveryLine(input.variant) : null;
   const lines = [
     ...(input.prefix ? [input.prefix] : []),
+    ...(input.farther
+      ? [`No other store near you has it. The nearest one is *${best.store_name}*, ${formatKm(best.distance_km)} away.`]
+      : []),
     `*${variantLabel(input.variant)}* · ${formatPrice(input.variant.price, input.variant.currency)}`,
-    `Available today at *${best.store_name}*`,
-    storeFactsLine(best) + (best.available_quantity === 1 ? ' · Only 1 left.' : ''),
+    `🏬 Pick up today at *${best.store_name}*, ${storeFactsLine(best)}` +
+      (best.available_quantity === 1 ? ' · Only 1 left.' : ''),
+    ...(delivery ? [`🚚 ${delivery}`] : []),
   ];
   const notes = `${stockNote(best)}${approximateNote(input.origin)}`.trim();
   if (notes) lines.push(notes);
   lines.push(
     canHold ? 'I can hold one for you to pick up and pay at the store.' : 'You can pick it up and pay at the store.',
   );
-  const options = canHold ? [holdOption(best)] : [];
+  const options: ReplyOption[] = canHold ? [{ option_id: OPTION.hold(best.store_id), label: PICKUP_LABEL }] : [];
+  if (input.onlineAvailable)
+    options.push({ option_id: OPTION.buyOnline, label: delivery ? DELIVERY_LABEL : 'Buy online' });
   if (others.length > 0) options.push({ option_id: OPTION.otherStores, label: 'Other stores' });
-  if (input.onlineAvailable) options.push({ option_id: OPTION.buyOnline, label: 'Buy online' });
   return { message_type: 'INTERACTIVE', text: lines.join('\n'), options, parts: productImage(input.variant) };
 }
 
@@ -195,8 +213,10 @@ export function otherStoresReply(input: {
   if (input.onlineAvailable) {
     options.push({
       option_id: OPTION.buyOnline,
-      label: 'Buy online',
-      description: 'Order on our website',
+      label: input.variant.delivery_days ? DELIVERY_LABEL : 'Buy online',
+      description: input.variant.delivery_days
+        ? `Delivered in ${deliveryPhrase(input.variant.delivery_days)} · order on our website`
+        : 'Order on our website',
       section: 'Or',
     });
   }
@@ -245,6 +265,8 @@ export function confirmationReply(result: ReservationToolOutput, now: Date): Rep
     `Held until ${formatHoldUntil(r.expires_at, store.timezone ?? 'UTC', now)} (store time) · pay at the store`,
     "The store will confirm when it's ready.",
   ];
+  const delivery = result.variant ? deliveryLine(result.variant) : null;
+  if (delivery) lines.push(`Prefer delivery? ${delivery}.`);
   const location =
     store.latitude !== null && store.longitude !== null
       ? { name: store.store_name, address: address || store.city, latitude: store.latitude, longitude: store.longitude }
@@ -291,7 +313,10 @@ export function noEligibleStoreReply(input: {
  * area, list other stores (when stores were excluded on request) or propose the best one.
  * Null when no store is eligible (the caller decides between an alternative and online).
  */
-export function discoveryReply(find: NearbyStoresOutput, opts: { canHold: boolean; prefix?: string }): Reply | null {
+export function discoveryReply(
+  find: NearbyStoresOutput,
+  opts: { canHold: boolean; prefix?: string; farther?: boolean },
+): Reply | null {
   const label = find.variant ? variantLabel(find.variant) : null;
   if (find.status === 'LOCATION_REQUIRED') return askLocationReply(label);
   if (find.status === 'AMBIGUOUS_AREA') return ambiguousAreaReply(find.ambiguous_areas);
@@ -306,6 +331,7 @@ export function discoveryReply(find: NearbyStoresOutput, opts: { canHold: boolea
     onlineAvailable,
     canHold: opts.canHold,
     prefix: opts.prefix,
+    farther: opts.farther,
   });
 }
 

@@ -101,6 +101,8 @@ export interface VariantView {
   price: number;
   currency: string;
   online_url: string | null;
+  /** Home delivery time ("4–5", brand setting) when the product can be bought online, else null. */
+  delivery_days: string | null;
   /** The product image (path or URL), or null. */
   image_url: string | null;
 }

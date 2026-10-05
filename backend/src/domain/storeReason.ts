@@ -45,13 +45,34 @@ function perStore<T extends { store_id: string; variant_id: string }>(list: T[],
   return source.filter((s) => (seen.has(s.store_id) ? false : (seen.add(s.store_id), true)));
 }
 
-export function whyThisStore(trace: StoreTrace | null | undefined, storeId: string, variantId: string): WhyHere | null {
+/**
+ * `refusedBy`: stores that refused this customer's earlier hold for the same product
+ * (judge-test fixes) — named first ("couldn't fulfil the customer's hold"), never counted
+ * as a store the customer passed over.
+ */
+export function whyThisStore(
+  trace: StoreTrace | null | undefined,
+  storeId: string,
+  variantId: string,
+  refusedBy: { store_id: string; store_name: string }[] = [],
+): WhyHere | null {
   if (!trace) return null;
-  const eligible = perStore(trace.eligible ?? [], variantId);
-  const excluded = perStore(trace.excluded ?? [], variantId);
+  const refused = new Set(refusedBy.map((s) => s.store_id));
+  const eligible = perStore(trace.eligible ?? [], variantId).filter((s) => !refused.has(s.store_id));
+  const excluded = perStore(trace.excluded ?? [], variantId).filter((s) => !refused.has(s.store_id));
   const own = eligible.find((s) => s.store_id === storeId);
   if (!own) return null; // the trace does not describe this store (e.g. a later re-route)
   const km = round(own.distance_km);
+  if (refused.size > 0) {
+    const names = [...new Set(refusedBy.map((s) => s.store_name))];
+    return {
+      text:
+        `${joinWords(names)} couldn't fulfil the customer's hold, so it came to you — ` + `${km} km from the customer.`,
+      distance_km: km,
+      closer_unavailable: names.map((store_name) => ({ store_name, reason: 'REFUSED' })),
+      options: eligible.length,
+    };
+  }
   const closerUnavailable = excluded
     .filter((s) => s.distance_km !== null && s.distance_km < own.distance_km && s.reason !== 'TOO_FAR')
     .sort((a, b) => a.distance_km! - b.distance_km!)

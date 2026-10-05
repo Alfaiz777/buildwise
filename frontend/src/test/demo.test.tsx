@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiContext, type MeResponse } from '../api/apiContext';
-import type { ApiClient } from '../api/client';
+import { ApiError, type ApiClient } from '../api/client';
 import { AppRoutes } from '../AppRoutes';
 import { AuthContext, type AuthState } from '../auth/authContext';
 import { label } from '../lib/labels';
@@ -148,6 +148,18 @@ describe('Brand Console — demo guide and Reset demo', () => {
     await waitFor(() => expect(post).toHaveBeenCalledWith('/api/brand/demo/reset', {}));
     expect(await screen.findByText(/Demo reset: 10 products synced/)).toBeInTheDocument();
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it("a second Reset within a minute shows the server's words and its code", async () => {
+    const post = vi.fn(async () => {
+      throw new ApiError(429, 'RATE_LIMITED', 'The demo was just reset. Try again in a minute.', true, 'req_1');
+    });
+    renderAt('/brand', apiWith({ '/api/brand/demo': { reset_available: true } }, post));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset demo' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Yes, reset the demo' }));
+    expect(
+      await screen.findByText('The demo was just reset. Try again in a minute. (RATE_LIMITED)'),
+    ).toBeInTheDocument();
   });
 
   it('Cancel closes the dialog without resetting; a brand that is not the demo brand sees no guide', async () => {

@@ -49,16 +49,16 @@ export function HeroVisual() {
               </div>
             </div>
             <p>
-              Available today at <strong>Andheri Store</strong>
+              🏬 Pick up today at <strong>Andheri Store</strong>, 2.1 km · open till 9 pm
               <br />
-              2.1 km · open till 9 pm
+              🚚 Home delivery in 4–5 days
             </p>
             <span className="hero-bubble__footer">Powered by Qwikspot</span>
           </div>
           <div className="hero-buttons" aria-label="Reply buttons">
-            <span>Hold at Andheri</span>
+            <span>Pick up today</span>
+            <span>Home delivery</span>
             <span>Other stores</span>
-            <span>Buy online</span>
           </div>
         </div>
       </div>

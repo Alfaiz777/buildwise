@@ -32,8 +32,8 @@ describe('message templates (Change 16)', () => {
     const m = last(s);
     expect(m.text!.split('\n').slice(0, 3)).toEqual([
       '*Vitamin C Glow Serum 30 ml* · ₹795',
-      'Available today at *Colaba Store*',
-      '2.0 km · open until 21:00',
+      '🏬 Pick up today at *Colaba Store*, 2.0 km · open until 21:00',
+      '🚚 Home delivery in 4–5 days',
     ]);
     expect(m.parts?.header).toEqual({
       type: 'IMAGE',
@@ -41,9 +41,9 @@ describe('message templates (Change 16)', () => {
       alt: 'Vitamin C Glow Serum 30 ml',
     });
     expect(m.options).toEqual([
-      { optionId: 'hold:sc_A', label: 'Hold at Colaba' },
+      { optionId: 'hold:sc_A', label: 'Pick up today' },
+      { optionId: 'buy_online', label: 'Home delivery' },
       { optionId: 'other_stores', label: 'Other stores' },
-      { optionId: 'buy_online', label: 'Buy online' },
     ]);
     expect(layoutOf(m.options ?? undefined, m.parts ?? undefined)).toBe('BUTTONS');
     expect(m.parts?.footer).toBe(POWERED_BY_FOOTER);
@@ -51,7 +51,7 @@ describe('message templates (Change 16)', () => {
     expectWhatsAppSafe(outbound(s));
   });
 
-  it('other stores: a list with a row per store (title + description) and a "Buy online" row', async () => {
+  it('other stores: a list with a row per store (title + description) and a "Home delivery" row', async () => {
     const s = await buildScenarioWorld();
     await s.startFromStore('c1', 'hi');
     await s.share('c1');
@@ -62,8 +62,8 @@ describe('message templates (Change 16)', () => {
     expect(m.parts).toMatchObject({ listButton: 'Choose a store', footer: POWERED_BY_FOOTER });
     expect(m.options!.at(-1)).toEqual({
       optionId: 'buy_online',
-      label: 'Buy online',
-      description: 'Order on our website',
+      label: 'Home delivery',
+      description: 'Delivered in 4–5 days · order on our website',
       section: 'Or',
     });
     for (const row of m.options!.slice(0, -1)) {
@@ -120,9 +120,16 @@ describe('message templates (Change 16)', () => {
     expect(last(s).parts ?? null).toBeNull();
   });
 
-  it('a team member’s reply never carries the footer', async () => {
+  it('judge-test plan f1: the handoff acknowledgement and a team member’s reply never carry the footer', async () => {
     const s = await buildScenarioWorld();
     const handoff = await s.say('c1', 'I want to talk to a person');
+    const ack = last(s);
+    expect(ack.text).toMatch(
+      /^Thanks\. I've asked a member of the .+ team to take over this conversation\. They will reply here\.$/,
+    );
+    expect(ack.messageType).toBe('TEXT');
+    expect(ack.parts?.footer).toBeUndefined();
+    expect(ack.text).not.toContain('Qwikspot');
     await request(s.world.app)
       .post(`/api/brand/conversations/${handoff.body.conversation_id}/replies`)
       .set('Authorization', bearer('admin_a'))
@@ -130,6 +137,7 @@ describe('message templates (Change 16)', () => {
     const reply = last(s);
     expect(reply.origin).toBe('HUMAN_AGENT');
     expect(reply.parts ?? null).toBeNull();
+    expect(JSON.stringify(outbound(s).slice(-2))).not.toContain(POWERED_BY_FOOTER);
   });
 
   it('the brand can switch the footer off', async () => {

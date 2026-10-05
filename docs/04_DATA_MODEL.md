@@ -137,9 +137,11 @@ follow_up_policy:
 reservations_enabled
 hold_minutes          (prototype default: 120)
 max_quantity_per_reservation (prototype default: 2)
+extended_radius_km    (judge-test fixes; default 25, at most 25: after a store refuses and no other store
+                       is within the normal 10 km, the nearest store within this distance is still offered)
 ```
 
-`online_store.product_url_template` (`00` §11.8 Change 12, E10) is the "Buy online" link the agent may send, with `{product_id}` (or, from L2, `{handle}`) filled from verified catalogue data. Locally it points at the demo storefront; without it the reply names the online store without a link.
+`online_store.product_url_template` (`00` §11.8 Change 12, E10) is the "Buy online" link the agent may send, with `{product_id}` (or, from L2, `{handle}`) filled from verified catalogue data. Locally it points at the demo storefront; without it the reply names the online store without a link. `online_store.delivery_days` (judge-test fixes; `"4–5"` or `"3"`, default `"4–5"`) is the home-delivery time shown next to "Pick up today" ("Home delivery in 4–5 days") whenever the product can be bought online.
 
 `allowed_storefront_origins` is the allowlist of website origins that may call `POST /api/intents` for this brand (see `06_INTEGRATION_CONTRACTS.md` §14.1).
 
@@ -700,8 +702,10 @@ Conversation
 `pending_proposal` (`00` §11.8 Change 12, E4):
 
 ```text
-{ store_id, variant_id, quantity, proposed_at, expires_at, offered_stores[] }
+{ store_id, variant_id, quantity, proposed_at, expires_at, offered_stores[], radius_km? }
 ```
+
+`radius_km` is set only by the refusal re-offer when it offers a store beyond the normal radius (judge-test fixes); the guardrail then checks the distance of **that one store** against it (at most 25 km). Every other check is unchanged.
 
 It is set when the agent offers a hold, cleared when the reservation is created, and ignored after `expires_at` (`proposed_at + hold_minutes`). A "Reserve it" message or a "Hold" tap can only be executed against it; otherwise the guardrail returns `AMBIGUOUS` and the agent asks first.
 
@@ -844,7 +848,9 @@ Reservation
 - cancel_reason          (CUSTOMER_REQUEST; retailer refusal: NOT_ACTUALLY_IN_STOCK | DAMAGED | STORE_CLOSING_EARLY | OTHER)
 - cancel_note            (M6: internal note for OTHER, ≤ 140 chars; never shown to the customer)
 - pickup_code_attempts   (M6: wrong codes entered at completion; locked from 5)
-- last_notification      (M6: { status: SENT | NOT_SENT_OPTED_OUT | NOT_SENT_NO_CONVERSATION, kind, event, at })
+- last_notification      (M6: { status: SENT | NOT_SENT_OPTED_OUT | NOT_SENT_NO_CONVERSATION | NOT_SENT_OUTSIDE_WINDOW,
+                          kind, event (CONFIRMED | READY | REFUSED | EXPIRED | COMPLETED), at };
+                          NOT_SENT_OUTSIDE_WINDOW: the thank-you after pickup, never sent as a template)
 ```
 
 Status:

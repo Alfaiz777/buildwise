@@ -23,12 +23,18 @@ export function demoBrandSettings(input: {
       powered_by_footer: true,
     }),
     // "Buy online" opens the product on the demo storefront (/shop since UI-2).
-    online_store: keep('online_store', { product_url_template: `${LOCAL_STOREFRONT}/shop#product={product_id}` }),
+    // Judge-test fixes: "Home delivery in 4–5 days" next to "Pick up today".
+    online_store: keep('online_store', {
+      product_url_template: `${LOCAL_STOREFRONT}/shop#product={product_id}`,
+      delivery_days: '4–5',
+    }),
     // Shared-demo safety (G5): short holds release stock quickly.
     reservation_policy: {
       reservations_enabled: true,
       hold_minutes: input.holdMinutes,
       max_quantity_per_reservation: 2,
+      // After a refusal with no store within 10 km, the nearest store within 25 km is still offered.
+      extended_radius_km: 25,
     },
     human_handoff_rules: { enabled: true },
     // A short attribution window so a NONE outcome can be seen during a demo (default 7 days).

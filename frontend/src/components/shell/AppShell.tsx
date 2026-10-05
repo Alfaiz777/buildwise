@@ -10,6 +10,9 @@ import { Wordmark } from './Wordmark';
 import { CONSOLE_NAME, NAV } from './nav';
 import { RoleBanner } from './RoleBanner';
 
+/** Dispatched on window when a page resolves or changes what the nav badge counts. */
+export const WAITING_CHANGED = 'qwikspot:waiting-changed';
+
 /** Dispatched on window when a page changed what the nav counts (UI-4). */
 export const QUEUE_CHANGED = 'qs:queue-changed';
 
@@ -66,6 +69,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
     if (me.scope !== 'PLATFORM') reloadWaiting();
   }, [pathname, me.scope, reloadWaiting]);
+  // …and when a page changes what is waiting without a navigation (e.g. Resolve on a handoff).
+  useEffect(() => {
+    const onChanged = () => reloadWaiting();
+    window.addEventListener(WAITING_CHANGED, onChanged);
+    return () => window.removeEventListener(WAITING_CHANGED, onChanged);
+  }, [reloadWaiting]);
   // UI-6: the tab title names the page and the console ("Today · Store Console · Qwikspot").
   useEffect(() => {
     const item = [...nav]

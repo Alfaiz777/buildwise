@@ -146,6 +146,8 @@ describe('GET /api/brand/settings (read-only)', () => {
       ...brand.settings,
       messaging: { display_name: 'Brand A', whatsapp_number: '+91 98765 43210', powered_by_footer: false },
       retail_freshness_hours: 12,
+      online_store: { product_url_template: 'https://a.test/p/{product_id}', delivery_days: '2-3' },
+      reservation_policy: { extended_radius_km: 20 },
       outcome_policy: { attribution_window_minutes: 10 },
       follow_up_policy: { inactivity_minutes: 1, types: { CART_ABANDONMENT: { enabled: true, delay_minutes: 2 } } },
       connections: { shopify: { admin_token: 'shpat_secret_value' } },
@@ -159,6 +161,7 @@ describe('GET /api/brand/settings (read-only)', () => {
         'brand_id',
         'channel',
         'follow_up',
+        'fulfilment',
         'messaging',
         'retail_freshness_hours',
       ].sort(),
@@ -172,6 +175,7 @@ describe('GET /api/brand/settings (read-only)', () => {
       retail_freshness_hours: 12,
       attribution_window_minutes: 10,
       channel: { mode: 'SIMULATOR' },
+      fulfilment: { home_delivery: true, delivery_days: '2–3', radius_km: 10, extended_radius_km: 20 },
     });
     expect(res.body.follow_up.inactivity_minutes).toBe(1);
     expect(res.body.follow_up.types).toContainEqual({
@@ -193,6 +197,7 @@ describe('GET /api/brand/settings (read-only)', () => {
       retail_freshness_hours: 24,
       attribution_window_minutes: 7 * 24 * 60,
       allowed_storefront_origins: [],
+      fulfilment: { home_delivery: false, delivery_days: '4–5', radius_km: 10, extended_radius_km: 25 },
     });
     for (const user of ['platform', 'radmin_A']) {
       const denied = await request(world.app).get('/api/brand/settings').set('Authorization', bearer(user));

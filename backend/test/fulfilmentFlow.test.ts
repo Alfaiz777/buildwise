@@ -58,14 +58,31 @@ describe('store queue and transitions (Change 13, F1–F2)', () => {
     const ready = s.world.conversations.messages.filter((m) => m.origin === 'RESERVATION_UPDATE').at(-1)!;
     expect(ready.parts?.location).toMatchObject({ name: 'Colaba Store' });
     expect(ready.parts?.footer).toBeUndefined(); // no buttons → not interactive → no footer
-    await patch(s, 'radmin_scA', id, { status: 'CUSTOMER_ARRIVED', expected_current_status: 'READY' });
+    const beforeArrived = updates(s).length;
+    const arrived = await patch(s, 'radmin_scA', id, { status: 'CUSTOMER_ARRIVED', expected_current_status: 'READY' });
+    expect(arrived.body.notification).toBeNull(); // "Customer arrived" sends the customer nothing
+    expect(updates(s)).toHaveLength(beforeArrived);
     const done = await patch(s, 'radmin_scA', id, {
       status: 'COMPLETED',
       expected_current_status: 'CUSTOMER_ARRIVED',
       pickup_code: pickupCode,
     });
     expect(done.status).toBe(200);
-    expect(done.body).toMatchObject({ status: 'COMPLETED', allowed_actions: [], notification: null });
+    expect(done.body).toMatchObject({
+      status: 'COMPLETED',
+      allowed_actions: [],
+      notification: { status: 'SENT', event: 'COMPLETED', message_kind: 'SESSION' },
+    });
+    // Judge-test fixes: one short thank-you from the brand — plain text, so no footer.
+    expect(updates(s)).toHaveLength(beforeArrived + 1);
+    const thanks = s.world.conversations.messages.filter((m) => m.origin === 'RESERVATION_UPDATE').at(-1)!;
+    expect(thanks.text).toBe(
+      'Thanks for picking up *Vitamin C Glow Serum 30 ml* at Colaba Store. Enjoy it! — Brand brand_A',
+    );
+    expect(thanks.messageType).toBe('TEXT');
+    expect(thanks.messageKind).toBe('SESSION');
+    expect(thanks.parts?.footer).toBeUndefined();
+    expect(thanks.text).not.toContain('Qwikspot');
     expect(s.stock('sc_A')).toMatchObject({ quantity: 7, reservedQuantity: 0 });
 
     expect(s.world.outcomes.outcomes).toEqual([
@@ -93,6 +110,47 @@ describe('store queue and transitions (Change 13, F1–F2)', () => {
         'OUTCOME_RECORDED',
       ]),
     );
+  });
+
+  it('the thank-you after pickup is sent only inside the 24-hour window (never a template), and never after STOP', async () => {
+    const s = await buildScenarioWorld();
+    const { id, pickupCode } = await held(s);
+    for (const [status, from] of [
+      ['CONFIRMED', 'PENDING'],
+      ['READY', 'CONFIRMED'],
+      ['CUSTOMER_ARRIVED', 'READY'],
+    ])
+      await patch(s, 'radmin_scA', id, { status, expected_current_status: from });
+    // The customer's last message was 25 hours ago.
+    const conversation = s.world.conversations.conversations[0]!;
+    conversation.lastInboundAt = new Date(
+      new Date(conversation.lastInboundAt!).getTime() - 25 * 3600_000,
+    ).toISOString();
+    const before = updates(s).length;
+    const done = await patch(s, 'radmin_scA', id, {
+      status: 'COMPLETED',
+      expected_current_status: 'CUSTOMER_ARRIVED',
+      pickup_code: pickupCode,
+    });
+    expect(done.body.notification).toMatchObject({ status: 'NOT_SENT_OUTSIDE_WINDOW', event: 'COMPLETED' });
+    expect(updates(s)).toHaveLength(before);
+    expect(s.world.outcomes.outcomes).toHaveLength(1); // the pickup still counts
+
+    const t = await buildScenarioWorld();
+    const second = await held(t);
+    await t.say('c1', 'STOP');
+    for (const [status, from] of [
+      ['CONFIRMED', 'PENDING'],
+      ['READY', 'CONFIRMED'],
+      ['CUSTOMER_ARRIVED', 'READY'],
+    ])
+      await patch(t, 'radmin_scA', second.id, { status, expected_current_status: from });
+    const stopped = await patch(t, 'radmin_scA', second.id, {
+      status: 'COMPLETED',
+      expected_current_status: 'CUSTOMER_ARRIVED',
+      pickup_code: second.pickupCode,
+    });
+    expect(stopped.body.notification).toMatchObject({ status: 'NOT_SENT_OPTED_OUT', event: 'COMPLETED' });
   });
 
   it('wrong pickup code → 422, audited, nothing changes; locked from the 5th wrong attempt (429)', async () => {
@@ -212,6 +270,57 @@ describe('refusal with forward dispatch (Change 13, F3–F4)', () => {
     const tap = await s.tap('c1', 'hold:sc_E');
     expect(tap.body.decision.executed_action.type).toBe('RESERVATION_CREATED');
     expect(s.world.reservations.reservations.at(-1)).toMatchObject({ storeId: 'sc_E', status: 'PENDING' });
+  });
+
+  it('no other store within 10 km → the nearest one within 25 km is still offered with its distance, next to home delivery; the tap reserves there', async () => {
+    // Judge-test fixes: Worli 14 km away has stock; nothing else nearer does.
+    const s = await buildScenarioWorld({ overrides: { sc_B: { km: 14 }, sc_C: { v1: 0 }, sc_E: { v1: 0 } } });
+    const { id } = await held(s);
+    await patch(s, 'radmin_scA', id, {
+      status: 'CANCELLED',
+      expected_current_status: 'PENDING',
+      cancel_reason: 'NOT_ACTUALLY_IN_STOCK',
+    });
+    const message = s.world.conversations.messages.filter((m) => m.origin === 'RESERVATION_UPDATE').at(-1)!;
+    expect(message.text!.split('\n').slice(0, 5)).toEqual([
+      "Sorry — Colaba Store can't fulfil your reservation for Vitamin C Glow Serum 30 ml after all.",
+      'No other store near you has it. The nearest one is *Worli Store*, 14.0 km away.',
+      '*Vitamin C Glow Serum 30 ml* · ₹795',
+      '🏬 Pick up today at *Worli Store*, 14.0 km · open until 21:00',
+      '🚚 Home delivery in 4–5 days',
+    ]);
+    expect(message.options!.map((o) => [o.optionId, o.label])).toEqual([
+      ['hold:sc_B', 'Pick up today'],
+      ['buy_online', 'Home delivery'],
+    ]);
+    expect(s.world.conversations.conversations[0]!.pendingProposal).toMatchObject({
+      storeId: 'sc_B',
+      offeredStores: ['sc_B'],
+      radiusKm: 25,
+    });
+    // The store's demand still records that nothing was within the normal radius.
+    expect(
+      s.world.events.events.some((e) => e.eventType === 'STORE_RECOMMENDATION' && e.payload.kind === 'UNMET_DEMAND'),
+    ).toBe(true);
+    const tap = await s.tap('c1', 'hold:sc_B');
+    expect(tap.body.decision.executed_action.type).toBe('RESERVATION_CREATED');
+    expect(s.world.reservations.reservations.at(-1)).toMatchObject({ storeId: 'sc_B', status: 'PENDING' });
+  });
+
+  it('beyond the extended radius nothing is offered for pickup (online only), and a far store never offered stays blocked', async () => {
+    const s = await buildScenarioWorld({ overrides: { sc_B: { km: 30 }, sc_C: { v1: 0 }, sc_E: { v1: 0 } } });
+    for (const row of s.world.inventory.rows) if (row.variantId === V2) row.quantity = 0;
+    const { id } = await held(s);
+    await patch(s, 'radmin_scA', id, {
+      status: 'CANCELLED',
+      expected_current_status: 'PENDING',
+      cancel_reason: 'NOT_ACTUALLY_IN_STOCK',
+    });
+    const message = s.world.conversations.messages.filter((m) => m.origin === 'RESERVATION_UPDATE').at(-1)!;
+    expect(message.options!.map((o) => o.optionId)).toEqual(['buy_online']);
+    const tap = await s.tap('c1', 'hold:sc_B');
+    expect(tap.body.decision.executed_action?.type).not.toBe('RESERVATION_CREATED');
+    expect(s.world.reservations.reservations).toHaveLength(1);
   });
 
   it('no other store qualifies → online / alternative and UNMET_DEMAND; OTHER notes never reach the customer', async () => {

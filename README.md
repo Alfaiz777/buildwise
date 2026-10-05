@@ -48,14 +48,14 @@ Start from a clean demo: **Brand Console → Overview → Demo guide → Reset d
 |---|---|---|---|
 | 1 | Landing | **See it as a shopper** | The brand's demo store |
 | 2 | Shopper demo | **Vitamin C Glow Serum** → 30 ml → **Need it today? Check a store near you** → send | The brand's chat (docked on desktop, full screen on a phone) |
-| 3 | Chat | **📍 → Near Powai**, then **Hold at Andheri** | Powai is out of stock, so Andheri is offered with the product card; then the pickup pass, pickup code and the store's location |
-| 4 | New tab: **Store login** (Andheri) | **Confirm → Mark ready → Customer arrived → Complete** with the code from the chat | Each step appears in the shopper's chat; "Why this hold came to you" on the card |
+| 3 | Chat | **📍 → Near Powai**, then **Pick up today** | Powai is out of stock, so the card offers "Pick up today at Andheri Store, 7.6 km" next to "Home delivery in 4–5 days"; then the pickup pass, pickup code and the store's location |
+| 4 | New tab: **Store login** (Andheri) | **Confirm → Mark ready → Customer arrived → Complete** with the code from the chat | Confirm and Mark ready appear in the shopper's chat, Complete sends one thank-you; "Why this hold came to you" on the card |
 | 5 | **Brand login** → Conversations | Open the conversation | The journey from the website to "Picked up at Andheri Store — in-store purchase", and why Andheri was offered |
 | 6 | Brand → Insights | — | The funnel, the weekday reading (an availability problem, not a demand problem), suggestions linked to the store |
 | 7 | Shopper demo → **Demo controls** | **Sign in as Asha** → add the serum to the bag → leave; ~3 minutes later Brand → Conversations → **Process due work now** | The cart follow-up arrives in Asha's chat, with quick replies. Every "Sign in as Asha" is its own synthetic customer |
 | 8 | **Platform login** | Overview → Retail network → System | Results across brands as counts, store health flags, and how Qwikspot runs today (Mock AI, simulator, mock catalogue) |
 
-`node scripts/judge-script.mjs` runs exactly these steps through the UI — starting with Reset demo, at 1440 px and 390 px — and writes the screenshot set in [docs/screenshots/](docs/screenshots/README.md). `npm run demo:check` walks the core journey over HTTP and prints ✔ / ✘ per step (`BASE_URL` points it at a deployment).
+[docs/JUDGE_TEST_PLAN.md](docs/JUDGE_TEST_PLAN.md) is the longer hands-on test (stories a–h, privacy and phone checks); `node scripts/judge-test-plan.mjs` runs all of it in a browser and prints the results table. `node scripts/judge-script.mjs` runs exactly these steps through the UI — starting with Reset demo, at 1440 px and 390 px — and writes the screenshot set in [docs/screenshots/](docs/screenshots/README.md). `npm run demo:check` walks the core journey over HTTP and prints ✔ / ✘ per step (`BASE_URL` points it at a deployment).
 
 ## How it is built
 

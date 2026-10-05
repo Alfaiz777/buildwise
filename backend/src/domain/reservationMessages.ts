@@ -5,10 +5,13 @@
  */
 import { formatHoldUntil, type Reply } from './agentReplies.js';
 
-export type ReservationUpdateEvent = 'CONFIRMED' | 'READY' | 'REFUSED' | 'EXPIRED';
+export type ReservationUpdateEvent = 'CONFIRMED' | 'READY' | 'REFUSED' | 'EXPIRED' | 'COMPLETED';
 
-/** Named templates used outside the 24-hour window (registry kept in code until L2). */
-export const RESERVATION_TEMPLATES: Record<ReservationUpdateEvent, string> = {
+/**
+ * Named templates used outside the 24-hour window (registry kept in code until L2).
+ * COMPLETED has none: the thank-you is sent only inside the window, never as a template.
+ */
+export const RESERVATION_TEMPLATES: Partial<Record<ReservationUpdateEvent, string>> = {
   CONFIRMED: 'qwikspot_reservation_confirmed_v1',
   READY: 'qwikspot_reservation_ready_v1',
   REFUSED: 'qwikspot_reservation_refused_v1',
@@ -85,5 +88,16 @@ export function expiredMessage(f: ReservationFacts): Reply {
     message_type: 'INTERACTIVE',
     text: `Your hold at ${f.storeName} for ${f.productLabel} has expired.`,
     options: [{ option_id: RECHECK_OPTION(f.variantId), label: 'Check stores again' }],
+  };
+}
+
+/**
+ * After pickup (judge-test fixes): one short thank-you from the brand, plain text (so no
+ * "Powered by Qwikspot" footer). Sent only inside the 24-hour window; "Customer arrived" sends nothing.
+ */
+export function thankYouMessage(f: Pick<ReservationFacts, 'storeName' | 'productLabel'>, brandName: string): Reply {
+  return {
+    message_type: 'TEXT',
+    text: `Thanks for picking up *${f.productLabel}* at ${f.storeName}. Enjoy it! — ${brandName}`,
   };
 }

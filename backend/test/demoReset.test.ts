@@ -60,6 +60,8 @@ describe('POST /api/brand/demo/reset', () => {
     });
     const again = await reset(w.app, 'admin_a');
     expect([again.status, again.body.error.code]).toEqual([429, 'RATE_LIMITED']);
+    // Judge-test plan: the exact words the demo guide shows.
+    expect(again.body.error.message).toBe('The demo was just reset. Try again in a minute.');
     expect(w.demoData.calls).toHaveLength(3);
   });
 });

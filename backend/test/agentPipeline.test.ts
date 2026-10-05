@@ -26,7 +26,7 @@ describe('docs/08 §7.2 scenarios on MockAgentRuntime (pipeline, tools, guardrai
       decision_source: 'AGENT',
       guardrail_status: 'ALLOWED',
     });
-    expect(options(res)).toEqual(['hold:sc_A', 'other_stores', 'buy_online']);
+    expect(options(res)).toEqual(['hold:sc_A', 'buy_online', 'other_stores']);
     const trace = s.lastRecommendation().trace!;
     expect(trace.eligible.map((e) => e.store_id)).toEqual(['sc_A', 'sc_E', 'sc_B']);
     expect(trace.excluded.filter((x) => x.store_id.startsWith('sc_'))).toEqual(
@@ -289,7 +289,7 @@ describe('forward dispatch when no store is eligible (Change 12, E3 / E7)', () =
     const s = await buildScenarioWorld({ reservationsEnabled: false });
     await s.startFromStore('c1', 'hi');
     const res = await s.share('c1');
-    expect(options(res)).toEqual(['other_stores', 'buy_online']);
+    expect(options(res)).toEqual(['buy_online', 'other_stores']);
     const crafted = await s.say('c1', 'Reserve it.');
     expect(crafted.body.decision.executed_action).toBeNull();
     expect(s.world.reservations.reservations).toHaveLength(0);

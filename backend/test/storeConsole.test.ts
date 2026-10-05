@@ -73,6 +73,22 @@ describe('whyThisStore (Andheri’s view)', () => {
     expect(why.options).toBe(3);
   });
 
+  it('a store that refused the earlier hold is the reason, never a store the customer passed over', () => {
+    const t = trace(
+      [
+        ['st_bandra', 'Bandra Store', 0.7],
+        ['st_andheri', 'Andheri Store', 8.5],
+      ],
+      [],
+    );
+    expect(whyThisStore(t, 'st_andheri', 'v30', [{ store_id: 'st_bandra', store_name: 'Bandra Store' }])).toEqual({
+      text: "Bandra Store couldn't fulfil the customer's hold, so it came to you — 8.5 km from the customer.",
+      distance_km: 8.5,
+      closer_unavailable: [{ store_name: 'Bandra Store', reason: 'REFUSED' }],
+      options: 1,
+    });
+  });
+
   it('no trace, or a trace that does not describe this store → null; other stores’ distances never appear', () => {
     expect(whyThisStore(null, 'and', 'v30')).toBeNull();
     expect(whyThisStore(trace([['ban', 'Bandra Store', 0.7]], []), 'and', 'v30')).toBeNull();
@@ -139,6 +155,56 @@ describe('why_here uses the decision that offered the choice', () => {
     expect(rows[0].why_here.text).toMatch(
       /^The customer chose you from \d+ stores with stock \(6 km away; Colaba Store was nearer\)\.$/,
     );
+  });
+});
+
+describe('after a refusal (judge-test plan c4 and c6)', () => {
+  const refuse = (s: ScenarioWorld, id: string) =>
+    request(s.world.app)
+      .patch(`/api/reservations/${id}`)
+      .set('Authorization', bearer('radmin_scA'))
+      .send({ status: 'CANCELLED', expected_current_status: 'PENDING', cancel_reason: 'NOT_ACTUALLY_IN_STOCK' });
+
+  it('c4: the next store sees that the refusing store could not fulfil the hold — not that the customer chose it', async () => {
+    const s = await buildScenarioWorld({ overrides: { sc_E: { v1: 0 } } }); // Worli (6 km) is next
+    const { id } = await held(s);
+    expect((await refuse(s, id)).status).toBe(200);
+    const hold = await s.tap('c1', 'hold:sc_B');
+    expect(hold.body.decision.executed_action?.type).toBe('RESERVATION_CREATED');
+    const rows = (await s.get('/api/reservations?view=active', 'radmin_scB')).body.reservations;
+    expect(rows[0].why_here).toEqual({
+      text: "Colaba Store couldn't fulfil the customer's hold, so it came to you — 6 km from the customer.",
+      distance_km: 6,
+      closer_unavailable: [{ store_name: 'Colaba Store', reason: 'REFUSED' }],
+      options: 1,
+    });
+    // The refusing store's reason never travels to the other store.
+    expect(JSON.stringify(rows)).not.toMatch(/NOT_ACTUALLY|not actually/i);
+  });
+
+  it('c4: a store offered beyond the normal radius after the refusal shows its own distance', async () => {
+    const s = await buildScenarioWorld({ overrides: { sc_B: { km: 14 }, sc_C: { v1: 0 }, sc_E: { v1: 0 } } });
+    const { id } = await held(s);
+    await refuse(s, id);
+    expect((await s.tap('c1', 'hold:sc_B')).body.decision.executed_action?.type).toBe('RESERVATION_CREATED');
+    const rows = (await s.get('/api/reservations?view=active', 'radmin_scB')).body.reservations;
+    expect(rows[0].why_here.text).toBe(
+      "Colaba Store couldn't fulfil the customer's hold, so it came to you — 14 km from the customer.",
+    );
+  });
+
+  it("c6: the refusal is on the refusing store's Demand right away (no process-due needed)", async () => {
+    const s = await buildScenarioWorld();
+    const { id } = await held(s);
+    const before = (await s.get('/api/retail/stores/sc_A/insights?days=7', 'radmin_scA')).body;
+    expect(before.refusals.NOT_ACTUALLY_IN_STOCK).toBe(0);
+    await refuse(s, id);
+    const after = (await s.get('/api/retail/stores/sc_A/insights?days=7', 'radmin_scA')).body;
+    expect(after.refusals).toMatchObject({ NOT_ACTUALLY_IN_STOCK: 1 });
+    expect(after.fill_rate).toContainEqual(expect.objectContaining({ refusals: { NOT_ACTUALLY_IN_STOCK: 1 } }));
+    // Another store's Demand does not show it.
+    const other = (await s.get('/api/retail/stores/sc_B/insights?days=7', 'radmin_scB')).body;
+    expect(other.refusals.NOT_ACTUALLY_IN_STOCK).toBe(0);
   });
 });
 
