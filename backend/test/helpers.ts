@@ -667,6 +667,16 @@ export function buildTestWorld(
     now: options.now,
     demoStorefront:
       options.demoStorefront === false ? undefined : { commerce: options.commerce ?? new MockCommerceProvider() },
+    shopperChannel:
+      options.demoStorefront === false
+        ? undefined
+        : {
+            sessionSecret: 'test-shopper-session-secret-0123456789',
+            brandAllowed:
+              (options.profile ?? 'local') === 'local'
+                ? () => true
+                : (brandId: string) => (options.demo?.brandIds ?? []).includes(brandId),
+          },
   });
 
   const demoData = new MemoryDemoData(brands);
@@ -725,6 +735,7 @@ export function buildTestWorld(
         now: options.now ?? (() => new Date()),
       }),
       demoStorefront: conversation.demoStorefront,
+      shopper: conversation.shopper,
       demoReset,
     },
     localUploads: options.localUploads === false ? undefined : files,

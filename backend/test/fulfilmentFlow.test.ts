@@ -48,15 +48,16 @@ describe('store queue and transitions (Change 13, F1–F2)', () => {
       notification: { status: 'SENT', event: 'CONFIRMED', message_kind: 'SESSION' },
     });
     expect(updates(s).at(-1)).toBe(
-      `Colaba Store has confirmed your reservation for Vitamin C Glow Serum 30 ml. Pickup code ${pickupCode}, held until 14:00 (store time).`,
+      `✅ *Colaba Store confirmed your hold*\n1 × Vitamin C Glow Serum 30 ml\nPickup code: *${pickupCode}* · held until 14:00 (store time)`,
     );
 
     await patch(s, 'radmin_scA', id, { status: 'READY', expected_current_status: 'CONFIRMED' });
-    expect(updates(s).at(-1)).toMatch(
-      new RegExp(
-        `^Your Vitamin C Glow Serum 30 ml is ready at Colaba Store\\. Show code ${pickupCode}\\. Directions: https://www\\.google\\.com/maps/`,
-      ),
+    expect(updates(s).at(-1)).toBe(
+      `🛍️ *Ready at Colaba Store*\n1 × Vitamin C Glow Serum 30 ml\nShow code *${pickupCode}* at the counter.`,
     );
+    const ready = s.world.conversations.messages.filter((m) => m.origin === 'RESERVATION_UPDATE').at(-1)!;
+    expect(ready.parts?.location).toMatchObject({ name: 'Colaba Store' });
+    expect(ready.parts?.footer).toBeUndefined(); // no buttons → not interactive → no footer
     await patch(s, 'radmin_scA', id, { status: 'CUSTOMER_ARRIVED', expected_current_status: 'READY' });
     const done = await patch(s, 'radmin_scA', id, {
       status: 'COMPLETED',

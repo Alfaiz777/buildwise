@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
+  <rect width="600" height="600" fill="#f0ebf8"/>
+  <circle cx="470" cy="120" r="70" fill="#7b5ea7" opacity="0.14"/>
+  <circle cx="110" cy="480" r="90" fill="#7b5ea7" opacity="0.10"/>
+  <ellipse cx="300" cy="528" rx="170" ry="22" fill="#000000" opacity="0.08"/>
+  
+    <rect x="150" y="178" width="300" height="70" rx="18" fill="#2a2f36"/>
+    <rect x="160" y="236" width="280" height="220" rx="40" fill="#7b5ea7"/>
+    <rect x="182" y="258" width="22" height="170" rx="11" fill="#ffffff" opacity="0.28"/>
+    
+  <rect x="200" y="300" width="200" height="92" rx="10" fill="#ffffff" opacity="0.94"/>
+  <text x="300" y="334" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+        font-size="15" font-weight="700" letter-spacing="1.5" fill="#45306b">DEMO BEAUTY</text>
+  <text x="300" y="368" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+        font-size="24" font-weight="700" fill="#1c2430">Night Repair</text>
+</svg>

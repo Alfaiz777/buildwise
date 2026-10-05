@@ -500,6 +500,7 @@ const ProductDoc = z.object({
   status: z.string(),
   tags: z.array(z.string()).default([]),
   attributes: z.record(z.string(), z.string()).default({}),
+  image_url: z.string().nullable().optional(),
 });
 
 const VariantDoc = z.object({
@@ -536,6 +537,7 @@ export class FirestoreProductRepository implements ProductRepository {
         status: d.status,
         tags: d.tags,
         attributes: d.attributes,
+        imageUrl: d.image_url ?? null,
       };
     });
   }
@@ -576,6 +578,7 @@ export class FirestoreProductRepository implements ProductRepository {
             status: p.status,
             tags: p.tags,
             attributes: p.attributes,
+            image_url: p.imageUrl ?? null,
             asset_references: [],
             updated_at: now,
           }),

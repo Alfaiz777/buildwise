@@ -26,6 +26,8 @@ export interface CommerceProduct {
   tags: string[];
   /** Product knowledge as a flat string map, e.g. { skin_type: "oily", size: "30 ml" }. */
   attributes: Record<string, string>;
+  /** The product image (Shopify: the featured image; mock: a self-made illustration path). */
+  imageUrl?: string | null;
   variants: CommerceVariant[];
 }
 

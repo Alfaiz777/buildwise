@@ -135,7 +135,11 @@ describe('rate limits on every public and customer-facing route (docs/07 §17) �
 describe('DEMO_MODE never ships passwords when off', () => {
   it('off → { demo_mode: false } only; on → the configured logins', async () => {
     const off = buildTestWorld();
-    expect((await request(off.app).get('/api/demo/config')).body).toEqual({ demo_mode: false });
+    // DEMO_MODE off: no logins; the local shopper demo still says which brand it opens (Change 16).
+    expect((await request(off.app).get('/api/demo/config')).body).toEqual({
+      demo_mode: false,
+      shopper_demo: { brand_id: 'brd_demo' },
+    });
     const on = buildTestWorld({ demo: loadConfig({ DEMO_MODE: 'true' }).demo });
     const res = await request(on.app).get('/api/demo/config');
     expect(res.body.demo_mode).toBe(true);
@@ -168,8 +172,15 @@ describe('execution-profile security (docs/07 §19, docs/08 §4.1)', () => {
   });
 
   it('the demo storefront (shopper sign-in, demo orders) and the local upload target are local-only', () => {
-    expect(profileFeatures(loadConfig(GCP))).toEqual({ demoStorefront: false, localUploads: false });
-    expect(profileFeatures(loadConfig({}))).toEqual({ demoStorefront: true, localUploads: true });
+    expect(profileFeatures(loadConfig(GCP))).toEqual({
+      demoStorefront: false,
+      shopperDemo: false,
+      localUploads: false,
+    });
+    expect(profileFeatures(loadConfig({}))).toEqual({ demoStorefront: true, shopperDemo: true, localUploads: true });
+    // Change 16: gcp mounts the shopper demo only with DEMO_MODE on (demo brands only, see shopperChannel.test).
+    const gcpDemo = loadConfig({ ...GCP, DEMO_MODE: 'true', SHOPPER_SESSION_SECRET: 's'.repeat(32) });
+    expect(profileFeatures(gcpDemo)).toEqual({ demoStorefront: true, shopperDemo: true, localUploads: false });
   });
 
   it('when not wired (gcp), those routes are not mounted at all', async () => {

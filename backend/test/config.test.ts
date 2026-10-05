@@ -158,7 +158,19 @@ describe('loadConfig — gcp profile and startup guard (docs/07 §19)', () => {
       'RETAIL_ADMIN',
       'PLATFORM_ADMIN',
     ]);
-    expect(loadConfig({ ...GCP_REAL, DEMO_MODE: 'true' }).demo).toMatchObject({ enabled: true, logins: [] });
+    expect(loadConfig({ ...GCP_REAL, DEMO_MODE: 'true', SHOPPER_SESSION_SECRET: 'x'.repeat(32) }).demo).toMatchObject({
+      enabled: true,
+      logins: [],
+    });
+    // Change 16: the hosted shopper demo needs one shared session secret (≥ 32 characters).
+    expect(() => loadConfig({ ...GCP_REAL, DEMO_MODE: 'true' })).toThrow(
+      'The gcp profile is missing required settings: SHOPPER_SESSION_SECRET',
+    );
+    expect(() => loadConfig({ ...GCP_REAL, DEMO_MODE: 'true', SHOPPER_SESSION_SECRET: 'short' })).toThrow(
+      /SHOPPER_SESSION_SECRET/,
+    );
+    expect(loadConfig({ ...GCP_REAL }).shopper.sessionSecret).toBeNull(); // DEMO_MODE off: not needed
+    expect(loadConfig({}).publicWebOrigin).toBe('http://localhost:5173');
     const logins = JSON.stringify([
       {
         email: 'judge@example.test',
@@ -168,7 +180,10 @@ describe('loadConfig — gcp profile and startup guard (docs/07 §19)', () => {
         hint: 'Start here.',
       },
     ]);
-    expect(loadConfig({ ...GCP_REAL, DEMO_MODE: 'true', DEMO_LOGINS: logins }).demo.logins).toHaveLength(1);
+    expect(
+      loadConfig({ ...GCP_REAL, DEMO_MODE: 'true', DEMO_LOGINS: logins, SHOPPER_SESSION_SECRET: 'x'.repeat(32) }).demo
+        .logins,
+    ).toHaveLength(1);
     expect(() => loadConfig({ DEMO_MODE: 'true', DEMO_LOGINS: '{not json' })).toThrow(
       'Invalid environment configuration: DEMO_LOGINS',
     );

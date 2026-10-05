@@ -78,6 +78,29 @@ const ROUTES: [string, Step][] = [
       }),
   ],
   [
+    'shopper.ts POST /session',
+    async (s, ctx) => {
+      const res = await request(s.world.app)
+        .post('/api/shopper/session')
+        .set('Origin', TEST_ORIGIN)
+        .send({ brand_id: 'brand_A' });
+      ctx.shopperSession = res.body.session_token;
+      return res;
+    },
+  ],
+  [
+    'shopper.ts POST /messages',
+    (s, ctx) =>
+      request(s.world.app)
+        .post('/api/shopper/messages')
+        .set('Origin', TEST_ORIGIN)
+        .set('X-Qwikspot-Shopper-Session', ctx.shopperSession!)
+        .send({
+          client_message_id: 'cm_audit_shopper_1',
+          content: { type: 'TEXT', text: 'Is this good for oily skin?' },
+        }),
+  ],
+  [
     'demoStorefront.ts POST /orders',
     (s) =>
       request(s.world.app).post('/api/demo-storefront/orders').set('Origin', TEST_ORIGIN).send({

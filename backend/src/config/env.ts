@@ -36,6 +36,9 @@ const EnvSchema = z.object({
   DEMO_BRAND_IDS: z.string().optional(),
   DEMO_LOGINS: z.string().optional(),
   DEMO_HOLD_MINUTES: z.coerce.number().int().min(5).max(240).optional(),
+  // Change 16 (UI-2): the shopper demo channel and media URLs.
+  SHOPPER_SESSION_SECRET: z.string().optional(),
+  PUBLIC_WEB_ORIGIN: z.string().trim().url().optional().or(z.literal('')),
   // Build identity for /api/health (set by Cloud Build).
   BUILD_VERSION: z.string().trim().max(40).optional(),
   BUILD_COMMIT: z.string().trim().max(64).optional(),
@@ -154,6 +157,13 @@ export interface Config {
   usingEmulators: boolean;
   demo: DemoConfig;
   build: { version: string; commit: string | null };
+  /**
+   * The shopper demo channel (Change 16): the HMAC secret that signs shopper session tokens.
+   * null → a random per-process secret (local only; gcp with DEMO_MODE requires one).
+   */
+  shopper: { sessionSecret: string | null };
+  /** The web app's public origin; relative media paths (product images) resolve against it. */
+  publicWebOrigin: string;
   /** Present only in the gcp profile (validated as a whole). */
   gcp: GcpSettings | null;
 }
@@ -257,14 +267,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     }
   }
 
+  const sessionSecret = e.SHOPPER_SESSION_SECRET?.trim() || null;
+  if (profile === 'gcp' && demoEnabled && (!sessionSecret || sessionSecret.length < 32)) {
+    // The shopper demo runs on several Cloud Run instances: one shared secret, ≥ 32 characters.
+    throw new Error('The gcp profile is missing required settings: SHOPPER_SESSION_SECRET');
+  }
+  const corsOrigins = e.CORS_ALLOWED_ORIGINS.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
   return {
     nodeEnv: e.NODE_ENV,
     port: e.PORT,
     profile,
     projectId,
-    corsAllowedOrigins: e.CORS_ALLOWED_ORIGINS.split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean),
+    corsAllowedOrigins: corsOrigins,
     logLevel: e.LOG_LEVEL,
     localDataDir: e.LOCAL_DATA_DIR,
     adapters,
@@ -280,6 +297,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       holdMinutes: e.DEMO_HOLD_MINUTES ?? 20,
     },
     build: { version: e.BUILD_VERSION || 'dev', commit: e.BUILD_COMMIT || null },
+    shopper: { sessionSecret },
+    publicWebOrigin: (
+      e.PUBLIC_WEB_ORIGIN || (profile === 'local' ? 'http://localhost:5173' : corsOrigins[0] || 'http://localhost:5173')
+    ).replace(/\/$/, ''),
     gcp,
   };
 }

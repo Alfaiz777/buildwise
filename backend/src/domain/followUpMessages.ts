@@ -7,6 +7,8 @@
  * Outside the 24-hour window WhatsApp only allows an approved template; the registry
  * below holds the template names and bodies (Meta approval is an L2 task).
  */
+import type { MessageParts } from '../ports/messaging.js';
+import { OPTION, type ReplyOption } from './agentReplies.js';
 import type { MessageKind } from './conversationPolicy.js';
 import type { FollowUpType } from './followUpPolicy.js';
 
@@ -51,6 +53,9 @@ export interface FollowUpMessageInput {
   variantTitle: string | null;
   /** Verified catalogue category a search matched. */
   category: string | null;
+  /** The intent's variant (for "Find a store near me") and product image (Change 16). */
+  variantId?: string | null;
+  imageUrl?: string | null;
 }
 
 export interface FollowUpMessage {
@@ -59,6 +64,9 @@ export interface FollowUpMessage {
   /** Template parameters (TEMPLATE only): brand name and verified product data. */
   parameters: Record<string, string>;
   text: string;
+  /** Quick replies (Change 16): Find a store near me · Buy online · Talk to a person. */
+  options: ReplyOption[];
+  parts?: MessageParts;
 }
 
 /** Cleans a filler: verified text only, no markup, bounded length. */
@@ -80,10 +88,18 @@ export function composeFollowUp(input: FollowUpMessageInput): FollowUpMessage {
     parameters.category = input.category ? clean(input.category) : 'our range';
 
   const body = template.body.replace(/\{\{(\w+)\}\}/g, (_m, key: string) => parameters[key] ?? '');
+  const options: ReplyOption[] = [];
+  if (input.variantId) options.push({ option_id: `recheck:${input.variantId}`, label: 'Find a store near me' });
+  if (input.productTitle) options.push({ option_id: OPTION.buyOnline, label: 'Buy online' });
+  options.push({ option_id: OPTION.handoff, label: 'Talk to a person' });
   return {
     kind: input.kind,
     templateName: input.kind === 'TEMPLATE' ? template.name : null,
     parameters: input.kind === 'TEMPLATE' ? parameters : {},
     text: `${body}\n\n${OPT_OUT_LINE}`,
+    options,
+    ...(input.imageUrl && input.productTitle
+      ? { parts: { header: { type: 'IMAGE' as const, url: input.imageUrl, alt: product } } }
+      : {}),
   };
 }

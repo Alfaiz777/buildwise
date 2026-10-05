@@ -172,12 +172,15 @@ describe('notification builders (Change 13, F4)', () => {
   it('verified facts only: store, product, code, hold time in store time, maps link', () => {
     expect(confirmedMessage(facts, new Date(NOW))).toEqual({
       message_type: 'INTERACTIVE',
-      text: 'Andheri Store has confirmed your reservation for Vitamin C Glow Serum 30 ml. Pickup code 004271, held until 14:00 (store time).',
+      text: '✅ *Andheri Store confirmed your hold*\n1 × Vitamin C Glow Serum 30 ml\nPickup code: *004271* · held until 14:00 (store time)',
       options: [{ option_id: 'cancel:res_1', label: 'Cancel reservation' }],
     });
-    expect(readyMessage(facts).text).toBe(
-      'Your Vitamin C Glow Serum 30 ml is ready at Andheri Store. Show code 004271. Directions: https://www.google.com/maps/search/?api=1&query=19.1364,72.8296',
-    );
+    // Change 16: directions travel as a location part (a location message on WhatsApp).
+    expect(readyMessage(facts)).toEqual({
+      message_type: 'TEXT',
+      text: '🛍️ *Ready at Andheri Store*\n1 × Vitamin C Glow Serum 30 ml\nShow code *004271* at the counter.',
+      parts: { location: { name: 'Andheri Store', address: 'Andheri Store', latitude: 19.1364, longitude: 72.8296 } },
+    });
     expect(expiredMessage(facts)).toMatchObject({
       text: 'Your hold at Andheri Store for Vitamin C Glow Serum 30 ml has expired.',
       options: [{ option_id: 'recheck:var_2001', label: 'Check stores again' }],

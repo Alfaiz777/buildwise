@@ -58,6 +58,11 @@ function product(
     status: 'ACTIVE',
     tags,
     attributes,
+    // Self-made illustrations served by the web app (frontend/public/demo-products, Change 16).
+    imageUrl: `/demo-products/${title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')}.png`,
     variants: variants.map((v) => ({
       externalVariantId: gid('ProductVariant', v.id),
       externalProductId: gid('Product', id),

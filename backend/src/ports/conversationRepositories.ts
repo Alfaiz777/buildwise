@@ -13,6 +13,7 @@ import type {
   IntentStrength,
   IntentType,
 } from '../domain/ai.js';
+import type { MessageParts, OutboundOption } from './messaging.js';
 import type { Channel } from '../domain/channels.js';
 import type { AiWindow, MessageKind } from '../domain/conversationPolicy.js';
 import type { CommerceEventType } from '../domain/events.js';
@@ -210,8 +211,10 @@ export interface MessageRecord {
   messageType: 'TEXT' | 'LOCATION' | 'INTERACTIVE_REPLY' | 'INTERACTIVE' | 'TEMPLATE';
   /** Stored text: token removed, truncated to 2,000 characters. */
   text: string | null;
-  options: { optionId: string; label: string }[] | null;
+  options: OutboundOption[] | null;
   location: { latitude: number; longitude: number } | null;
+  /** Structured parts of an outbound message (Change 16): header, footer, location, CTA, list button. */
+  parts?: MessageParts | null;
   origin: MessageOrigin;
   messageKind: MessageKind | null;
   templateName: string | null;

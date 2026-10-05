@@ -132,7 +132,7 @@ describe('docs/08 §7.2 scenarios on MockAgentRuntime (pipeline, tools, guardrai
     expect(reservation!.expiresAt).toBe('2026-10-07T08:30:00.000Z');
     expect(s.stock('sc_A').reservedQuantity).toBe(1);
     expect(replyText(res)).toContain('Colaba Store');
-    expect(replyText(res)).toContain(`Pickup code: ${reservation!.pickupCode}`);
+    expect(replyText(res)).toContain(`Pickup code: *${reservation!.pickupCode}*`);
     expect(replyText(res)).toContain('Held until 14:00');
     expect(options(res)).toEqual([`cancel:${reservation!.reservationId}`]);
     expect(s.world.conversations.conversations[0]!.pendingProposal).toBeNull();

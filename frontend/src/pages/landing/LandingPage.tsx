@@ -91,7 +91,7 @@ function Checklist({ items }: { items: string[] }) {
 export function LandingPage({ profile = 'local' }: { profile?: FrontendProfile }) {
   const { user } = useAuth();
   const demo = useDemoConfig();
-  const shopper = shopperDemoAvailable(demo.demoMode, profile);
+  const shopper = shopperDemoAvailable(demo, profile);
   const [menu, setMenu] = useState(false);
 
   const logins = user ? (

@@ -18,9 +18,12 @@ export function demoBrandSettings(input: {
     messaging: keep('messaging', {
       display_name: input.brandName,
       whatsapp_number: input.whatsappNumber ?? '910000000001', // placeholder number
+      // Change 16: the chat header's logo (self-made) and the "Powered by Qwikspot" footer.
+      logo_url: '/demo-products/demo-beauty-co-logo.png',
+      powered_by_footer: true,
     }),
-    // "Buy online" opens the product on the demo storefront.
-    online_store: keep('online_store', { product_url_template: `${LOCAL_STOREFRONT}/demo-store#product={product_id}` }),
+    // "Buy online" opens the product on the demo storefront (/shop since UI-2).
+    online_store: keep('online_store', { product_url_template: `${LOCAL_STOREFRONT}/shop#product={product_id}` }),
     // Shared-demo safety (G5): short holds release stock quickly.
     reservation_policy: {
       reservations_enabled: true,

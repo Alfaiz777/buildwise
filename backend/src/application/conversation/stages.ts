@@ -6,7 +6,7 @@
  * order is enforced by ConversationPipeline.
  */
 import { isWriteTool, type NearbyStoresOutput } from '../../domain/agentTools.js';
-import { parseOption } from '../../domain/agentReplies.js';
+import { parseOption, toOutboundOptions, type Reply } from '../../domain/agentReplies.js';
 import type { AgentRuntimeName } from '../../domain/ai.js';
 import { resolveMessagingSettings } from '../../domain/brandSettings.js';
 import {
@@ -752,7 +752,9 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
         drafts.push({
           text,
           messageType: reply.options?.length ? ('INTERACTIVE' as const) : ('TEXT' as const),
-          options: reply.options?.map((o) => ({ optionId: o.option_id, label: o.label })),
+          options: toOutboundOptions(reply.options),
+          // Parts only ever come from the deterministic composer, never from runtime output.
+          parts: 'parts' in reply ? (reply as Reply).parts : undefined,
           origin: 'AUTOMATED_REPLY' as const,
           messageKind: 'SESSION' as const,
           templateName: null,

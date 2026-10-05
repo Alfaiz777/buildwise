@@ -13,7 +13,8 @@ interface ResetResult {
  * The judge's guide (Change 14, G3/G4), shown only to the shared demo brand's Brand Admin
  * when DEMO_MODE is on: six steps through the product, each with a button, and "Reset demo".
  */
-export function DemoGuide({ demoStorefront }: { demoStorefront: boolean }) {
+export function DemoGuide({ brandId }: { brandId: string }) {
+  const shopUrl = `/shop?brand=${encodeURIComponent(brandId)}`;
   const api = useApi();
   const demo = useLoad(useCallback(() => api.get<{ reset_available: boolean }>('/api/brand/demo'), [api]));
   const [confirming, setConfirming] = useState(false);
@@ -50,41 +51,37 @@ export function DemoGuide({ demoStorefront }: { demoStorefront: boolean }) {
       </summary>
       <ol>
         <li>
-          <strong>Shop like a customer.</strong> Choose Vitamin C Glow Serum 30 ml and tap{' '}
-          <em>Need it today? Check a store near you</em>. The WhatsApp hand-off opens the simulator in a new tab with
-          the message ready (sign in there as the Brand Admin if asked).{' '}
-          {demoStorefront ? (
-            <a href="/shop" {...newTab}>
-              Open the demo store
-            </a>
-          ) : (
-            <span className="muted">Use the brand's storefront.</span>
-          )}
-        </li>
-        <li>
-          <strong>Ask for a store.</strong> Send the message, then <em>Share location → Near Powai → Send location</em>.
-          Powai is out of stock, so the assistant offers Andheri. Tap <em>Hold at Andheri</em>.{' '}
-          <Link to="/brand/conversations">Open the simulator</Link>
-        </li>
-        <li>
-          <strong>See why.</strong> Select the conversation: the decision trace shows the eligible and excluded stores,
-          the guardrail's fresh re-check and every tool call. <Link to="/brand/conversations">Conversations</Link>
-        </li>
-        <li>
-          <strong>Fulfil in store.</strong> In a new tab, sign in as <em>Retail Admin — Andheri Store</em>: Confirm →
-          Ready → Customer arrived → Complete with the pickup code the customer received.{' '}
-          <a href="/login" {...newTab}>
-            Open a new sign-in tab
+          <strong>Shop like a customer.</strong> Open the shopper demo, choose Vitamin C Glow Serum 30 ml and tap{' '}
+          <em>Need it today? Check a store near you</em>. The brand&apos;s chat opens with the message ready.{' '}
+          <a href={shopUrl} {...newTab}>
+            Open the shopper demo
           </a>
         </li>
         <li>
-          <strong>Measure the outcome.</strong> The pickup counts as an in-store purchase; read the weekday insight
-          built from four weeks of flagged synthetic history. <Link to="/brand/outcomes">Outcomes &amp; insights</Link>
+          <strong>Ask for a store.</strong> Send the message, then <em>📍 → Near Powai</em>. Powai is out of stock, so
+          the assistant offers Andheri with the product card. Tap <em>Hold at Andheri</em>: the pickup pass and the
+          store&apos;s location arrive in the chat.
         </li>
         <li>
-          <strong>Follow up.</strong> On the demo store, sign in as a demo shopper, <em>Add to cart</em> and leave.
-          After about two minutes, <em>Run due follow-ups</em> sends a cart-abandonment follow-up.{' '}
+          <strong>Fulfil in store.</strong> In a new tab, sign in as <em>Retail Admin — Andheri Store</em>: Confirm →
+          Ready → Customer arrived → Complete with the pickup code. Each step appears in the shopper&apos;s chat.{' '}
+          <a href="/login?as=store" {...newTab}>
+            Open a store sign-in tab
+          </a>
+        </li>
+        <li>
+          <strong>See why.</strong> Here, open the conversation: the transcript exactly as the customer saw it, and the
+          decision trace with the eligible and excluded stores and the fresh re-check before the hold.{' '}
           <Link to="/brand/conversations">Conversations</Link>
+        </li>
+        <li>
+          <strong>Measure the outcome.</strong> The pickup counts as an in-store purchase; read the weekday insight
+          built from four weeks of flagged synthetic history. <Link to="/brand/outcomes">Insights</Link>
+        </li>
+        <li>
+          <strong>Follow up.</strong> In the shopper demo&apos;s <em>Demo controls</em>, sign in as a demo shopper, add
+          to bag and leave. After about two minutes, <em>Run due follow-ups</em> sends a cart-abandonment follow-up with
+          quick replies. <Link to="/brand/conversations">Conversations</Link>
         </li>
       </ol>
 

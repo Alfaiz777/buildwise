@@ -42,6 +42,8 @@ export interface ProductSheet {
   variants: VariantSheet[];
   /** The brand's online product page (brand setting), or null. */
   online_url: string | null;
+  /** The product image (path or URL), or null. */
+  image_url: string | null;
 }
 
 export interface ProductContextOutput {
@@ -99,6 +101,8 @@ export interface VariantView {
   price: number;
   currency: string;
   online_url: string | null;
+  /** The product image (path or URL), or null. */
+  image_url: string | null;
 }
 
 export interface NearbyStoresOutput {

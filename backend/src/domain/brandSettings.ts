@@ -9,6 +9,10 @@ export interface BrandMessagingSettings {
   /** The brand's WhatsApp number (digits only; placeholder locally). */
   whatsappNumber: string | null;
   handoffEnabled: boolean;
+  /** "Powered by Qwikspot" on automated interactive messages (Change 16); default on. */
+  poweredByFooter: boolean;
+  /** The brand's logo for the chat header (path or https URL), or null. */
+  logoUrl: string | null;
 }
 
 const record = (v: unknown): Record<string, unknown> =>
@@ -26,6 +30,11 @@ export function resolveMessagingSettings(settings: Record<string, unknown>, bran
     displayName: displayName.slice(0, 60),
     whatsappNumber: number || null,
     handoffEnabled: handoff.enabled !== false,
+    poweredByFooter: messaging.powered_by_footer !== false,
+    logoUrl:
+      typeof messaging.logo_url === 'string' && /^(https:\/\/|\/)[^\s]+$/.test(messaging.logo_url)
+        ? messaging.logo_url
+        : null,
   };
 }
 

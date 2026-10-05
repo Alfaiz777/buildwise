@@ -36,6 +36,7 @@ import { FulfilmentService } from './fulfilmentService.js';
 import { HandoffService } from './handoffService.js';
 import { OutcomeService } from './outcomeService.js';
 import type { AttributionRefRepository, OutcomeRepository } from '../ports/outcomes.js';
+import { ShopperChannelService } from './shopperChannel.js';
 import { SimulatorService } from './simulatorService.js';
 
 export interface ConversationModuleDeps {
@@ -69,8 +70,12 @@ export interface ConversationModuleDeps {
   attributionRefs: AttributionRefRepository;
   now?: () => Date;
   logger?: Logger;
-  /** LOCAL PROFILE ONLY: enables the demo storefront service (never wired in gcp). */
+  /** The demo storefront service: local profile, or gcp with DEMO_MODE on (Change 16). */
   demoStorefront?: { commerce: CommerceProvider };
+  /** The shopper demo channel (Change 16): local profile, or gcp with DEMO_MODE on. */
+  shopperChannel?: { sessionSecret: string | null; brandAllowed: (brandId: string) => boolean };
+  /** Public web origin for media URLs (product images) in messages. */
+  publicOrigin?: string;
 }
 
 /**
@@ -137,6 +142,13 @@ export function createConversationModule(deps: ConversationModuleDeps) {
     now,
     onIntentUpdated: async (intent) => void (await followUps.evaluate(intent.brandId, intent.intentId)),
   });
+  const simulator = new SimulatorService({
+    messaging: deps.messaging,
+    receipts: deps.receipts,
+    runtimeName: deps.agent.runtime,
+    now,
+    pipeline,
+  });
   return {
     recorder,
     pipeline,
@@ -161,13 +173,21 @@ export function createConversationModule(deps: ConversationModuleDeps) {
           now,
         })
       : undefined,
-    simulator: new SimulatorService({
-      messaging: deps.messaging,
-      receipts: deps.receipts,
-      runtimeName: deps.agent.runtime,
-      now,
-      pipeline,
-    }),
+    simulator,
+    shopper: deps.shopperChannel
+      ? new ShopperChannelService({
+          sessionSecret: deps.shopperChannel.sessionSecret,
+          brandAllowed: deps.shopperChannel.brandAllowed,
+          brands: deps.brands,
+          customers: deps.customers,
+          conversations: deps.conversations,
+          simulator,
+          checkOrigin: (brandId, origin) => intents.brandForOrigin(brandId, origin),
+          publicOrigin: deps.publicOrigin ?? 'http://localhost:5173',
+          audit: deps.audit,
+          now,
+        })
+      : undefined,
     queries: new ConversationQueryService({
       brands: deps.brands,
       products: deps.products,

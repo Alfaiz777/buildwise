@@ -123,16 +123,31 @@ describe('route map', () => {
   });
 
   it('/shop serves the demo storefront in the local profile', async () => {
+    window.QwikspotIntent = {
+      init: () => window.QwikspotIntent!,
+      ids: () => ({ web_session_id: 'ws_1', visitor_id: 'vis_1' }),
+      track: vi.fn(async () => ({
+        intent_stage: 'VISIT',
+        intent_strength: 'LOW',
+        intent_type: 'VISIT_ONLY',
+        whatsapp: null,
+      })),
+      whatsapp: vi.fn(),
+      newSession: vi.fn(),
+      forgetVisitor: vi.fn(),
+    };
+    const body = { demo_mode: true, shopper_demo: { brand_id: 'brd_demo' }, products: [], shoppers: [] };
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ products: [], shoppers: [] }), { status: 200 })),
+      vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })),
     );
     app('/shop');
     expect(await screen.findByText(/Demo storefront/)).toBeInTheDocument();
+    delete window.QwikspotIntent;
   });
 
-  it.each(['/shop', '/demo-store', '/ui-kit'])('%s does not exist in the gcp profile', (path) => {
-    app(path, { profile: 'gcp' });
+  it('/ui-kit does not exist in the gcp profile', () => {
+    app('/ui-kit', { profile: 'gcp' });
     expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
   });
 

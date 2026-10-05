@@ -28,6 +28,7 @@ import type {
 import type { TokenRejection } from '../../domain/intentToken.js';
 import type { PendingProposal } from '../../domain/guardrail.js';
 import { newId } from '../../lib/ids.js';
+import type { MessageParts, OutboundOption } from '../../ports/messaging.js';
 
 /**
  * Firestore implementations of the M4 ports (docs/04_DATA_MODEL.md §21). Timestamps are
@@ -437,6 +438,41 @@ const toConversation = (id: string, d: FirebaseFirestore.DocumentData): Conversa
 
 const windowToDoc = (w: AiWindow) => ({ window_start: w.windowStart, count: w.count, notice_sent: w.noticeSent });
 
+type OptionDoc = { option_id: string; label: string; description?: string; section?: string };
+const optionToDoc = (o: OutboundOption): OptionDoc => ({
+  option_id: o.optionId,
+  label: o.label,
+  ...(o.description ? { description: o.description } : {}),
+  ...(o.section ? { section: o.section } : {}),
+});
+const optionFromDoc = (o: OptionDoc): OutboundOption => ({
+  optionId: o.option_id,
+  label: o.label,
+  ...(o.description ? { description: o.description } : {}),
+  ...(o.section ? { section: o.section } : {}),
+});
+/** Message parts (Change 16) in snake_case; absent on messages written before UI-2. */
+const partsToDoc = (p: MessageParts | null | undefined) =>
+  p
+    ? {
+        header: p.header ?? null,
+        footer: p.footer ?? null,
+        location: p.location ?? null,
+        cta_url: p.ctaUrl ?? null,
+        list_button: p.listButton ?? null,
+      }
+    : null;
+function partsFromDoc(d: FirebaseFirestore.DocumentData | null | undefined): MessageParts | null {
+  if (!d) return null;
+  const p: MessageParts = {};
+  if (d.header) p.header = d.header;
+  if (d.footer) p.footer = d.footer;
+  if (d.location) p.location = d.location;
+  if (d.cta_url) p.ctaUrl = d.cta_url;
+  if (d.list_button) p.listButton = d.list_button;
+  return Object.keys(p).length ? p : null;
+}
+
 const toMessage = (id: string, d: FirebaseFirestore.DocumentData): MessageRecord => ({
   messageId: id,
   brandId: d.brand_id,
@@ -444,10 +480,9 @@ const toMessage = (id: string, d: FirebaseFirestore.DocumentData): MessageRecord
   direction: d.direction,
   messageType: d.message_type,
   text: d.text ?? null,
-  options: d.options
-    ? d.options.map((o: { option_id: string; label: string }) => ({ optionId: o.option_id, label: o.label }))
-    : null,
+  options: d.options ? d.options.map(optionFromDoc) : null,
   location: d.location ?? null,
+  parts: partsFromDoc(d.parts),
   origin: d.origin,
   messageKind: d.message_kind ?? null,
   templateName: d.template_name ?? null,
@@ -541,8 +576,9 @@ export class FirestoreConversationRepository implements ConversationRepository {
         direction: m.direction,
         message_type: m.messageType,
         text: m.text,
-        options: m.options?.map((o) => ({ option_id: o.optionId, label: o.label })) ?? null,
+        options: m.options?.map(optionToDoc) ?? null,
         location: m.location,
+        parts: partsToDoc(m.parts),
         origin: m.origin,
         message_kind: m.messageKind,
         template_name: m.templateName,

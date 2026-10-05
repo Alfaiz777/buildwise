@@ -308,6 +308,40 @@ describe('M7 full journey — platform → brand → stores → customer → sto
     expect(again.body.decision.executed_action.type).toBe('RESERVATION_CREATED');
   }, 60_000);
 
+  it('7 · the shopper channel (Change 16): a server-issued session, the same pipeline, and the store update in the shopper’s chat', async () => {
+    const session = await request(app).post('/api/shopper/session').set('Origin', ORIGIN).send({ brand_id: brandId });
+    expect(session.status).toBe(201);
+    const token = session.body.session_token as string;
+    const shopper = (method: 'get' | 'post', path: string) =>
+      request(app)[method](`/api/shopper${path}`).set('Origin', ORIGIN).set('X-Qwikspot-Shopper-Session', token);
+    const click = await request(app).post('/api/intents').set('Origin', ORIGIN).send({
+      brand_id: brandId,
+      web_session_id: 'ws_journey_shop_0001',
+      visitor_id: 'vis_journey_shop_01',
+      client_event_id: 'ce_journey_shop',
+      event_type: 'WHATSAPP_CLICK',
+      entry: 'STORE_NEED',
+      shopify_variant_id: 'gid://shopify/ProductVariant/2001',
+    });
+    let n = 0;
+    const say = (content: object) =>
+      shopper('post', '/messages').send({ client_message_id: `cm_shopjourney_${++n}`, content });
+    await say({ type: 'TEXT', text: `${click.body.whatsapp.prefilled_text} I need it today` });
+    const offer = (await say({ type: 'LOCATION', ...NEAR_POWAI })).body.messages.at(-1);
+    expect(offer.parts.header).toMatchObject({ type: 'IMAGE' });
+    expect(offer.parts.footer).toBe('Powered by Qwikspot');
+    const hold = (await say({ type: 'INTERACTIVE_REPLY', option_id: 'hold:st_north_2' })).body.messages.at(-1);
+    expect(hold.text).toContain('On hold for you');
+    const all = (await shopper('get', '/messages')).body.messages;
+    const id = (await db.collection(`brands/${brandId}/reservations`).where('customer_id', '!=', '').get()).docs
+      .map((d) => d.data())
+      .find((r) => r.status === 'PENDING' && r.store_id === 'st_north_2')!.reservation_id;
+    await move('andheri', id, 'CONFIRMED', 'PENDING');
+    const update = (await shopper('get', `/messages?after=${all.at(-1).message_id}`)).body.messages;
+    expect(update.map((m: { text: string }) => m.text)).toEqual([expect.stringContaining('confirmed your hold')]);
+    expect(update[0]).not.toHaveProperty('origin');
+  }, 60_000);
+
   it('customer isolation: each conversation, trace and queue only ever shows its own customer', async () => {
     const list = (await as('brand').get('/api/brand/conversations')).body.conversations as {
       conversation_id: string;

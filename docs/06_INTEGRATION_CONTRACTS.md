@@ -428,6 +428,24 @@ The application produces a channel-neutral outbound message. The `MessagingProvi
 
 `WhatsAppMessagingProvider` converts this into the correct external API request. `SimulatorMessagingProvider` stores it for the simulator UI.
 
+## 11.1 Message parts and WhatsApp limits (Change 16)
+
+Besides the body (`content`) and options, an outbound message may carry optional `parts`. Options become **reply buttons** when there are at most 3, each label ≤ 20 characters and none has a description or section; otherwise they become a **list**. The domain validator (`domain/whatsappLimits.ts`) runs in the outbound stage and again in every `MessagingProvider.send()`; it truncates text on a word boundary with "…" and rejects structural violations (`MESSAGE_PARTS_INVALID`, the message is stored `FAILED`).
+
+| Part | Shape | Limit |
+|---|---|---|
+| body | WhatsApp formatting (`*bold*`, `_italic_`, `~strike~`, line breaks, links) | 1,024 characters when interactive, 4,096 plain (truncated) |
+| `header` | `{ type: IMAGE, url, alt }` or `{ type: TEXT, text }` | image: absolute https URL (http only for localhost), PNG or JPEG; text ≤ 60 |
+| `footer` | string | ≤ 60 |
+| reply buttons | options `{ option_id, label }` | ≤ 3; label ≤ 20; ids unique |
+| list | options with `description?`, `section?`; `list_button` | ≤ 10 rows; row title ≤ 24; description ≤ 72; section ≤ 24; list button ≤ 20 (default "Choose an option") |
+| `location` | `{ name, address, latitude, longitude }` | valid coordinates; sent as a separate location message on WhatsApp |
+| `cta_url` | `{ label, url }` | label ≤ 20; https; never together with options |
+
+**Footer rule.** "Powered by Qwikspot" is added centrally (outbound stage) only when the message is interactive (buttons, list, CTA, image header or location), the origin is `AUTOMATED_REPLY`, `PROACTIVE_FOLLOW_UP` or `RESERVATION_UPDATE`, and the brand setting `messaging.powered_by_footer` is not `false`. `HUMAN_AGENT` messages never carry it; the sender is always the brand.
+
+Stored messages (`04`) and the conversation routes return the parts in snake case: `parts: { header, footer, location, cta_url, list_button }` and options `{ option_id, label, description?, section? }`.
+
 ---
 
 # 12. Retail ingestion contract
@@ -514,7 +532,12 @@ Cloud Run endpoints, grouped by interface:
 ```text
 # Public
 GET   /api/health                                  (liveness; no auth: { status, version, commit, profile } — M7)
-GET   /api/demo/config                             (M7: { demo_mode } — plus the demo logins only when DEMO_MODE is on; 30/min per IP)
+GET   /api/demo/config                             (M7: { demo_mode } — plus the demo logins only when DEMO_MODE is on; shopper_demo { brand_id } where the shopper demo is served (Change 16); 30/min per IP)
+
+# Shopper demo channel (Change 16; local, and gcp with DEMO_MODE on for DEMO_BRAND_IDS only) — §14.11
+POST  /api/shopper/session                         (issue a signed shopper session)
+POST  /api/shopper/messages                        (X-Qwikspot-Shopper-Session)
+GET   /api/shopper/messages?after=msg_…            (X-Qwikspot-Shopper-Session; the session's own conversation)
 
 # Any console user
 GET   /api/me
@@ -578,9 +601,9 @@ POST  /api/webhooks/shopify
 # Internal / profile-specific
 POST  /api/internal/reservations/expire            (expiry sweep, 03 §15; not callable by browsers)
 PUT   /api/local-files/uploads/:uploadId           (LocalFileStorageProvider upload target; local profile only, 06 §6a)
-GET   /api/demo-storefront/products                (local profile only: demo storefront catalogue)
-POST  /api/demo-storefront/shopper-sign-in         (local profile only: link the visitor to a synthetic shopper)
-POST  /api/demo-storefront/orders                  (local profile only: same order path as the L2 orders webhook)
+GET   /api/demo-storefront/products                (shopper demo only — same gating as §14.11: demo storefront catalogue incl. image_url)
+POST  /api/demo-storefront/shopper-sign-in         (shopper demo only: link the visitor to a synthetic shopper)
+POST  /api/demo-storefront/orders                  (shopper demo only: same order path as the L2 orders webhook)
 ```
 
 Exact routes may change during implementation, but responsibilities must remain separated. The contracts in §14.1–§14.9 are the minimum the implementation must honor.
@@ -992,6 +1015,27 @@ The logins come from configuration (`DEMO_LOGINS`; locally the seeded users), ne
 { "brand_id": "brd_demo", "deleted": { "reservations": 73, "...": 0 }, "catalog": { "products": 10, "variants": 18 },
   "stock": { "status": "COMPLETED", "rows_valid": 33, "rows_invalid": 3 }, "history": { "outcomes": 192, "...": 0 } }
 ```
+
+`GET /api/demo/config` also returns `"shopper_demo": { "brand_id": "brd_demo" }` where the shopper demo is served (local: `brd_demo`; gcp with DEMO_MODE on: the first of `DEMO_BRAND_IDS`), so `/shop`, `/chat` and "Open shopper demo" know which brand to open.
+
+## 14.11 Shopper demo channel (Change 16)
+
+The public twin of the simulator for the shopper's own chat (`/chat`). It enters the same `ConversationPipeline` as the simulator and WhatsApp. **Mounted** in the local profile, and in gcp only with `DEMO_MODE` on; in gcp only brands in `DEMO_BRAND_IDS` answer (others `404`), otherwise `404` for everything. `POST`s must come from the brand's `allowed_storefront_origins` (`403`). Bodies are strict: any unknown field (`customer_ref`, `simulator_customer_ref`, `brand_id` in a message) is `400`.
+
+**`POST /api/shopper/session`** `{ "brand_id": "brd_demo", "shopper_id"?: "gid://shopify/Customer/3002" }` → `201`:
+
+```json
+{ "session_token": "<base64url payload>.<base64url HMAC>", "expires_at": "2026-10-05T22:00:00.000Z",
+  "brand": { "brand_id": "brd_demo", "display_name": "Demo Beauty Co", "logo_url": "https://…/demo-beauty-co-logo.png" } }
+```
+
+Without `shopper_id` the server creates a guest ref `judge_<8 base32>`; with one of the synthetic demo shopper ids it uses that shopper's ref (unknown id → `404 UNKNOWN_SHOPPER`). Audited `SHOPPER_SESSION_STARTED` (`GUEST` / `DEMO_SHOPPER`).
+
+**`POST /api/shopper/messages`** header `X-Qwikspot-Shopper-Session`, body `{ "client_message_id": "cm_…", "content": { "type": "TEXT", "text": "…" } | { "type": "LOCATION", "latitude": 19.12, "longitude": 72.9 } | { "type": "INTERACTIVE_REPLY", "option_id": "hold:st_north_2" } }` → `200 { conversation_id, messages }`. Replays of a `client_message_id` return the original result.
+
+**`GET /api/shopper/messages?after=msg_…`** → `{ conversation_id, messages }` — only the session's own conversation, oldest first. Messages carry `from: SHOPPER | BRAND`, text, options, parts, location, delivery status and time; never origin, message kind or template name (internal labels).
+
+A missing, tampered, expired or other-brand token → `401 SHOPPER_SESSION_INVALID` (the page starts a new guest session).
 
 ## 14.7 Brand administration
 

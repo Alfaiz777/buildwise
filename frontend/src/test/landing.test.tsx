@@ -94,7 +94,7 @@ describe('landing page (/)', () => {
   });
 
   it('"See it as a shopper" appears only with demo mode on, where the shopper demo exists', async () => {
-    demoConfig({ demo_mode: true, logins: [] });
+    demoConfig({ demo_mode: true, logins: [], shopper_demo: { brand_id: 'brd_demo' } });
     const { unmount } = landing();
     const links = await screen.findAllByRole('link', { name: /See it as a shopper/ });
     expect(links[0]).toHaveAttribute('href', '/shop');
@@ -102,9 +102,14 @@ describe('landing page (/)', () => {
     expect(screen.getByText('Demo data is synthetic.')).toBeInTheDocument();
     unmount();
 
-    demoConfig({ demo_mode: true, logins: [] });
-    landing({ profile: 'gcp' }); // the shopper demo is not routed in gcp until UI-2
-    await waitFor(() => expect(screen.getByText('Demo data is synthetic.')).toBeInTheDocument());
+    demoConfig({ demo_mode: true, logins: [], shopper_demo: { brand_id: 'brd_demo' } });
+    const gcp = landing({ profile: 'gcp' }); // gcp with DEMO_MODE on serves the shopper demo (Change 16)
+    expect(await screen.findAllByRole('link', { name: /See it as a shopper/ })).not.toHaveLength(0);
+    gcp.unmount();
+
+    demoConfig({ demo_mode: false });
+    landing({ profile: 'gcp' });
+    await waitFor(() => expect(screen.getAllByRole('link', { name: 'Brand login' }).length).toBeGreaterThan(0));
     expect(screen.queryByRole('link', { name: /See it as a shopper/ })).not.toBeInTheDocument();
   });
 

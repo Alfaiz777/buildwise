@@ -28,7 +28,7 @@
  * M4: brand settings allow the local demo storefront (http://localhost:5173), enable human
  * handoff and use short follow-up delays (1–2 min) so the demo shows intent → delay →
  * proactive message. Demo shoppers (mock commerce customers 3002 opted in, 3003 not) are
- * linked when "Sign in as demo shopper" is used on /demo-store.
+ * linked when "Sign in as demo shopper" is used on the demo store (/shop).
  *
  * M6: 4 weeks of synthetic history (application/demoHistory.ts, every document marked
  * demo_history: true) and a 10-minute local attribution window.

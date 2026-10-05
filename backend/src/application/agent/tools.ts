@@ -87,6 +87,7 @@ export function sheetOf(
       .filter((v) => v.productId === product.productId && v.status !== 'ARCHIVED')
       .map((v) => ({ variant_id: v.variantId, title: v.title, sku: v.sku, price: v.price, currency: v.currency })),
     online_url: onlineProductUrl(settings, product.productId),
+    image_url: product.imageUrl ?? null,
   };
 }
 
@@ -148,6 +149,7 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
       price: variant.price,
       currency: variant.currency,
       online_url: onlineProductUrl(settings, product.productId),
+      image_url: product.imageUrl ?? null,
     };
   };
 
