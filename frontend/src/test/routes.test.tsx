@@ -312,7 +312,7 @@ describe('authentication gate', () => {
 
 describe('scope routing — each of the three roles lands in its own console area', () => {
   it('PLATFORM_ADMIN → Platform Admin; Brand Admin provisioning offers only brands without one', async () => {
-    renderAt('/app', signedIn, apiFor(ME.platform));
+    renderAt('/platform/brands', signedIn, apiFor(ME.platform));
     expect(await screen.findByText('Platform Console')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Brands' })).toBeInTheDocument();
     expect(screen.getByText('Platform Admin', { selector: '.shell-role' })).toBeInTheDocument();
@@ -321,7 +321,7 @@ describe('scope routing — each of the three roles lands in its own console are
   });
 
   it('PLATFORM_ADMIN sees each brand’s onboarding checklist and last activity, never customer data', async () => {
-    renderAt('/app', signedIn, apiFor(ME.platform));
+    renderAt('/platform/brands', signedIn, apiFor(ME.platform));
     const row = (await screen.findByText('Has Admin')).closest('tr')!;
     expect(within(row).getByText('Active')).toBeInTheDocument();
     expect(within(row).getByText('10 products')).toBeInTheDocument();
@@ -335,7 +335,7 @@ describe('scope routing — each of the three roles lands in its own console are
 
   it('PLATFORM_ADMIN suspends with a reason (explained first) and can reactivate', async () => {
     const api = apiFor(ME.platform);
-    renderAt('/app', signedIn, api);
+    renderAt('/platform/brands', signedIn, api);
     const row = (await screen.findByText('Has Admin')).closest('tr')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Suspend' }));
     const dialog = screen.getByRole('form', { name: 'Suspend Has Admin' });

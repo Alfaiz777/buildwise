@@ -107,6 +107,7 @@ The MVP has **exactly one operator per scope**: one `PLATFORM_ADMIN`, one `BRAND
 | Retail file upload, SKU mapping resolution | | ✓ | |
 | Customer intent, AI conversations, recommendations | | ✓ | |
 | Outcomes, analytics / insights | aggregate only | ✓ | |
+| Brand and store aggregates — counts, rates, estimated values, store health (Change 16, UI-5) | ✓ (no customer data, §4.2) | own brand | own store (demand slice) |
 | Retail availability / inventory | aggregate / operational | ✓ | own store |
 | Reservations | operational level, no customer PII | view | view + status transitions, own store |
 | Customer simulator (`POST /api/channels/simulator/messages`) | | ✓ | |
@@ -185,6 +186,9 @@ Can see:
 - integration health metadata (connected / error / last sync). **Never** credentials.
 - reservations and outcomes at aggregate or operational level: IDs, brand, store, status, timestamps, counts, values. **No** customer name, phone number, channel identity, location or conversation content.
 - the platform audit log
+- **brand and store aggregates (Change 16, UI-5):** per brand and per store, for a period — counts (holds, pickups, refusals by reason, expiries, lookups, unmet demand, follow-ups sent, attributed online orders), rates (completion = pickups ÷ finished holds — completed, refused, expired or cancelled; holds still active are left out; fill = lookups whose nearest store had stock ÷ lookups with a nearest store), estimated values (₹), store names, cities, status, whether a Store Admin exists (yes/no), stock freshness (fresh / stale / none, SKU count) and health flags. This widens the platform scope from "brand metadata" to "brand and store aggregates"; it is read-only (`GET /api/platform/network`, `GET /api/platform/brands/:brandId/network`).
+
+Never sees, even in aggregates: customers or customer refs, channel identities, phone numbers, emails (including Store Admins'), messages or conversation content, customer locations, pickup codes, individual stock lines (SKU, quantity, price), or any user's identity beyond its role. A test asserts these responses contain none of them.
 
 Must not see, by default:
 

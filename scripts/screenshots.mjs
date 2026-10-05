@@ -50,6 +50,10 @@ const SHOTS = [
   ['store-stock', 'store', '/store/stock'],
   ['store-demand', 'store', '/store/demand'],
   ['platform-overview', 'platform', '/platform'],
+  ['platform-brands', 'platform', '/platform/brands'],
+  ['platform-network', 'platform', '/platform/network'],
+  ['platform-audit', 'platform', '/platform/audit'],
+  ['platform-system', 'platform', '/platform/system'],
 ];
 
 /** Phases from UI-2 on run the shopper journey (and the follow-up) as part of the shots. */

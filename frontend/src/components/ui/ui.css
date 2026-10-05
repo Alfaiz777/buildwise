@@ -210,6 +210,8 @@
 
 /* Table */
 .ui-table-wrap {
+  /* Positioned, so visually-hidden (absolute) labels inside stay within the scroll area. */
+  position: relative;
   max-width: 100%;
   overflow: auto;
   max-height: 32rem;

@@ -531,7 +531,7 @@ Cloud Run endpoints, grouped by interface:
 
 ```text
 # Public
-GET   /api/health                                  (liveness; no auth: { status, version, commit, profile } — M7)
+GET   /api/health                                  (liveness; no auth: { status, version, commit, profile } — M7; UI-5 adds adapters { agent_runtime, channels, commerce }, names only)
 GET   /api/demo/config                             (M7: { demo_mode } — plus the demo logins only when DEMO_MODE is on; shopper_demo { brand_id } where the shopper demo is served (Change 16); 30/min per IP)
 
 # Shopper demo channel (Change 16; local, and gcp with DEMO_MODE on for DEMO_BRAND_IDS only) — §14.11
@@ -552,7 +552,9 @@ GET   /api/platform/brands/:brandId/stores          (metadata)
 GET   /api/platform/integrations                    (health metadata, all brands)
 GET   /api/platform/reservations                    (operational, no customer PII)
 GET   /api/platform/outcomes/summary                (aggregate)
-GET   /api/platform/audit
+GET   /api/platform/audit                         (UI-5 adds target_brand_name, actor_role)
+GET   /api/platform/network                       (UI-5: brand and store aggregates; ?days=7|28&include_history=)
+GET   /api/platform/brands/:brandId/network       (UI-5: one brand's retailers → stores, counts and health flags)
 
 # Brand Console (BRAND_ADMIN) — §14.7 for administration
 GET   /api/brands/:brandId
@@ -958,6 +960,8 @@ Errors: `401 TOKEN_INVALID | TOKEN_EXPIRED`, `429 RATE_LIMITED`.
 ## 14.6 Platform administration
 
 Auth: `FIREBASE`, role `PLATFORM_ADMIN`, for every route in this section. Every state-changing call writes a `PlatformAuditEvent`, plus an `AuditEvent` in the affected brand (`04_DATA_MODEL.md` §18.0). None of these routes return customer PII or conversation content (`07_SECURITY_SPEC.md` §4.2).
+
+**Change 16, UI-5 — aggregates (read-only).** `GET /api/platform/network?days=7|28&include_history=true|false` → `{ period, demo_history { included, records }, totals { brands_active, retailers, stores_total, stores_live, holds, pickups, offline_value { amount, currency }, online_orders, online_value, completion_pct, fill_pct, unmet_demand, follow_ups_sent }, brands[] { brand_id, name, status, …the same counts…, stores_flagged, last_activity_at } }`. `GET /api/platform/brands/:brandId/network?days=&include_history=` → `{ brand_id, name, status, period, demo_history, retailers[] { retailer_id, name, status, stores[] }, unassigned_stores[] }`, each store `{ store_id, store_name, city, status, store_admin_provisioned (boolean), stock { sku_count, freshness FRESH|STALE|NONE, updated_at }, holds, completed, refused { NOT_ACTUALLY_IN_STOCK, DAMAGED, STORE_CLOSING_EARLY, OTHER }, expired, completion_pct, nearest_lookups, fill_pct, active_holds, stale_holds, flags[] }`; unknown brand → `404`. Neither response contains a customer, conversation, message, phone number, email, pickup code, stock line (SKU, quantity, price) or Store Admin identity. Definitions: offline value = Σ completed quantity × the store's current offline price (an estimate); online orders = ONLINE / ALTERNATIVE outcomes; completion = pickups ÷ finished holds; fill rate = lookups whose nearest store had stock ÷ lookups with a nearest store. `GET /api/platform/audit` events add `target_brand_name` and `actor_role` (the actor's role, or `SYSTEM`).
 
 ### POST /api/platform/brands
 

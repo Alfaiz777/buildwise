@@ -8,6 +8,8 @@ import {
   LayoutDashboard,
   MessagesSquare,
   Network,
+  ScrollText,
+  Server,
   Settings,
   TrendingUp,
   type LucideIcon,
@@ -46,5 +48,11 @@ export const NAV: Record<Scope, NavItem[]> = {
     { to: '/store/stock', label: 'Stock', icon: Boxes },
     { to: '/store/demand', label: 'Demand', icon: TrendingUp },
   ],
-  PLATFORM: [{ to: '/platform', label: 'Overview', icon: Building2, end: true }],
+  PLATFORM: [
+    { to: '/platform', label: 'Overview', icon: LayoutDashboard, end: true },
+    { to: '/platform/brands', label: 'Brands', icon: Building2 },
+    { to: '/platform/network', label: 'Retail network', icon: Network },
+    { to: '/platform/audit', label: 'Audit', icon: ScrollText },
+    { to: '/platform/system', label: 'System', icon: Server },
+  ],
 };

@@ -9,7 +9,14 @@ describe('app foundation', () => {
   it('GET /api/health is public and needs no Firebase', async () => {
     const res = await request(app).get('/api/health');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: 'ok', version: 'dev', commit: null, profile: 'local' });
+    expect(res.body).toEqual({
+      status: 'ok',
+      version: 'dev',
+      commit: null,
+      profile: 'local',
+      // UI-5: adapter names for the Platform System card — never hosts, keys or ids.
+      adapters: { agent_runtime: 'MOCK', channels: ['SIMULATOR'], commerce: 'MOCK' },
+    });
   });
 
   it('sets a request ID and no-store on every response', async () => {
