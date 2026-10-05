@@ -76,6 +76,29 @@ export interface ConversationRow {
   last_message_at: string | null;
   last_inbound_at: string | null;
   intent: IntentSummary | null;
+  /** UI-3: generated demo history (Change 16). */
+  demo_history?: boolean;
+}
+
+/** UI-3: a recorded outcome of the conversation's journey (docs/04 §16). */
+export interface JourneyOutcome {
+  purchase_type: 'ONLINE' | 'OFFLINE' | 'ALTERNATIVE' | 'NONE';
+  evidence: 'RESERVATION_COMPLETED' | 'ORDER' | 'WINDOW_CLOSED';
+  channel: string | null;
+  store_id: string | null;
+  store_name: string | null;
+  reservation_id: string | null;
+  value: number;
+  currency: string | null;
+  timestamp: string;
+}
+
+/** UI-3: one status change of a reservation, derived from its timestamps. */
+export interface StatusStep {
+  status: string;
+  at: string;
+  by?: 'CUSTOMER' | 'RETAILER' | 'SYSTEM' | null;
+  reason?: string | null;
 }
 
 export interface ConversationDetail extends ConversationRow {
@@ -83,6 +106,8 @@ export interface ConversationDetail extends ConversationRow {
   web_events: { event_type: string; at: string; details: Record<string, string | number | null> }[];
   messages: ChatMessage[];
   recommendations: Recommendation[];
+  /** UI-3: the journey's recorded outcome(s). Absent on older backends. */
+  outcomes?: JourneyOutcome[];
 }
 
 /** "Why Qwikspot did this" (docs/04 §14 trace; docs/11 §4). */
@@ -127,6 +152,10 @@ export interface Recommendation {
     store_name: string;
     pickup_code: string;
     expires_at: string;
+    quantity?: number;
+    product_title?: string | null;
+    variant_title?: string | null;
+    status_history?: StatusStep[];
   } | null;
 }
 
@@ -143,7 +172,24 @@ export interface ReservationRow {
   customer_display: string;
   created_at: string;
   expires_at: string;
+  store_timezone?: string;
+  cancelled_at?: string | null;
+  cancelled_by?: 'CUSTOMER' | 'RETAILER' | 'SYSTEM' | null;
+  cancel_reason?: string | null;
+  completed_at?: string | null;
+  /** UI-3, brand rows only. */
+  conversation_id?: string | null;
+  image_url?: string | null;
+  demo_history?: boolean;
 }
+
+/** Store refusal reasons in words (docs/04 §15). */
+export const REFUSAL_TEXT: Record<string, string> = {
+  NOT_ACTUALLY_IN_STOCK: 'not actually in stock',
+  DAMAGED: 'damaged',
+  STORE_CLOSING_EARLY: 'store closing early',
+  OTHER: 'other reason',
+};
 
 /** Plain words for store exclusions and guardrail blocks. */
 export const EXCLUSION_TEXT: Record<string, string> = {

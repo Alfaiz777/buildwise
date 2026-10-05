@@ -6,6 +6,7 @@ import type { AgentRuntime } from '../src/ports/agent.js';
 import type { DemoConfig } from '../src/config/env.js';
 import { MemoryReservations } from './memoryReservations.js';
 import { MemoryInsightsReader } from './memoryInsights.js';
+import { BrandSettingsQuery } from '../src/application/brandSettingsQuery.js';
 import { InsightsService } from '../src/application/insightsService.js';
 import { CsvRetailFileParser } from '../src/adapters/retail/csvRetailFileParser.js';
 import { SimulatorMessagingProvider } from '../src/adapters/messaging/simulatorMessagingProvider.js';
@@ -727,6 +728,7 @@ export function buildTestWorld(
       reservations: conversation.reservations,
       fulfilment: conversation.fulfilment,
       handoff: conversation.handoff,
+      brandSettings: new BrandSettingsQuery({ brands, channelMode: 'SIMULATOR' }),
       insights: new InsightsService({
         reader: new MemoryInsightsReader({ intents, conversations, recommendations, events, reservations, outcomes }),
         stores,

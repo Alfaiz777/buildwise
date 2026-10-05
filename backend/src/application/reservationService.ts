@@ -22,6 +22,7 @@ import type {
   ReservationRepository,
   TransitionResult,
 } from '../ports/reservations.js';
+import type { RecommendationRepository } from '../ports/conversationRepositories.js';
 import type { ProductRepository, StoreRepository } from '../ports/repositories.js';
 import type { EventRecorder } from './eventRecorder.js';
 
@@ -51,6 +52,8 @@ export class ReservationService {
       events: EventRecorder;
       now: () => Date;
       pickupCode?: () => string;
+      /** UI-3: links a brand's reservation row to its conversation (brand scope only). */
+      recommendations?: RecommendationRepository;
     },
   ) {}
 
@@ -291,16 +294,32 @@ export class ReservationService {
           ? !ACTIVE_RESERVATION_STATUSES.includes(r.status)
           : true,
     );
-    const ordered = filter.view === 'active' ? sortQueue(rows) : rows;
+    const ordered = (filter.view === 'active' ? sortQueue(rows) : rows).slice(0, filter.limit);
     const lookup = await this.lookup(principal.brandId);
-    return ordered.slice(0, filter.limit).map((r) => view(r, lookup));
+    if (principal.scope !== 'BRAND') return ordered.map((r) => view(r, lookup));
+    const conversations = await this.conversationIds(principal.brandId, ordered);
+    return ordered.map((r) => ({ ...view(r, lookup), ...brandFields(r, lookup, conversations) }));
+  }
+
+  /**
+   * UI-3: the conversation each reservation came from, via its AI recommendation. Only the
+   * brand's own rows get it — the store never sees conversations.
+   */
+  private async conversationIds(brandId: string, rows: ReservationRecord[]) {
+    const ids = [...new Set(rows.map((r) => r.aiRecommendationId).filter((id): id is string => !!id))];
+    const recs = this.deps.recommendations
+      ? await Promise.all(ids.map((id) => this.deps.recommendations!.get(brandId, id)))
+      : [];
+    return new Map(ids.map((id, i) => [id, recs[i]?.conversationId ?? null]));
   }
 
   /** GET /api/reservations/:id: same scoping as the list; anything else → null (404). */
   async getFor(principal: TenantPrincipal, reservationId: string) {
     const r = await this.deps.reservations.get(principal.brandId, reservationId);
     if (!r || (principal.scope === 'RETAIL' && r.storeId !== principal.storeId)) return null;
-    return view(r, await this.lookup(principal.brandId));
+    const lookup = await this.lookup(principal.brandId);
+    if (principal.scope !== 'BRAND') return view(r, lookup);
+    return { ...view(r, lookup), ...brandFields(r, lookup, await this.conversationIds(principal.brandId, [r])) };
   }
 
   async viewOf(brandId: string, r: ReservationRecord) {
@@ -323,7 +342,7 @@ export class ReservationService {
 
 interface Lookup {
   variants: Map<string, { productId: string; title: string }>;
-  products: Map<string, { title: string }>;
+  products: Map<string, { title: string; imageUrl?: string | null }>;
   stores: Map<string, { storeName: string; storeHours: Record<string, string> | null }>;
 }
 
@@ -332,6 +351,16 @@ export function sortQueue<T extends { status: ReservationStatus; expiresAt: stri
   return [...rows].sort(
     (a, b) => Number(b.status === 'PENDING') - Number(a.status === 'PENDING') || a.expiresAt.localeCompare(b.expiresAt),
   );
+}
+
+/** Brand-only row fields (UI-3): its conversation, the product image and the synthetic flag. */
+function brandFields(r: ReservationRecord, lookup: Lookup, conversations: Map<string, string | null>) {
+  const variant = lookup.variants.get(r.variantId);
+  return {
+    conversation_id: r.aiRecommendationId ? (conversations.get(r.aiRecommendationId) ?? null) : null,
+    image_url: variant ? (lookup.products.get(variant.productId)?.imageUrl ?? null) : null,
+    demo_history: r.demoHistory === true,
+  };
 }
 
 function view(r: ReservationRecord, lookup: Lookup) {

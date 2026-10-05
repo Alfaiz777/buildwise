@@ -5,7 +5,10 @@ import { RedirectKeepingUrl } from './components/RedirectKeepingUrl';
 import { ToastProvider } from './components/ui';
 import { BrandHome } from './pages/brand/BrandHome';
 import { ConversationsPage } from './pages/brand/ConversationsPage';
-import { OutcomesPage } from './pages/brand/OutcomesPage';
+import { InsightsPage } from './pages/brand/InsightsPage';
+import { NetworkPage } from './pages/brand/NetworkPage';
+import { ReservationsPage } from './pages/brand/ReservationsPage';
+import { SettingsPage } from './pages/brand/SettingsPage';
 import { LandingPage } from './pages/landing/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -50,7 +53,11 @@ export function AppRoutes({ profile = 'local' }: { profile?: FrontendProfile }) 
             <Route element={<ScopeRoute scope="BRAND" />}>
               <Route path="/brand" element={<BrandHome />} />
               <Route path="/brand/conversations" element={<ConversationsPage autoPoll={local} />} />
-              <Route path="/brand/outcomes" element={<OutcomesPage />} />
+              <Route path="/brand/reservations" element={<ReservationsPage />} />
+              <Route path="/brand/insights" element={<InsightsPage />} />
+              <Route path="/brand/outcomes" element={<Navigate to="/brand/insights" replace />} />
+              <Route path="/brand/network" element={<NetworkPage />} />
+              <Route path="/brand/settings" element={<SettingsPage />} />
             </Route>
             <Route element={<ScopeRoute scope="RETAIL" />}>
               <Route path="/store" element={<RetailerHome autoPoll={local} />} />

@@ -81,6 +81,8 @@ export class FirestoreInsightsReader implements InsightsReader {
         purchaseType: d.get('purchase_type'),
         aiRecommendationId: d.get('ai_recommendation_id') ?? null,
         timestamp: d.get('timestamp'),
+        value: Number(d.get('value') ?? 0),
+        currency: d.get('currency') ?? null,
       })),
     };
     return { rows, historyRecords };

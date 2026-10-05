@@ -41,11 +41,16 @@ const SHOTS = [
   ['shop-home', null, '/shop'],
   ['shop-controls', null, '/shop', (p) => p.getByRole('button', { name: /Demo controls/ }).click()],
   ['chat-empty', null, '/chat?brand=brd_demo'],
-  ['brand-insights', 'brand', '/brand/outcomes'],
+  ['brand-insights', 'brand', '/brand/insights'],
+  ['brand-reservations', 'brand', '/brand/reservations'],
+  ['brand-network', 'brand', '/brand/network'],
+  ['brand-settings', 'brand', '/brand/settings'],
   ['store-today', 'store', '/store'],
   ['platform-overview', 'platform', '/platform'],
 ];
 
+/** Phases from UI-2 on run the shopper journey (and the follow-up) as part of the shots. */
+const SHOPPER_PHASES = ['ui-2', 'ui-3', 'ui-4', 'ui-5', 'ui-6'];
 const T = 20_000;
 const shot = async (page, name, vp, fullPage = false) => {
   await page.waitForTimeout(500);
@@ -123,8 +128,21 @@ async function shopperJourney(vp, newPage, storePage, brandPage) {
     await confirm.click();
     await chat.getByText(/confirmed your hold/).waitFor({ timeout: T });
     await shot(page, 'chat-store-update', vp);
+    // UI-3: finish the pickup, so the brand's journey timeline ends on the outcome.
+    const code = /Pickup code:\s*(\d{6})/.exec(await chat.innerText())?.[1];
+    for (const action of ['Mark ready', 'Customer arrived']) {
+      const button = storePage.getByRole('button', { name: action }).first();
+      await button.waitFor({ timeout: T });
+      await button.click();
+      await storePage.waitForTimeout(800);
+    }
+    if (code) {
+      await storePage.getByPlaceholder("Customer's pickup code").first().fill(code);
+      await storePage.getByRole('button', { name: 'Complete' }).first().click();
+      await storePage.waitForTimeout(1_000);
+    }
   } catch {
-    console.error('(no Andheri hold to confirm: store update shot skipped)');
+    console.error('(no Andheri hold to fulfil: store update / pickup skipped)');
   }
   await brandPage.goto(`${BASE}/brand/conversations`);
   await brandPage
@@ -132,7 +150,14 @@ async function shopperJourney(vp, newPage, storePage, brandPage) {
     .first()
     .click();
   await brandPage.getByRole('log', { name: 'Messages' }).waitFor({ timeout: T });
-  await shot(brandPage, 'brand-transcript', vp, true);
+  await brandPage
+    .getByText(/in-store purchase/)
+    .first()
+    .waitFor({ timeout: T })
+    .catch(() => undefined);
+  await shot(brandPage, 'brand-journey', vp, true);
+  await brandPage.getByText('Technical details').first().click();
+  await shot(brandPage, 'brand-why-technical', vp, true);
 }
 
 await mkdir(OUT, { recursive: true });
@@ -176,7 +201,7 @@ try {
     // A signed-in, opted-in demo shopper starts checkout and leaves (desktop pass only):
     // the follow-up becomes due after the demo brand's delay; it is shot at the end.
     let asha = null;
-    if (phase === 'ui-2' && vp.name === 'desktop') {
+    if (SHOPPER_PHASES.includes(phase) && vp.name === 'desktop') {
       const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
       asha = await context.newPage();
       await asha.goto(`${BASE}/shop`);
@@ -202,7 +227,7 @@ try {
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
       written.push(`${file}${overflow ? '  ⚠ horizontal page scroll' : ''}`);
     }
-    if (phase === 'ui-2') {
+    if (SHOPPER_PHASES.includes(phase)) {
       const newPage = async () =>
         (await browser.newContext({ viewport: { width: vp.width, height: vp.height } })).newPage();
       await shopperJourney(vp, newPage, await pageFor('store'), await pageFor('brand'));
@@ -212,8 +237,11 @@ try {
         if (wait > 0) await asha.waitForTimeout(wait);
         const brand = await pageFor('brand');
         await brand.goto(`${BASE}/brand/conversations`);
-        await brand.getByRole('button', { name: 'Run due follow-ups' }).click();
-        await brand.getByText(/Due follow-ups:/).waitFor({ timeout: T });
+        await brand.getByRole('button', { name: 'Process due work now' }).click();
+        await brand
+          .getByText(/Due work processed:/)
+          .first()
+          .waitFor({ timeout: T });
         followUpChat = await asha.evaluate(() => sessionStorage.getItem('qs_shopper_session:brd_demo'));
       }
       if (followUpChat) {

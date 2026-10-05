@@ -169,7 +169,7 @@ describe('console shell', () => {
       within(nav)
         .getAllByRole('link')
         .map((a) => a.textContent),
-    ).toEqual(['Overview', 'Conversations', 'Insights']);
+    ).toEqual(['Overview', 'Conversations', 'Reservations', 'Insights', 'Network', 'Settings']);
     expect(within(nav).getByRole('link', { name: 'Conversations' })).toHaveAttribute('aria-current', 'page');
     expect(within(nav).getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current');
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));

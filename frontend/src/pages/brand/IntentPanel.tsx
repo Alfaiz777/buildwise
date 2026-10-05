@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { outcomeText } from './journey';
 import { formatDateTime } from './types';
 import {
   countdown,
@@ -31,7 +32,7 @@ export function IntentPanel({
 }: {
   intent: IntentSummary | null;
   events: ConversationDetail['web_events'];
-  conversation: Pick<ConversationDetail, 'human_handoff' | 'messages'> | null;
+  conversation: Pick<ConversationDetail, 'human_handoff' | 'messages' | 'outcomes'> | null;
 }) {
   const now = useNow();
   if (!intent) {
@@ -45,6 +46,8 @@ export function IntentPanel({
     );
   }
   const f = intent.follow_up;
+  // A store pickup is an in-store purchase (OFFLINE outcome), not an online order.
+  const purchase = conversation?.outcomes?.find((o) => o.purchase_type !== 'NONE') ?? null;
   const replied = conversation?.messages.some((m) => m.origin === 'CUSTOMER' && f?.sent_at && m.timestamp > f.sent_at);
 
   return (
@@ -119,7 +122,10 @@ export function IntentPanel({
         <li>Replied: {replied || f?.status === 'REPLIED' ? 'yes' : 'no'}</li>
         <li>Asked for a person: {conversation?.human_handoff || f?.status === 'HANDOFF' ? 'yes' : 'no'}</li>
         <li>Opted out: {f?.status === 'OPTED_OUT' ? 'yes' : 'no'}</li>
-        <li>Ordered: {intent.status === 'CONVERTED' ? 'yes' : 'no'}</li>
+        <li>
+          Bought:{' '}
+          {purchase ? outcomeText(purchase).title : intent.status === 'CONVERTED' ? 'ordered online' : 'not yet'}
+        </li>
       </ul>
     </div>
   );

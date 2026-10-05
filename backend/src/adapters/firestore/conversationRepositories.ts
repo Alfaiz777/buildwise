@@ -429,6 +429,7 @@ const toConversation = (id: string, d: FirebaseFirestore.DocumentData): Conversa
   humanHandoff: d.human_handoff === true,
   pendingProposal: proposalFromDoc(d.pending_proposal),
   handoffAt: d.handoff_at ?? null,
+  demoHistory: d.demo_history === true,
   aiWindow: {
     windowStart: d.ai_window?.window_start ?? null,
     count: d.ai_window?.count ?? 0,

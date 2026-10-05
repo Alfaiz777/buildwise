@@ -92,6 +92,7 @@ export function createConversationModule(deps: ConversationModuleDeps) {
     events: recorder,
     now,
     pickupCode: deps.pickupCode,
+    recommendations: deps.recommendations,
   });
   const outcomes = new OutcomeService({
     outcomes: deps.outcomes,
@@ -198,6 +199,7 @@ export function createConversationModule(deps: ConversationModuleDeps) {
       events: deps.events,
       reservations: deps.reservations,
       stores: deps.stores,
+      outcomes: deps.outcomes,
     }),
   };
 }

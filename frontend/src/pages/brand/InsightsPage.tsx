@@ -1,7 +1,11 @@
 import { useCallback, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApi } from '../../api/apiContext';
 import { ConsoleShell, Section, useLoad } from '../../components/ConsoleShell';
+import { label } from '../../lib/labels';
 import { humanize } from './conversationTypes';
+import { FunnelChart, WeekdayChart } from './InsightCharts';
+import type { BrandStore } from './types';
 
 export interface InsightsResponse {
   period: { days: number; from: string; to: string; timezone: string };
@@ -14,6 +18,8 @@ export interface InsightsResponse {
     reservations: number;
     completed: number;
     outcomes: Record<string, number>;
+    /** UI-3: recorded value of purchase outcomes (est.). Absent on older backends. */
+    value?: { amount: number; currency: string | null };
   };
   conversion_by_action: {
     action: string;
@@ -40,7 +46,7 @@ export interface InsightsResponse {
       reservations: number;
       completions: number;
     }[];
-    reading: { kind: string; text: string };
+    reading: { kind: string; text: string; peak_weekday?: string };
   };
   fill_rate: {
     store_id: string;
@@ -55,20 +61,44 @@ export interface InsightsResponse {
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** Purchase types and refusal/exclusion reasons in words. */
+const WORDS: Record<string, string> = {
+  OFFLINE: 'in-store purchase',
+  ONLINE: 'online order',
+  ALTERNATIVE: 'alternative product',
+  NONE: 'no purchase',
+  OUT_OF_STOCK: 'out of stock',
+  TOO_FAR: 'too far',
+  CLOSED: 'closed',
+  INACTIVE: 'store inactive',
+  RESERVATIONS_DISABLED: 'reservations off',
+  NOT_ACTUALLY_IN_STOCK: 'not actually in stock',
+  DAMAGED: 'damaged',
+  STORE_CLOSING_EARLY: 'closing early',
+  OTHER: 'other',
+};
+const words = (k: string) => WORDS[k] ?? humanize(k);
 const reasons = (r: Record<string, number>) =>
   Object.entries(r)
-    .map(([k, v]) => `${humanize(k)} ${v}`)
+    .map(([k, v]) => `${words(k)} ${v}`)
     .join(', ') || '—';
 
+/** The stores a suggestion names (by name), so it can link to the store's row in Network. */
+export function storesNamedIn(text: string, stores: Pick<BrandStore, 'store_id' | 'store_name'>[]) {
+  return stores.filter((s) => s.store_name && text.includes(s.store_name));
+}
+
 /**
- * Brand Console → "Outcomes & insights" (docs/11 §4, Change 13 F8). Every number is a count
- * over stored records; the reading and suggestions are fixed rules over those numbers (no
- * AI text). Synthetic demo history is labelled and can be excluded.
+ * Brand Console → Insights (docs/11 §4; Change 13 F8, Change 16 UI-3). Every number is a
+ * count over stored records; the reading and suggestions are fixed rules over those numbers
+ * (no AI text). Synthetic demo history is labelled and can be excluded. The funnel and
+ * weekday panels are drawn as charts with table fallbacks.
  */
-export function OutcomesPage() {
+export function InsightsPage() {
   const api = useApi();
   const [days, setDays] = useState<7 | 28>(7);
   const [includeHistory, setIncludeHistory] = useState(true);
+  const stores = useLoad(useCallback(() => api.get<{ stores: BrandStore[] }>('/api/brand/stores'), [api]));
   const data = useLoad(
     useCallback(
       () => api.get<InsightsResponse>(`/api/brand/insights?days=${days}&include_history=${includeHistory}`),
@@ -79,7 +109,7 @@ export function OutcomesPage() {
 
   return (
     <ConsoleShell>
-      <Section title="Outcomes & insights">
+      <Section title="Insights">
         <div className="filters">
           {([7, 28] as const).map((n) => (
             <button
@@ -111,63 +141,56 @@ export function OutcomesPage() {
       {d && (
         <>
           <Section title="Journey funnel">
-            <table aria-label="Journey funnel">
-              <tbody>
-                {(
-                  [
-                    ['Storefront intents', d.funnel.intents],
-                    ['Follow-ups sent', d.funnel.follow_ups_sent],
-                    ['Conversations', d.funnel.conversations],
-                    ['Store recommendations', d.funnel.store_recommendations],
-                    ['Reservations', d.funnel.reservations],
-                    ['Completed pickups', d.funnel.completed],
-                  ] as const
-                ).map(([label, n]) => (
-                  <tr key={label}>
-                    <td>{label}</td>
-                    <td>{n}</td>
-                  </tr>
-                ))}
-                <tr>
-                  <td>Outcomes</td>
-                  <td>
-                    {Object.entries(d.funnel.outcomes)
-                      .map(([k, v]) => `${humanize(k)} ${v}`)
-                      .join(' · ')}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <FunnelChart
+              steps={[
+                { label: 'Storefront intents', value: d.funnel.intents },
+                { label: 'Follow-ups sent', value: d.funnel.follow_ups_sent },
+                { label: 'Conversations', value: d.funnel.conversations },
+                { label: 'Store offers', value: d.funnel.store_recommendations },
+                { label: 'Holds', value: d.funnel.reservations },
+                { label: 'Pickups', value: d.funnel.completed },
+              ]}
+            />
+            <p className="small">
+              Outcomes:{' '}
+              {Object.entries(d.funnel.outcomes)
+                .map(([k, v]) => `${words(k)} ${v}`)
+                .join(' · ')}
+            </p>
           </Section>
 
           <Section title="Demand vs availability by weekday">
             <p className="reading" data-kind={d.weekday.reading.kind}>
               {d.weekday.reading.text}
             </p>
-            <table aria-label="Demand vs availability by weekday">
-              <thead>
-                <tr>
-                  <th>Day</th>
-                  <th>Store lookups</th>
-                  <th>No store with stock</th>
-                  <th>Reservations</th>
-                  <th>Completed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {d.weekday.days.map((day) => (
-                  <tr key={day.weekday}>
-                    <td>{cap(day.weekday)}</td>
-                    <td>{day.lookups}</td>
-                    <td>
-                      {day.no_store} ({day.no_store_pct}%)
-                    </td>
-                    <td>{day.reservations}</td>
-                    <td>{day.completions}</td>
+            <WeekdayChart
+              days={d.weekday.days}
+              problemDay={
+                d.weekday.reading.kind === 'AVAILABILITY_PROBLEM' ? (d.weekday.reading.peak_weekday ?? null) : null
+              }
+              caption="Weekdays in store time."
+            />
+            <details className="small">
+              <summary>Reservations and pickups by day</summary>
+              <table aria-label="Reservations by weekday">
+                <thead>
+                  <tr>
+                    <th>Day</th>
+                    <th>Reservations</th>
+                    <th>Completed</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {d.weekday.days.map((day) => (
+                    <tr key={day.weekday}>
+                      <td>{cap(day.weekday)}</td>
+                      <td>{day.reservations}</td>
+                      <td>{day.completions}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
           </Section>
 
           <Section title="Suggested next actions">
@@ -178,18 +201,23 @@ export function OutcomesPage() {
                 {d.suggestions.map((s) => (
                   <li key={`${s.rule}-${s.evidence.ids[0]}`}>
                     {s.text}
+                    <div className="small suggestion-links">
+                      Based on {s.evidence.ids.length} {s.evidence.kind === 'EVENTS' ? 'store lookups' : 'reservations'}
+                      {storesNamedIn(s.text, stores.data?.stores ?? []).map((store) => (
+                        <Link key={store.store_id} to={`/brand/network#store-${store.store_id}`}>
+                          Open {store.store_name} →
+                        </Link>
+                      ))}
+                    </div>
                     <details className="small">
-                      <summary>
-                        Based on {s.evidence.ids.length}{' '}
-                        {s.evidence.kind === 'EVENTS' ? 'store lookups' : 'reservations'}
-                      </summary>
+                      <summary>Technical details</summary>
                       <span className="mono">{s.evidence.ids.join(', ')}</span>
                     </details>
                   </li>
                 ))}
               </ul>
             )}
-            <p className="muted small">Display only — nothing is sent.</p>
+            <p className="muted small">Suggestions are shown to you only — nothing is sent to stores.</p>
           </Section>
 
           <Section title="Unmet local demand">
@@ -238,8 +266,8 @@ export function OutcomesPage() {
                 <tbody>
                   {d.conversion_by_action.map((c) => (
                     <tr key={c.action}>
-                      <td>{humanize(c.action)}</td>
-                      <td>{c.intended ? c.intended.map(humanize).join(' or ') : '—'}</td>
+                      <td>{label(c.action)}</td>
+                      <td>{c.intended ? c.intended.map(words).join(' or ') : '—'}</td>
                       <td>{c.outcomes}</td>
                       <td className="small">{reasons(c.recorded)}</td>
                       <td>{c.rate_pct === null ? '—' : `${c.converted} (${c.rate_pct}%)`}</td>

@@ -575,6 +575,7 @@ GET   /api/brand/conversations/:conversationId     (messages, bound intent + web
 GET   /api/brand/intents                           (every intent incl. anonymous; ?type=&follow_up_status=)
 POST  /api/brand/follow-ups/process-due            (process due follow-ups; Cloud Scheduler with OIDC in gcp, L-phase)
 GET   /api/brand/demo                              (M7: { reset_available } for this brand)
+GET   /api/brand/settings                          (Change 16, UI-3: the read-only Settings page; §14.7)
 POST  /api/brand/demo/reset                        (M7: Reset demo — DEMO_MODE + allowlisted brand only; 1/min per brand; §14.10)
 
 # Retailer Console (RETAIL_ADMIN, own store only) — §14.9
@@ -1038,6 +1039,22 @@ Without `shopper_id` the server creates a guest ref `judge_<8 base32>`; with one
 A missing, tampered, expired or other-brand token → `401 SHOPPER_SESSION_INVALID` (the page starts a new guest session).
 
 ## 14.7 Brand administration
+
+**Change 16, UI-3 — Brand Console reads (all read-only, additive).**
+
+`GET /api/brand/settings` (`BRAND_ADMIN`, own brand) returns exactly these fields, resolved through the same functions the backend acts on — never credentials, connection secrets, the WhatsApp number or user data:
+
+```json
+{ "brand_id": "brd_demo",
+  "messaging": { "display_name": "Demo Beauty Co", "logo_url": "/demo-products/demo-beauty-co-logo.png",
+                 "powered_by_footer": true, "handoff_enabled": true },
+  "follow_up": { "inactivity_minutes": 1, "frequency_hours": 24,
+                 "types": [{ "type": "CART_ABANDONMENT", "enabled": true, "delay_minutes": 2, "priority": "NORMAL" }] },
+  "retail_freshness_hours": 24, "attribution_window_minutes": 10,
+  "allowed_storefront_origins": ["http://localhost:5173"], "channel": { "mode": "SIMULATOR" } }
+```
+
+`GET /api/brand/conversations/:conversationId` adds `demo_history`, `outcomes[]` (`purchase_type`, `evidence`, `channel`, `store_id`, `store_name`, `reservation_id`, `value`, `currency`, `timestamp` — the journey's recorded outcome, found by its deterministic ID) and, on each `recommendations[].reservation`, `quantity`, `product_title`, `variant_title` and `status_history[]` (`{ status, at, by?, reason? }` from the reservation's own timestamps; the internal refusal note is never returned). `GET /api/brand/conversations` rows add `demo_history`. `GET /api/reservations` rows for a `BRAND_ADMIN` add `conversation_id`, `image_url` and `demo_history` (a `RETAIL_ADMIN` never receives `conversation_id`). `GET /api/products` adds `image_url` per product. `GET /api/brand/insights` adds `funnel.value: { amount, currency }`, the sum of the recorded values of purchase outcomes (OFFLINE, ONLINE, ALTERNATIVE) in the period, shown as "est.".
 
 Auth: `FIREBASE`, role `BRAND_ADMIN` (the only brand role), for every route in this section. Every change is audited in the brand's `auditEvents`. The brand always comes from the principal.
 

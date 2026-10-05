@@ -49,6 +49,7 @@ const toRecord = (id: string, d: FirebaseFirestore.DocumentData): ReservationRec
   cancelledBy: d.cancelled_by ?? null,
   cancelReason: d.cancel_reason ?? null,
   cancelNote: d.cancel_note ?? null,
+  demoHistory: d.demo_history === true,
   pickupCodeAttempts: Number(d.pickup_code_attempts ?? 0),
   lastNotification: d.last_notification
     ? {

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Section } from '../../components/ConsoleShell';
+import { Link } from 'react-router-dom';
 import { formatDateTime, type BrandStore, type CatalogResponse, type Connection } from './types';
 
 interface Step {
@@ -55,7 +55,7 @@ export function SetupChecklist(props: {
       detail: stocked.length
         ? `${stocked.length} of ${stores?.length ?? 0} stores with stock · stock as of ${formatDateTime(stockAsOf)}`
         : 'No store stock imported yet.',
-      action: <a href="#retail-import">Import a retail CSV</a>,
+      action: <Link to="/brand/network#retail-import">Import a retail CSV</Link>,
     },
     {
       title: 'SKU mapping',
@@ -64,18 +64,27 @@ export function SetupChecklist(props: {
         summary && summary.auto_matched + summary.needs_attention > 0
           ? `${summary.auto_matched} auto-matched · ${summary.needs_attention} need attention`
           : 'Nothing mapped yet.',
-      action: <a href="#catalog">Review mapping</a>,
+      action: <Link to="/brand/network#catalog">Review mapping</Link>,
     },
     {
       title: 'Retail Admins provisioned',
       done: owned.length > 0 && withAdmin.length === owned.length,
       detail: owned.length ? `${withAdmin.length} of ${owned.length} stores have their Retail Admin` : 'No stores yet.',
-      action: <a href="#retailers">Provision per store</a>,
+      action: <Link to="/brand/network#retailers">Provision per store</Link>,
     },
   ];
 
+  const done = steps.filter((s) => s.done).length;
+  const complete = done === steps.length;
+  // UI-3: a collapsible card, open while anything is left to do; collapsed once complete.
   return (
-    <Section title="Setup checklist">
+    <details className="ui-card ui-card--padded setup-card" open={!complete}>
+      <summary>
+        <h2 className="ui-card__title">{complete ? 'Setup complete ✓' : 'Setup checklist'}</h2>
+        <span className="muted small">
+          {done} of {steps.length} done{complete ? ' · view' : ''}
+        </span>
+      </summary>
       <ol className="checklist">
         {steps.map((step) => (
           <li key={step.title} className={step.done ? 'done' : 'todo'}>
@@ -90,6 +99,6 @@ export function SetupChecklist(props: {
           </li>
         ))}
       </ol>
-    </Section>
+    </details>
   );
 }

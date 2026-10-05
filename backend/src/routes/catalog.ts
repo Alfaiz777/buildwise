@@ -44,6 +44,7 @@ export function productsRouter(catalog: CatalogService): Router {
         title: p.title,
         description: p.description,
         category: p.category,
+        image_url: p.imageUrl ?? null,
         status: p.status,
         tags: p.tags,
         attributes: p.attributes,

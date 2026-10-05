@@ -33,7 +33,15 @@ export interface InsightRows {
     cancelledBy: string | null;
     cancelReason: string | null;
   }[];
-  outcomes: { outcomeId: string; purchaseType: PurchaseType; aiRecommendationId: string | null; timestamp: string }[];
+  outcomes: {
+    outcomeId: string;
+    purchaseType: PurchaseType;
+    aiRecommendationId: string | null;
+    timestamp: string;
+    /** The outcome's recorded value (quantity × price at the time; Change 16, UI-3). */
+    value?: number;
+    currency?: string | null;
+  }[];
 }
 
 export interface InsightCatalog {
@@ -51,6 +59,13 @@ const titleCase = (s: string) => s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
 export function funnel(rows: InsightRows) {
   const outcomes = Object.fromEntries(PURCHASE_TYPES.map((t) => [t, 0])) as Record<PurchaseType, number>;
   for (const o of rows.outcomes) outcomes[o.purchaseType]++;
+  // Estimated value of recorded purchases (store pickups and online orders): the outcome's
+  // own value — quantity × price when it was recorded — never a projection.
+  const purchases = rows.outcomes.filter((o) => o.purchaseType !== 'NONE');
+  const value = {
+    amount: purchases.reduce((sum, o) => sum + (Number.isFinite(o.value) ? (o.value as number) : 0), 0),
+    currency: purchases.find((o) => o.currency)?.currency ?? null,
+  };
   return {
     intents: rows.intents.length,
     follow_ups_sent: rows.intents.filter((i) => i.followUpSentAt).length,
@@ -59,6 +74,7 @@ export function funnel(rows: InsightRows) {
     reservations: rows.reservations.length,
     completed: rows.reservations.filter((r) => r.status === 'COMPLETED').length,
     outcomes,
+    value,
   };
 }
 

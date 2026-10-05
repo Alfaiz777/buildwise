@@ -70,18 +70,18 @@ export function DemoGuide({ brandId }: { brandId: string }) {
           </a>
         </li>
         <li>
-          <strong>See why.</strong> Here, open the conversation: the transcript exactly as the customer saw it, and the
-          decision trace with the eligible and excluded stores and the fresh re-check before the hold.{' '}
+          <strong>See why.</strong> Here, open the conversation: its journey from the website to the pickup, the chat
+          exactly as the customer saw it, and why Qwikspot chose that store.{' '}
           <Link to="/brand/conversations">Conversations</Link>
         </li>
         <li>
           <strong>Measure the outcome.</strong> The pickup counts as an in-store purchase; read the weekday insight
-          built from four weeks of flagged synthetic history. <Link to="/brand/outcomes">Insights</Link>
+          built from four weeks of flagged synthetic history. <Link to="/brand/insights">Insights</Link>
         </li>
         <li>
           <strong>Follow up.</strong> In the shopper demo&apos;s <em>Demo controls</em>, sign in as a demo shopper, add
-          to bag and leave. After about two minutes, <em>Run due follow-ups</em> sends a cart-abandonment follow-up with
-          quick replies. <Link to="/brand/conversations">Conversations</Link>
+          to bag and leave. After about two minutes, <em>Process due work now</em> sends a cart-abandonment follow-up
+          with quick replies. <Link to="/brand/conversations">Conversations</Link>
         </li>
       </ol>
 

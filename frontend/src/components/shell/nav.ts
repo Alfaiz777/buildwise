@@ -1,4 +1,14 @@
-import { BarChart3, Building2, ClipboardList, LayoutDashboard, MessagesSquare, type LucideIcon } from 'lucide-react';
+import {
+  BarChart3,
+  Building2,
+  CalendarCheck,
+  ClipboardList,
+  LayoutDashboard,
+  MessagesSquare,
+  Network,
+  Settings,
+  type LucideIcon,
+} from 'lucide-react';
 import type { Scope } from '../../api/apiContext';
 
 export interface NavItem {
@@ -7,6 +17,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** Match only this exact path (for section roots such as /brand). */
   end?: boolean;
+  /** UI-3: a live count shown on the item (e.g. conversations waiting for a person). */
+  badge?: 'handoffs';
 }
 
 export const CONSOLE_NAME: Record<Scope, string> = {
@@ -19,8 +31,11 @@ export const CONSOLE_NAME: Record<Scope, string> = {
 export const NAV: Record<Scope, NavItem[]> = {
   BRAND: [
     { to: '/brand', label: 'Overview', icon: LayoutDashboard, end: true },
-    { to: '/brand/conversations', label: 'Conversations', icon: MessagesSquare },
-    { to: '/brand/outcomes', label: 'Insights', icon: BarChart3 },
+    { to: '/brand/conversations', label: 'Conversations', icon: MessagesSquare, badge: 'handoffs' },
+    { to: '/brand/reservations', label: 'Reservations', icon: CalendarCheck },
+    { to: '/brand/insights', label: 'Insights', icon: BarChart3 },
+    { to: '/brand/network', label: 'Network', icon: Network },
+    { to: '/brand/settings', label: 'Settings', icon: Settings },
   ],
   RETAIL: [{ to: '/store', label: 'Today', icon: ClipboardList, end: true }],
   PLATFORM: [{ to: '/platform', label: 'Overview', icon: Building2, end: true }],

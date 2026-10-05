@@ -1,6 +1,6 @@
 import { ExternalLink, LogOut } from 'lucide-react';
-import { useCallback, type ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useMe } from '../../account/meContext';
 import { useApi } from '../../api/apiContext';
 import { useAuth } from '../../auth/authContext';
@@ -36,6 +36,28 @@ export function AppShell({ children }: { children: ReactNode }) {
     ),
   );
   const shopperDemo = me.scope === 'BRAND' && demo.data?.reset_available === true;
+  // UI-3: conversations waiting for a person, as a count on the Conversations item.
+  const waiting = useLoad(
+    useCallback(
+      () =>
+        me.scope === 'BRAND'
+          ? api.get<{ conversations: { human_handoff: boolean }[] }>('/api/brand/conversations')
+          : Promise.resolve({ conversations: [] }),
+      [api, me.scope],
+    ),
+  );
+  const handoffs = waiting.data?.conversations.filter((c) => c.human_handoff).length ?? 0;
+  // Refreshed on every page change, so the count stays current while the admin works.
+  const { pathname } = useLocation();
+  const reloadWaiting = waiting.reload;
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    if (me.scope === 'BRAND') reloadWaiting();
+  }, [pathname, me.scope, reloadWaiting]);
 
   return (
     <div className={`shell shell--${me.scope.toLowerCase()}`}>
@@ -54,8 +76,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               rel="noopener noreferrer"
               aria-label="Open shopper demo (new tab)"
             >
-              <span className="shell-top__open">Open&nbsp;</span>shopper demo{' '}
-              <ExternalLink size={14} aria-hidden="true" />
+              <span className="shell-top__open">Open</span>shopper demo <ExternalLink size={14} aria-hidden="true" />
             </a>
           )}
           <span className="shell-top__email">{me.user.email ?? me.user.user_id}</span>
@@ -68,11 +89,16 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
       <nav className="shell-nav" aria-label={CONSOLE_NAME[me.scope]}>
         <ul>
-          {nav.map(({ to, label: text, icon: Icon, end }) => (
+          {nav.map(({ to, label: text, icon: Icon, end, badge }) => (
             <li key={to}>
               <NavLink to={to} end={end} className="shell-nav__link">
                 <Icon size={18} aria-hidden="true" />
                 <span>{text}</span>
+                {badge === 'handoffs' && handoffs > 0 && (
+                  <span className="shell-nav__badge" aria-label={`${handoffs} waiting for a person`}>
+                    {handoffs}
+                  </span>
+                )}
               </NavLink>
             </li>
           ))}

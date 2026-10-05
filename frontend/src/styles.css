@@ -588,3 +588,237 @@ code {
     align-items: flex-start;
   }
 }
+
+/* ---------------------------------------------------------------- Brand Console (UI-3) */
+.overview-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.overview-head .filters {
+  margin: 0;
+}
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-4);
+  margin: var(--space-4) 0;
+  align-items: start;
+}
+.attention-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.attention {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+.attention svg {
+  flex: none;
+  margin-top: 3px;
+}
+.attention--warning svg {
+  color: var(--warning);
+}
+.attention--danger svg {
+  color: var(--danger);
+}
+.attention--info svg {
+  color: var(--info);
+}
+.attention-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--success);
+}
+.setup-card {
+  margin: var(--space-4) 0;
+}
+.setup-card > summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  cursor: pointer;
+  list-style: none;
+}
+.setup-card > summary::-webkit-details-marker {
+  display: none;
+}
+.setup-card > summary .ui-card__title {
+  margin: 0;
+}
+.setup-card[open] > summary {
+  margin-bottom: var(--space-3);
+}
+.conversation-detail {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.trace-card {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+}
+.trace-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.why-sentence {
+  margin: var(--space-2) 0;
+  font-size: var(--text-md, 1rem);
+}
+.cell-product {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.synthetic-toggle {
+  margin: var(--space-2) 0;
+}
+.suggestion-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+}
+tr.is-target td {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+.settings-list {
+  display: grid;
+  grid-template-columns: minmax(0, 16rem) minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+.settings-list dt {
+  color: var(--color-text-muted);
+}
+.settings-list dd {
+  margin: 0;
+}
+.settings-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+ul.plain {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (max-width: 640px) {
+  .settings-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settings-list dd {
+    margin-bottom: var(--space-2);
+  }
+}
+
+/* Hand-built SVG charts (Insights) */
+.chart {
+  margin: 0 0 var(--space-3);
+}
+.chart__svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.chart__label {
+  fill: var(--color-text);
+  font-size: 13px;
+}
+.chart__value {
+  fill: var(--color-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+.chart__step {
+  fill: var(--color-text-muted);
+  font-size: 12px;
+}
+.chart__flag {
+  fill: var(--danger);
+  font-size: 10px;
+  font-weight: 700;
+}
+.chart__bar,
+.chart__col {
+  fill: var(--color-primary);
+}
+.chart__col {
+  opacity: 0.55;
+}
+.chart__col--peak {
+  opacity: 1;
+}
+.chart__col--danger {
+  fill: var(--danger);
+}
+.chart__caption {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+.chart__key {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+.chart__key--all {
+  background: var(--color-primary);
+  opacity: 0.55;
+}
+.chart__key--danger {
+  background: var(--danger);
+}
+.ui-link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ui-link-button:hover:not(:disabled) {
+  background: none;
+  color: var(--color-primary);
+}
+
+/* Inline checkbox labels (synthetic toggles) */
+.synthetic-toggle label,
+.overview-head label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+.synthetic-toggle input[type='checkbox'],
+.overview-head input[type='checkbox'] {
+  width: auto;
+  margin: 0;
+}

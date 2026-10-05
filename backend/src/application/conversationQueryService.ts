@@ -1,4 +1,5 @@
 import { resolveMessagingSettings } from '../domain/brandSettings.js';
+import { journeyKeyFor } from '../domain/outcomeRules.js';
 import { Errors } from '../lib/errors.js';
 import type {
   JsonValue,
@@ -14,7 +15,9 @@ import type {
   RecommendationRepository,
 } from '../ports/conversationRepositories.js';
 import type { BrandRepository, ProductRepository, StoreRepository } from '../ports/repositories.js';
-import type { ReservationRepository } from '../ports/reservations.js';
+import type { OutcomeRecord, OutcomeRepository } from '../ports/outcomes.js';
+import type { ReservationRecord, ReservationRepository } from '../ports/reservations.js';
+import { OutcomeService } from './outcomeService.js';
 
 export interface IntentView {
   intent: IntentRecord;
@@ -36,6 +39,8 @@ export interface ConversationDetail extends ConversationSummary {
   messages: MessageRecord[];
   webEvents: { eventType: string; at: string; payload: Record<string, string | number | null> }[];
   recommendations: (RecommendationRecord & { reservation: ReservationSummary | null })[];
+  /** UI-3: the journey's recorded outcome(s), one per journey key of its decisions. */
+  outcomes: (OutcomeRecord & { storeName: string | null })[];
 }
 
 /** The reservation a decision created, for the "Why Qwikspot did this" trace. */
@@ -46,6 +51,36 @@ export interface ReservationSummary {
   storeName: string;
   pickupCode: string;
   expiresAt: string;
+  /** UI-3: what was held and how the hold moved, from the record's own timestamps. */
+  quantity: number;
+  productTitle: string | null;
+  variantTitle: string | null;
+  statusHistory: StatusStep[];
+}
+
+export interface StatusStep {
+  status: string;
+  at: string;
+  by?: string | null;
+  reason?: string | null;
+}
+
+/**
+ * The reservation's status changes in order, derived from the timestamps it stores (no
+ * separate history is kept). The internal refusal note is never included.
+ */
+export function statusHistory(r: ReservationRecord): StatusStep[] {
+  const steps: StatusStep[] = [{ status: 'PENDING', at: r.createdAt }];
+  const add = (status: string, at: string | null) => at && steps.push({ status, at });
+  add('CONFIRMED', r.confirmedAt);
+  add('READY', r.readyAt);
+  add('CUSTOMER_ARRIVED', r.customerArrivedAt);
+  add('COMPLETED', r.completedAt);
+  if (r.status === 'CANCELLED' && r.cancelledAt) {
+    steps.push({ status: 'CANCELLED', at: r.cancelledAt, by: r.cancelledBy, reason: r.cancelReason });
+  }
+  if (r.status === 'EXPIRED') steps.push({ status: 'EXPIRED', at: r.expiresAt });
+  return steps.sort((a, b) => a.at.localeCompare(b.at));
 }
 
 /** Opaque, non-reversible reference for an anonymous session (never the raw session ID). */
@@ -68,6 +103,8 @@ export class ConversationQueryService {
       /** M5: reservations referenced by a decision trace. */
       reservations?: ReservationRepository;
       stores?: StoreRepository;
+      /** UI-3: the journey's outcome on the conversation detail. */
+      outcomes?: OutcomeRepository;
     },
   ) {}
 
@@ -146,12 +183,32 @@ export class ConversationQueryService {
         )
         .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
         .map((e) => ({ eventType: e.eventType, at: e.timestamp, payload: displayPayload(e.payload) })),
-      recommendations: await this.withReservations(brandId, recommendations),
+      recommendations: await this.withReservations(brandId, recommendations, titles),
+      outcomes: await this.outcomesOf(brandId, recommendations),
     };
   }
 
-  private async withReservations(brandId: string, recommendations: RecommendationRecord[]) {
+  /** Outcome IDs are deterministic per journey (OutcomeService.idFor): no query needed. */
+  private async outcomesOf(brandId: string, recommendations: RecommendationRecord[]) {
+    if (!this.deps.outcomes) return [];
+    const keys = [...new Set(recommendations.map(journeyKeyFor))];
+    const found = await Promise.all(
+      keys.map((key) => this.deps.outcomes!.get(brandId, OutcomeService.idFor(brandId, key))),
+    );
     const stores = this.deps.stores ? await this.deps.stores.list(brandId) : [];
+    return found
+      .filter((o): o is OutcomeRecord => !!o)
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+      .map((o) => ({ ...o, storeName: stores.find((s) => s.storeId === o.storeId)?.storeName ?? null }));
+  }
+
+  private async withReservations(
+    brandId: string,
+    recommendations: RecommendationRecord[],
+    titles: Awaited<ReturnType<ConversationQueryService['titles']>>,
+  ) {
+    const stores = this.deps.stores ? await this.deps.stores.list(brandId) : [];
+    const variants = await this.deps.products.listVariants(brandId);
     return Promise.all(
       recommendations.map(async (r) => {
         const id = r.trace?.executed_action?.reservation_id;
@@ -166,6 +223,13 @@ export class ConversationQueryService {
                 storeName: stores.find((s) => s.storeId === reservation.storeId)?.storeName ?? reservation.storeId,
                 pickupCode: reservation.pickupCode,
                 expiresAt: reservation.expiresAt,
+                quantity: reservation.quantity,
+                productTitle: (() => {
+                  const productId = variants.find((v) => v.variantId === reservation.variantId)?.productId;
+                  return productId ? (titles.product.get(productId) ?? null) : null;
+                })(),
+                variantTitle: titles.variant.get(reservation.variantId) ?? null,
+                statusHistory: statusHistory(reservation),
               }
             : null,
         };

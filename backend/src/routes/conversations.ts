@@ -80,8 +80,29 @@ const recommendationJson = (r: ConversationDetail['recommendations'][number]) =>
         store_name: r.reservation.storeName,
         pickup_code: r.reservation.pickupCode,
         expires_at: r.reservation.expiresAt,
+        quantity: r.reservation.quantity,
+        product_title: r.reservation.productTitle,
+        variant_title: r.reservation.variantTitle,
+        status_history: r.reservation.statusHistory.map((s) => ({
+          status: s.status,
+          at: s.at,
+          ...(s.by !== undefined ? { by: s.by } : {}),
+          ...(s.reason !== undefined ? { reason: s.reason } : {}),
+        })),
       }
     : null,
+});
+
+const outcomeJson = (o: ConversationDetail['outcomes'][number]) => ({
+  purchase_type: o.purchaseType,
+  evidence: o.evidence,
+  channel: o.channel,
+  store_id: o.storeId,
+  store_name: o.storeName,
+  reservation_id: o.reservationId,
+  value: o.value,
+  currency: o.currency,
+  timestamp: o.timestamp,
 });
 
 export function simulatorRouter(simulator: SimulatorService, queries: ConversationQueryService): Router {
@@ -151,6 +172,7 @@ export function brandConversationsRouter(
         handoff_at: r.conversation.handoffAt,
         last_message_at: r.conversation.lastMessageAt,
         last_inbound_at: r.conversation.lastInboundAt,
+        demo_history: r.conversation.demoHistory === true,
         intent: r.intent ? intentJson(r.intent) : null,
       })),
     });
@@ -167,10 +189,12 @@ export function brandConversationsRouter(
       handoff_at: d.conversation.handoffAt,
       last_inbound_at: d.conversation.lastInboundAt,
       brand_display_name: d.brandDisplayName,
+      demo_history: d.conversation.demoHistory === true,
       intent: d.intent ? intentJson(d.intent) : null,
       web_events: d.webEvents.map((e) => ({ event_type: e.eventType, at: e.at, details: e.payload })),
       messages: d.messages.map(messageJson),
       recommendations: d.recommendations.map(recommendationJson),
+      outcomes: d.outcomes.map(outcomeJson),
     });
   });
 

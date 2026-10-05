@@ -79,6 +79,8 @@ export class MemoryInsightsReader implements InsightsReader {
           purchaseType: o.purchaseType,
           aiRecommendationId: o.aiRecommendationId,
           timestamp: o.timestamp,
+          value: o.value,
+          currency: o.currency,
         })),
     };
     return { rows, historyRecords: 0 };
