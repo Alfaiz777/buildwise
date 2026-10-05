@@ -179,7 +179,7 @@ describe('console shell', () => {
   it('Store and Platform shells name their console and context', async () => {
     shell(STORE);
     expect(await screen.findByText('Store Console')).toBeInTheDocument();
-    expect(screen.getByText('Andheri Store · Demo Beauty Co')).toBeInTheDocument();
+    expect(screen.getByText('Andheri Store · for Demo Beauty Co via North Retail')).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Store Console' })).toBeInTheDocument();
   });
 

@@ -2,6 +2,7 @@ import {
   conversionByAction,
   fillRate,
   funnel,
+  storeSlice,
   suggestions,
   unmetDemand,
   weekdayPanel,
@@ -73,6 +74,27 @@ export class InsightsService {
       weekday: { days: weekdayPanel(rows, catalog), reading: weekdayReading(rows, catalog) },
       fill_rate: fillRate(rows, catalog),
       suggestions: suggestions(rows, catalog, options.days),
+    };
+  }
+
+  /** GET /api/retail/stores/:storeId/insights (UI-4): one store's slice; the caller checks the store. */
+  async storePanel(
+    brandId: string,
+    storeId: string,
+    options: { days: (typeof INSIGHT_PERIODS)[number]; includeHistory: boolean },
+  ) {
+    const now = this.deps.now();
+    const fromIso = new Date(now.getTime() - options.days * 24 * 60 * 60_000).toISOString();
+    const [{ rows }, catalog] = await Promise.all([
+      this.deps.reader.read(brandId, { fromIso, toIso: now.toISOString(), includeHistory: options.includeHistory }),
+      this.catalog(brandId),
+    ]);
+    const timezone = catalog.stores.find((s) => s.storeId === storeId)?.timezone ?? catalog.defaultTimezone;
+    return {
+      store_id: storeId,
+      period: { days: options.days, from: fromIso, to: now.toISOString(), timezone },
+      demo_history: { included: options.includeHistory },
+      ...storeSlice(rows, catalog, storeId, options.days),
     };
   }
 }

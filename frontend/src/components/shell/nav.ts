@@ -2,11 +2,14 @@ import {
   BarChart3,
   Building2,
   CalendarCheck,
+  Boxes,
   ClipboardList,
+  History,
   LayoutDashboard,
   MessagesSquare,
   Network,
   Settings,
+  TrendingUp,
   type LucideIcon,
 } from 'lucide-react';
 import type { Scope } from '../../api/apiContext';
@@ -18,7 +21,7 @@ export interface NavItem {
   /** Match only this exact path (for section roots such as /brand). */
   end?: boolean;
   /** UI-3: a live count shown on the item (e.g. conversations waiting for a person). */
-  badge?: 'handoffs';
+  badge?: 'handoffs' | 'pending';
 }
 
 export const CONSOLE_NAME: Record<Scope, string> = {
@@ -37,6 +40,11 @@ export const NAV: Record<Scope, NavItem[]> = {
     { to: '/brand/network', label: 'Network', icon: Network },
     { to: '/brand/settings', label: 'Settings', icon: Settings },
   ],
-  RETAIL: [{ to: '/store', label: 'Today', icon: ClipboardList, end: true }],
+  RETAIL: [
+    { to: '/store', label: 'Today', icon: ClipboardList, end: true, badge: 'pending' },
+    { to: '/store/history', label: 'History', icon: History },
+    { to: '/store/stock', label: 'Stock', icon: Boxes },
+    { to: '/store/demand', label: 'Demand', icon: TrendingUp },
+  ],
   PLATFORM: [{ to: '/platform', label: 'Overview', icon: Building2, end: true }],
 };

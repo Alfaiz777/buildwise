@@ -10,6 +10,9 @@ import { Wordmark } from './Wordmark';
 import { CONSOLE_NAME, NAV } from './nav';
 import { RoleBanner } from './RoleBanner';
 
+/** Dispatched on window when a page changed what the nav counts (UI-4). */
+export const QUEUE_CHANGED = 'qs:queue-changed';
+
 /**
  * The frame of every console (UI-0): header, left sidebar on desktop, bottom tab bar on
  * phones, a role accent and the first-visit role banner. Scope comes from /api/me only.
@@ -19,7 +22,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { signOut } = useAuth();
   const context =
     me.scope === 'RETAIL'
-      ? `${me.store.store_name} · ${me.brand_name}`
+      ? `${me.store.store_name} · for ${me.brand_name} via ${me.retailer_name}`
       : me.scope === 'BRAND'
         ? me.brand_name
         : 'Qwikspot platform';
@@ -36,17 +39,22 @@ export function AppShell({ children }: { children: ReactNode }) {
     ),
   );
   const shopperDemo = me.scope === 'BRAND' && demo.data?.reset_available === true;
-  // UI-3: conversations waiting for a person, as a count on the Conversations item.
+  // UI-3: conversations waiting for a person (Brand); UI-4: holds waiting for confirmation (Store).
   const waiting = useLoad(
-    useCallback(
-      () =>
-        me.scope === 'BRAND'
-          ? api.get<{ conversations: { human_handoff: boolean }[] }>('/api/brand/conversations')
-          : Promise.resolve({ conversations: [] }),
-      [api, me.scope],
-    ),
+    useCallback(async (): Promise<number> => {
+      if (me.scope === 'BRAND') {
+        const r = await api.get<{ conversations: { human_handoff: boolean }[] }>('/api/brand/conversations');
+        return r.conversations.filter((c) => c.human_handoff).length;
+      }
+      if (me.scope === 'RETAIL') {
+        const r = await api.get<{ reservations: { status: string }[] }>('/api/reservations?view=active');
+        return r.reservations.filter((x) => x.status === 'PENDING').length;
+      }
+      return 0;
+    }, [api, me.scope]),
   );
-  const handoffs = waiting.data?.conversations.filter((c) => c.human_handoff).length ?? 0;
+  const handoffs = me.scope === 'BRAND' ? (waiting.data ?? 0) : 0;
+  const pending = me.scope === 'RETAIL' ? (waiting.data ?? 0) : 0;
   // Refreshed on every page change, so the count stays current while the admin works.
   const { pathname } = useLocation();
   const reloadWaiting = waiting.reload;
@@ -56,8 +64,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       first.current = false;
       return;
     }
-    if (me.scope === 'BRAND') reloadWaiting();
+    if (me.scope !== 'PLATFORM') reloadWaiting();
   }, [pathname, me.scope, reloadWaiting]);
+  // A page can ask for a fresh count (e.g. the store's queue changed): window event.
+  useEffect(() => {
+    const onChange = () => reloadWaiting();
+    window.addEventListener(QUEUE_CHANGED, onChange);
+    return () => window.removeEventListener(QUEUE_CHANGED, onChange);
+  }, [reloadWaiting]);
 
   return (
     <div className={`shell shell--${me.scope.toLowerCase()}`}>
@@ -97,6 +111,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {badge === 'handoffs' && handoffs > 0 && (
                   <span className="shell-nav__badge" aria-label={`${handoffs} waiting for a person`}>
                     {handoffs}
+                  </span>
+                )}
+                {badge === 'pending' && pending > 0 && (
+                  <span className="shell-nav__badge" aria-label={`${pending} new holds to confirm`}>
+                    {pending}
                   </span>
                 )}
               </NavLink>

@@ -15,6 +15,8 @@ import type {
 export interface StoreStockLine extends InventoryRecord {
   productTitle: string | null;
   variantTitle: string | null;
+  /** UI-4: the product image for the store's stock table. */
+  imageUrl: string | null;
   availableQuantity: number;
   /** Older than brand.settings.retail_freshness_hours (Change 14, G1). */
   stale: boolean;
@@ -63,6 +65,7 @@ export class AccountService {
       this.deps.products.listVariants(principal.brandId),
     ]);
     const productTitle = new Map(products.map((p) => [p.productId, p.title]));
+    const productImage = new Map(products.map((p) => [p.productId, p.imageUrl ?? null]));
     const freshness = resolveFreshnessHours((await this.deps.brands?.getById(principal.brandId))?.settings ?? {});
     const now = (this.deps.now ?? (() => new Date()))();
     const variant = new Map(variants.map((v) => [v.variantId, v]));
@@ -73,6 +76,7 @@ export class AccountService {
           ...row,
           productTitle: v ? (productTitle.get(v.productId) ?? null) : null,
           variantTitle: v?.title ?? null,
+          imageUrl: v ? (productImage.get(v.productId) ?? null) : null,
           availableQuantity: availableQuantity(row.quantity, row.reservedQuantity),
           stale: isStockStale(row.lastUpdatedAt, now, freshness),
         };

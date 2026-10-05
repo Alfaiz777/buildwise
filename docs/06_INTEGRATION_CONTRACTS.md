@@ -581,6 +581,7 @@ POST  /api/brand/demo/reset                        (M7: Reset demo — DEMO_MODE
 # Retailer Console (RETAIL_ADMIN, own store only) — §14.9
 GET   /api/retail/stores/:storeId                  (own store; any other store → 404)
 GET   /api/retail/stores/:storeId/inventory        (own store's stock, read-only; any other store → 404)
+GET   /api/retail/stores/:storeId/insights         (Change 16, UI-4: the own store's demand slice; any other store → 404)
 
 # Brand + Retailer Consoles (BRAND_ADMIN view, RETAIL_ADMIN operate its own store)
 GET   /api/reservations
@@ -1127,9 +1128,13 @@ Auth: `FIREBASE`, role `RETAIL_ADMIN`, for every route in this section. Scope is
 
 | `GET /api/retail/stores/:storeId/inventory` | the own store's stock, read-only: `items[] { sku, canonical_sku, variant_id, product_title, variant_title, quantity, reserved_quantity, available_quantity, availability_status, offline_price, last_updated_at }`. Any other store — including another store of the same retailer — → `404`. |
 
-| `GET /api/retail/stores/:storeId/summary` | M6 "This week" for the own store: `{ days: 7, reservations, completed, refused, expired }`. Any other store → `404`. |
+| `GET /api/retail/stores/:storeId/summary` | M6 "This week" for the own store: `{ days: 7, reservations, completed, refused, expired }`; UI-4 adds `completion_pct` (completed ÷ finished holds, `null` when none finished), `value { amount, currency }` (Σ completed quantity × the store's current offline price — an estimate) and `synthetic` (how many counted holds are generated history). Any other store → `404`. |
+
+| `GET /api/retail/stores/:storeId/insights?days=7\|28&include_history=` | UI-4 "Demand near you": `{ store_id, period, demo_history: { included }, missed[] { sku, label, weekday, reason, count }, fill_rate[] { weekday, nearest, had_stock, fill_pct, refusals }, refusals { NOT_ACTUALLY_IN_STOCK, DAMAGED, STORE_CLOSING_EARLY, OTHER }, suggestions[] { rule, text } }` — only this store's rows, no evidence ids, no customer data. Any other store, including a sibling store of the same retailer → `404`. |
 
 Other scopes calling `/api/retail/*` → `403 FORBIDDEN`. The store's reservation queue uses `GET /api/reservations` and `PATCH /api/reservations/:id` (§14.4) under the same store-level rule.
+
+UI-4: for a `RETAIL_ADMIN`, reservation rows (list and `GET /api/reservations/:id`) add `why_here` (`{ text, distance_km, closer_unavailable[] { store_name, reason }, options }`, or `null` without a trace), `image_url` and `demo_history`. `why_here` names other stores with their exclusion reason only; the only distance is this store's own. The store never receives `conversation_id` (a `BRAND_ADMIN` row field). Inventory rows add `image_url`.
 
 ---
 

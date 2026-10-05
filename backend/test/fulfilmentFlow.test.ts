@@ -172,6 +172,9 @@ describe('store queue and transitions (Change 13, F1–F2)', () => {
       completed: 0,
       refused: 0,
       expired: 0,
+      completion_pct: null, // the only hold is still active
+      value: { amount: 0, currency: 'INR' },
+      synthetic: 0,
     });
     expect((await s.get('/api/retail/stores/sc_B/summary', 'radmin_scA')).status).toBe(404);
   });

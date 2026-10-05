@@ -171,6 +171,8 @@ Rules:
 - Customers are never Firebase-authenticated (§4.3).
 - Tenant data-access helpers accept only brand- or retail-scope principals. Platform code reaches brand data only through explicit, audited platform services (§4.2).
 
+**What a store may see about a hold (Change 16, UI-4).** The Retail Admin sees the product, quantity, status, times, the masked customer ("Customer •••• 4821") and **why the hold came to the store**: other stores' names with the reason they could not take it, and only this store's own distance from the customer. Never the customer's location, area, coordinates, messages, identity or conversation, never another store's distance or stock, never a recommendation or evidence id. The store's demand view (`GET /api/retail/stores/:storeId/insights`) is counts about this store only; any other store is `404`.
+
 ## 4.2 Platform scope
 
 `PLATFORM_ADMIN` operates the Qwikspot platform. It does **not** operate inside a brand.
