@@ -48,7 +48,9 @@ describe('shopper session identity', () => {
     const world = await synced();
     const ok = await start(world, { brand_id: 'brand_A', shopper_id: 'gid://shopify/Customer/3002' });
     const payload = JSON.parse(Buffer.from(ok.body.session_token.split('.')[0], 'base64url').toString());
-    expect(payload.r).toBe('shopper_3002');
+    // UI-6: a fresh customer per session, never the shared synthetic shopper's ref.
+    expect(payload.r).toMatch(/^shopper_3002_[a-z2-9]{8}$/);
+    expect(payload.s).toBe('gid://shopify/Customer/3002');
     expect((await start(world, { brand_id: 'brand_A', shopper_id: 'gid://shopify/Customer/9999' })).status).toBe(404);
   });
 
@@ -164,5 +166,80 @@ describe('where the shopper demo exists (docs/07 §19, Change 16)', () => {
       demo_mode: true,
       shopper_demo: { brand_id: 'brand_A' },
     });
+  });
+});
+
+describe('per-session demo shoppers (UI-6, security-review note 1)', () => {
+  const SERUM_30 = 'gid://shopify/ProductVariant/2001';
+  const ASHA = 'gid://shopify/Customer/3002';
+  const web = (k: string) => ({ web_session_id: `ws_${k}_000000`, visitor_id: `vis_${k}_00000` });
+  const signIn = (world: World, k: string, token?: string, shopperId = ASHA) => {
+    const req = request(world.app).post('/api/demo-storefront/shopper-sign-in').set('Origin', TEST_ORIGIN);
+    if (token) req.set(HEADER, token);
+    return req.send({ brand_id: 'brand_A', shopper_id: shopperId, ...web(k) });
+  };
+  const event = (world: World, k: string, body: object) =>
+    request(world.app)
+      .post('/api/intents')
+      .set('Origin', TEST_ORIGIN)
+      .send({ brand_id: 'brand_A', client_event_id: `ce_ps_${++n}`, ...web(k), ...body });
+  const sessionAs = async (world: World, shopperId = ASHA) =>
+    (await start(world, { brand_id: 'brand_A', shopper_id: shopperId })).body.session_token as string;
+  const refOf = (token: string) => JSON.parse(Buffer.from(token.split('.')[0]!, 'base64url').toString()).r as string;
+
+  it("two visitors who both sign in as Asha get their own customer and never see each other's messages", async () => {
+    const world = await synced();
+    const a = await sessionAs(world);
+    const b = await sessionAs(world);
+    expect(refOf(a)).not.toBe(refOf(b));
+    expect((await signIn(world, 'a', a)).status).toBe(200);
+    expect((await signIn(world, 'b', b)).status).toBe(200);
+
+    const customers = world.customers.customers.filter((c) => c.shopifyCustomerId === ASHA);
+    expect(customers).toHaveLength(2);
+    for (const c of customers) expect(c.consentState).toBe('OPTED_IN'); // Asha's consent, server-side
+    expect(new Set(customers.map((c) => c.customerId)).size).toBe(2);
+
+    await send(world, a, { type: 'TEXT', text: 'secret from visitor A' });
+    const seenByB = await poll(world, b);
+    expect(JSON.stringify(seenByB.body)).not.toContain('secret from visitor A');
+    expect(JSON.stringify((await poll(world, a)).body)).toContain('secret from visitor A');
+  });
+
+  it('a session for another shopper is refused; a bad token is 401; without a session the legacy link still works', async () => {
+    const world = await synced();
+    const meera = await sessionAs(world, 'gid://shopify/Customer/3003');
+    expect((await signIn(world, 'x', meera)).status).toBe(403); // a Meera session cannot sign in as Asha
+    expect((await signIn(world, 'y', 'not.a-token')).status).toBe(401);
+    const legacy = await signIn(world, 'z');
+    expect(legacy.status).toBe(200);
+    expect(legacy.body).not.toHaveProperty('simulator_customer_ref');
+  });
+
+  it("cart abandonment: the follow-up arrives in THIS Asha session's chat, and in no other", async () => {
+    const clock = { t: Date.parse('2026-10-05T10:00:00.000Z') };
+    const world = await synced({ now: () => new Date(clock.t) });
+    const a = await sessionAs(world);
+    const b = await sessionAs(world);
+    await signIn(world, 'a', a);
+    await signIn(world, 'b', b);
+    await event(world, 'a', { event_type: 'PRODUCT_VIEW', shopify_variant_id: SERUM_30 });
+    await event(world, 'a', { event_type: 'ADD_TO_CART', shopify_variant_id: SERUM_30 });
+
+    clock.t += 3 * 60_000; // inactivity + the demo's delay, as in the judge script
+    const due = await request(world.app)
+      .post('/api/brand/follow-ups/process-due')
+      .set('Authorization', bearer('admin_a'));
+    expect(due.body).toMatchObject({ sent: 1 });
+
+    const mine = (await poll(world, a)).body.messages as { text: string; options: { option_id: string }[] }[];
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.text).toContain('Reply STOP to opt out.');
+    expect(mine[0]!.options.map((o) => o.option_id)).toEqual([
+      expect.stringMatching(/^recheck:/),
+      'buy_online',
+      'handoff',
+    ]);
+    expect((await poll(world, b)).body.messages).toEqual([]);
   });
 });

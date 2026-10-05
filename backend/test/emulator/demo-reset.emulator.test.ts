@@ -106,6 +106,23 @@ const countsOf = (snap: Record<string, unknown>) => {
   return counts;
 };
 
+/** Customers made by "Sign in as Asha" sessions (`sim:shopper_3002_xxxxxxxx`) and their identities. */
+let sessionCustomerIds: string[] = [];
+const perSessionShoppers = async () => {
+  const customers = (await db.collection(`brands/${DEMO}/customers`).get()).docs.filter((d) =>
+    /shopper_3002_[a-z2-9]{8}/.test(String(d.get('display_ref') ?? '')),
+  );
+  if (customers.length) sessionCustomerIds = customers.map((d) => d.id);
+  const ids = new Set(sessionCustomerIds);
+  const identities = (await db.collection(`brands/${DEMO}/channelIdentities`).get()).docs.filter((d) =>
+    ids.has(String(d.get('customer_id'))),
+  );
+  const conversations = (await db.collection(`brands/${DEMO}/conversations`).get()).docs.filter((d) =>
+    ids.has(String(d.get('customer_id'))),
+  );
+  return customers.length + identities.length + conversations.length;
+};
+
 const reset = (key: string, target = app) =>
   request(target).post('/api/brand/demo/reset').set('Authorization', `Bearer ${tokens[key]}`);
 
@@ -169,6 +186,32 @@ describe('Reset demo (Change 14, G4)', () => {
     await send({ type: 'LOCATION', latitude: 19.12, longitude: 72.9 });
     const hold = await send({ type: 'INTERACTIVE_REPLY', option_id: 'hold:st_north_2' });
     expect(hold.body.decision.executed_action?.type).toBe('RESERVATION_CREATED');
+
+    // UI-6: a judge signs in as Asha in the shopper demo — a per-session customer and chat.
+    const ORIGIN = 'http://localhost:5173';
+    const session = await request(app)
+      .post('/api/shopper/session')
+      .set('Origin', ORIGIN)
+      .send({ brand_id: DEMO, shopper_id: 'gid://shopify/Customer/3002' });
+    expect(session.status).toBe(201);
+    const token = session.body.session_token as string;
+    const signedIn = await request(app)
+      .post('/api/demo-storefront/shopper-sign-in')
+      .set('Origin', ORIGIN)
+      .set('X-Qwikspot-Shopper-Session', token)
+      .send({
+        brand_id: DEMO,
+        shopper_id: 'gid://shopify/Customer/3002',
+        web_session_id: 'ws_reset_asha_0001',
+        visitor_id: 'vis_reset_asha_01',
+      });
+    expect(signedIn.status).toBe(200);
+    await request(app)
+      .post('/api/shopper/messages')
+      .set('Origin', ORIGIN)
+      .set('X-Qwikspot-Shopper-Session', token)
+      .send({ client_message_id: 'cm_reset_asha_0001', content: { type: 'TEXT', text: 'hello from a judge' } });
+    expect(await perSessionShoppers()).toBeGreaterThan(0);
     expect(countsOf(await snapshot(DEMO))).not.toEqual(countsOf(seeded));
   }, 60_000);
 
@@ -193,6 +236,8 @@ describe('Reset demo (Change 14, G4)', () => {
     expect(audit.docs.filter((d) => d.get('actor_type') === 'USER').map((d) => d.get('result'))).toEqual(['SUCCESS']);
     expect((await db.collection('intentTokens').where('brand_id', '==', DEMO).get()).size).toBe(0);
     expect((await db.collection('webhookReceipts').where('brand_id', '==', DEMO).get()).size).toBe(0);
+    // UI-6: the judge's per-session Asha — customer, identity and conversation — is gone.
+    expect(await perSessionShoppers()).toBe(0);
     // The Retail Admin still signs in to the same store.
     const me = await request(app).get('/api/me').set('Authorization', `Bearer ${tokens.andheri}`);
     expect(me.body).toMatchObject({ role: 'RETAIL_ADMIN', store_id: 'st_north_2' });

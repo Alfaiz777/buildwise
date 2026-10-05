@@ -10,8 +10,9 @@ interface ResetResult {
 }
 
 /**
- * The judge's guide (Change 14, G3/G4), shown only to the shared demo brand's Brand Admin
- * when DEMO_MODE is on: six steps through the product, each with a button, and "Reset demo".
+ * The judge's guide (Change 14, G3/G4; UI-6), shown only to the shared demo brand's Brand
+ * Admin when DEMO_MODE is on: the 10-minute judge script (the same 8 steps as the README and
+ * scripts/judge-script.mjs), each with its link, and "Reset demo".
  */
 export function DemoGuide({ brandId }: { brandId: string }) {
   const shopUrl = `/shop?brand=${encodeURIComponent(brandId)}`;
@@ -47,41 +48,53 @@ export function DemoGuide({ brandId }: { brandId: string }) {
   return (
     <details className="demo-guide" open>
       <summary>
-        <strong>Demo guide</strong> <span className="muted small">— 6 steps, about 10 minutes, synthetic data</span>
+        <strong>Demo guide</strong>{' '}
+        <span className="muted small">— the 10-minute judge script, 8 steps, synthetic data</span>
       </summary>
       <ol>
         <li>
-          <strong>Shop like a customer.</strong> Open the shopper demo, choose Vitamin C Glow Serum 30 ml and tap{' '}
-          <em>Need it today? Check a store near you</em>. The brand&apos;s chat opens with the message ready.{' '}
+          <strong>See it as a shopper.</strong> Open the brand&apos;s demo store.{' '}
           <a href={shopUrl} {...newTab}>
             Open the shopper demo
           </a>
         </li>
         <li>
-          <strong>Ask for a store.</strong> Send the message, then <em>📍 → Near Powai</em>. Powai is out of stock, so
-          the assistant offers Andheri with the product card. Tap <em>Hold at Andheri</em>: the pickup pass and the
-          store&apos;s location arrive in the chat.
+          <strong>Need it today?</strong> Open Vitamin C Glow Serum, 30 ml, tap{' '}
+          <em>Need it today? Check a store near you</em> and send the message that is ready in the chat.
+        </li>
+        <li>
+          <strong>Hold at a store.</strong> In the chat, <em>📍 → Near Powai</em>. Powai is out of stock, so the
+          assistant offers Andheri. Tap <em>Hold at Andheri</em>: the pickup pass and the store&apos;s location arrive.
         </li>
         <li>
           <strong>Fulfil in store.</strong> In a new tab, sign in as <em>Retail Admin — Andheri Store</em>: Confirm →
-          Ready → Customer arrived → Complete with the pickup code. Each step appears in the shopper&apos;s chat.{' '}
+          Mark ready → Customer arrived → Complete with the pickup code from the chat. Each step appears in the
+          shopper&apos;s chat.{' '}
           <a href="/login?as=store" {...newTab}>
             Open a store sign-in tab
           </a>
         </li>
         <li>
-          <strong>See why.</strong> Here, open the conversation: its journey from the website to the pickup, the chat
-          exactly as the customer saw it, and why Qwikspot chose that store.{' '}
+          <strong>See the journey and why.</strong> Here, the conversation&apos;s timeline ends &quot;Picked up at
+          Andheri Store — in-store purchase&quot;, with one sentence on why Andheri was offered.{' '}
           <Link to="/brand/conversations">Conversations</Link>
         </li>
         <li>
-          <strong>Measure the outcome.</strong> The pickup counts as an in-store purchase; read the weekday insight
-          built from four weeks of flagged synthetic history. <Link to="/brand/insights">Insights</Link>
+          <strong>Measure it.</strong> The funnel, the weekday reading and suggestions, built from four weeks of flagged
+          synthetic history. <Link to="/brand/insights">Insights</Link>
         </li>
         <li>
-          <strong>Follow up.</strong> In the shopper demo&apos;s <em>Demo controls</em>, sign in as a demo shopper, add
-          to bag and leave. After about two minutes, <em>Process due work now</em> sends a cart-abandonment follow-up
-          with quick replies. <Link to="/brand/conversations">Conversations</Link>
+          <strong>Follow up.</strong> In the shop&apos;s <em>Demo controls</em>, sign in as Asha (opted in), add the
+          serum to the bag and leave. About three minutes later, <em>Process due work now</em> sends the follow-up to
+          Asha&apos;s chat — each sign-in is its own synthetic customer.{' '}
+          <Link to="/brand/conversations">Conversations</Link>
+        </li>
+        <li>
+          <strong>The platform view.</strong> Sign in as the Qwikspot team to see the network as aggregates — never a
+          customer.{' '}
+          <a href="/login?as=platform" {...newTab}>
+            Open a platform sign-in tab
+          </a>
         </li>
       </ol>
 
@@ -89,7 +102,10 @@ export function DemoGuide({ brandId }: { brandId: string }) {
         <button type="button" className="secondary" onClick={() => setConfirming(true)} disabled={resetting}>
           Reset demo
         </button>
-        <span className="muted small">Back to the seeded state: stock, catalogue and history.</span>
+        <span className="muted small">
+          Back to the seeded state: stock, catalogue and history; every judge&apos;s chats and demo shoppers are
+          removed.
+        </span>
       </div>
       {confirming && (
         <div role="alertdialog" aria-labelledby="reset-title" aria-describedby="reset-desc" className="notice">

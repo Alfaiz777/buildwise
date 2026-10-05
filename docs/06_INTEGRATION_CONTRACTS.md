@@ -1035,7 +1035,9 @@ The public twin of the simulator for the shopper's own chat (`/chat`). It enters
   "brand": { "brand_id": "brd_demo", "display_name": "Demo Beauty Co", "logo_url": "https://…/demo-beauty-co-logo.png" } }
 ```
 
-Without `shopper_id` the server creates a guest ref `judge_<8 base32>`; with one of the synthetic demo shopper ids it uses that shopper's ref (unknown id → `404 UNKNOWN_SHOPPER`). Audited `SHOPPER_SESSION_STARTED` (`GUEST` / `DEMO_SHOPPER`).
+Without `shopper_id` the server creates a guest ref `judge_<8 base32>`; with one of the synthetic demo shopper ids it creates a **fresh per-session ref** for that shopper, `shopper_3002_<8 base32>`, and the token carries `s` = the shopper id (UI-6; unknown id → `404 UNKNOWN_SHOPPER`).
+
+**`POST /api/demo-storefront/shopper-sign-in`** (UI-6) accepts the `X-Qwikspot-Shopper-Session` header: with a valid session for the same brand and `s = shopper_id`, the browser is linked to that session's own customer (created with the synthetic shopper's consent and Shopify customer id, server-side); a session for another shopper or brand → `403 SHOPPER_SESSION_MISMATCH`; an invalid token → `401`. Without the header the shared synthetic customer is used (brand-scoped simulator only). `GET /api/demo-storefront/shoppers` no longer returns a customer ref. Audited `SHOPPER_SESSION_STARTED` (`GUEST` / `DEMO_SHOPPER`).
 
 **`POST /api/shopper/messages`** header `X-Qwikspot-Shopper-Session`, body `{ "client_message_id": "cm_…", "content": { "type": "TEXT", "text": "…" } | { "type": "LOCATION", "latitude": 19.12, "longitude": 72.9 } | { "type": "INTERACTIVE_REPLY", "option_id": "hold:st_north_2" } }` → `200 { conversation_id, messages }`. Replays of a `client_message_id` return the original result.
 

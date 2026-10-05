@@ -6,6 +6,7 @@ import { useAuth } from '../auth/authContext';
 import { Wordmark } from '../components/shell/Wordmark';
 import { Button } from '../components/ui';
 import { useDemoConfig } from '../lib/demoConfig';
+import { usePageTitle } from '../lib/pageTitle';
 import { DemoLoginPanel } from './demo/DemoLoginPanel';
 
 function friendlyAuthError(err: unknown): string {
@@ -83,6 +84,7 @@ const parseAs = (value: string | null): LoginAs =>
   value === 'store' || value === 'platform' || value === 'brand' ? value : 'brand';
 
 export function LoginPage() {
+  usePageTitle('Sign in · Qwikspot');
   const { user, loading, signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();

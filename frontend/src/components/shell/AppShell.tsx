@@ -66,6 +66,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
     if (me.scope !== 'PLATFORM') reloadWaiting();
   }, [pathname, me.scope, reloadWaiting]);
+  // UI-6: the tab title names the page and the console ("Today · Store Console · Qwikspot").
+  useEffect(() => {
+    const item = [...nav]
+      .filter((n) => (n.end ? pathname === n.to : pathname === n.to || pathname.startsWith(`${n.to}/`)))
+      .sort((a, b) => b.to.length - a.to.length)[0];
+    document.title = `${item ? `${item.label} · ` : ''}${CONSOLE_NAME[me.scope]} · Qwikspot`;
+  }, [pathname, nav, me.scope]);
   // A page can ask for a fresh count (e.g. the store's queue changed): window event.
   useEffect(() => {
     const onChange = () => reloadWaiting();

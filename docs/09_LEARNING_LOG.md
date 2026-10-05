@@ -580,3 +580,70 @@ Before a stranger sees Qwikspot, everything they can do must already have been d
 | 3. What goes in? | Synthetic users, a CSV, storefront clicks, chat messages | A runtime factory and a run count | The infrastructure error (gRPC code, 5xx, stale timestamp) | The source tree, the index file, a captured logger | Config (`DEMO_*`), the judge fixture, the allowlist |
 | 4. What changes? | Nothing outside the emulators | Nothing; it only observes records | The response (503 / FAILED / qualifier), never half-written data | Nothing; it fails the build | Only the allowlisted demo brand's data, audited |
 | 5. When it fails? | The broken step names itself (✘ in `demo:check`) | A scenario reports passes x/n and the run details | The person is told to try again; logs keep the detail | The missing entry is named in the failure | 404 off, 403 other brand/role, 429 too soon |
+
+## Interface Refresh (UI-0 – UI-6) — five surfaces on one design system
+
+### Architecture
+
+```text
+Landing (/) ── public, no data ─────────────────────────────────────────┐
+Shopper demo (/shop, /chat) ── signed shopper session ─> /api/shopper ──┤
+Brand · Store · Platform consoles ── Firebase ID token ─> /api/* ───────┤
+                                                                        v
+                            the same ConversationPipeline, guardrail and repositories
+Customer messages: domain parts (header, body, buttons|list, location, CTA, footer)
+                   -> validateMessage (WhatsApp limits) -> MessagingProvider
+```
+
+### Files I changed
+
+```text
+frontend/src/styles/tokens.css, components/ui/*      the design system: tokens, one kit, states before screens
+frontend/src/pages/{landing,shopper,brand,retailer,platform}/*   the five surfaces
+backend/src/domain/whatsappLimits.ts, messageParts.ts           message parts and the footer rule
+backend/src/application/shopperChannel.ts, routes/shopper.ts    signed per-tab shopper sessions
+backend/src/domain/storeReason.ts, platformNetwork.ts           store-safe reasons; platform aggregates
+scripts/judge-script.mjs, docs/screenshots/                     the judge script, automated, with its screenshots
+```
+
+### Important code paths
+
+- `sendAndPersist` decorates parts (images absolute, footer only for interactive automated messages) and validates them before any adapter sees the message; the adapter validates again.
+- `ShopperChannelService.start` mints the ref; every other shopper route reads it only from the verified token. "Sign in as Asha" = a new session = a new customer.
+- `ReservationService.whyHere` merges the decisions made at the customer's position and hands `whyThisStore` names, reasons and one distance.
+- `PlatformAdminService.brandRecords` reduces a brand's records to count-able shapes at once; nothing personal leaves it.
+
+### What can fail?
+
+- A message that breaks a WhatsApp limit is stored FAILED (`MESSAGE_PARTS_INVALID`), shown "Not delivered" — never silently trimmed into something else.
+- A stale shopper session (expiry, restart, Reset demo) starts a fresh guest on its next call; the chat continues.
+- A hold's own decision lists only the chosen store: without the merge, "why" said "nearest" when the customer had picked a farther store from a list — caught by the screenshots, fixed and tested.
+- An absolutely positioned label inside an un-positioned scroll box widened phone pages — found by measuring every element's right edge.
+
+### Security implications
+
+```text
+The browser never chooses a customer ref; per-session demo shoppers isolate visitors
+The shopper demo is off in gcp unless DEMO_MODE is on, and then only for the demo brand
+"Qwikspot" is never the sender or in the body of a customer message — only an optional footer
+Stores see other stores by name and reason, and only their own distance — never the customer's location
+The platform sees aggregates; a test asserts no refs, messages, phones, emails, pickup codes or stock lines
+```
+
+### What I still do not understand
+
+- How WhatsApp template approval states and delivery receipts will change the "Not delivered" and Template labels (L2).
+- Whether Gemini's free-text understanding will need the why-sentence to cite its reasoning, or whether the trace stays enough.
+
+### Teach-back
+
+Design systems: decide the states (loading, empty, error, success) and the words before the screens; one kit keeps five surfaces consistent. WhatsApp's limits are a design constraint, not a rendering detail — a pickup pass is text plus a location message because WhatsApp has no custom cards. Public demo surfaces need the same discipline as production: signed identity, gating, origin checks, rate limits and a reset. Aggregates are not personal data only if every path to them drops the person — so the privacy test asserts absence, not presence.
+
+### Five-question self-test
+
+1. Why can't two judges who both "sign in as Asha" read each other's chat? (Each session gets its own ref and customer; the browser never names a ref.)
+2. When does "Powered by Qwikspot" appear? (Footer of interactive automated messages only, when the brand setting allows; never on a team member's reply or plain text.)
+3. What may a store learn about a customer from "why this hold came to you"? (Other stores' names and reasons, and its own distance — nothing else.)
+4. What is completion %? (Pickups ÷ finished holds; active holds are left out.)
+5. How do we know the judge script works from a fresh reset? (`scripts/judge-script.mjs` presses Reset demo and performs every step through the UI at both widths; any missing step fails it.)
+

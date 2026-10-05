@@ -24,6 +24,7 @@ import { Wordmark } from '../../components/shell/Wordmark';
 import { Drawer } from '../../components/ui';
 import type { FrontendProfile } from '../../config';
 import { shopperDemoAvailable, useDemoConfig } from '../../lib/demoConfig';
+import { usePageTitle } from '../../lib/pageTitle';
 import { HeroVisual } from './HeroVisual';
 
 const ANCHORS = [
@@ -89,6 +90,7 @@ function Checklist({ items }: { items: string[] }) {
  * Illustrations are labelled "Example"; no statistics are invented.
  */
 export function LandingPage({ profile = 'local' }: { profile?: FrontendProfile }) {
+  usePageTitle('Qwikspot — get it today at a store near you');
   const { user } = useAuth();
   const demo = useDemoConfig();
   const shopper = shopperDemoAvailable(demo, profile);
