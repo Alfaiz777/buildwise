@@ -63,13 +63,14 @@ export function DemoGuide({ brandId }: { brandId: string }) {
           <em>Need it today? Check a store near you</em> and send the message that is ready in the chat.
         </li>
         <li>
-          <strong>Hold at a store.</strong> In the chat, <em>📍 → Near Powai</em>. Powai is out of stock, so the
-          assistant offers Andheri. Tap <em>Hold at Andheri</em>: the pickup pass and the store&apos;s location arrive.
+          <strong>Pick up today.</strong> In the chat, <em>📍 → Near Powai</em>. Powai is out of stock, so the assistant
+          offers &quot;Pick up today at Andheri Store, 7.6 km&quot; next to &quot;Home delivery in 4–5 days&quot;. Tap{' '}
+          <em>Pick up today</em>: the pickup pass and the store&apos;s location arrive.
         </li>
         <li>
           <strong>Fulfil in store.</strong> In a new tab, sign in as <em>Retail Admin — Andheri Store</em>: Confirm →
-          Mark ready → Customer arrived → Complete with the pickup code from the chat. Each step appears in the
-          shopper&apos;s chat.{' '}
+          Mark ready → Customer arrived → Complete with the pickup code from the chat. Confirm and Mark ready appear in
+          the shopper&apos;s chat, and Complete sends one short thank-you.{' '}
           <a href="/login?as=store" {...newTab}>
             Open a store sign-in tab
           </a>
@@ -85,9 +86,9 @@ export function DemoGuide({ brandId }: { brandId: string }) {
         </li>
         <li>
           <strong>Follow up.</strong> In the shop&apos;s <em>Demo controls</em>, sign in as Asha (opted in), add the
-          serum to the bag and leave. About three minutes later, <em>Process due work now</em> sends the follow-up to
-          Asha&apos;s chat — each sign-in is its own synthetic customer.{' '}
-          <Link to="/brand/conversations">Conversations</Link>
+          serum to the bag and leave. About three minutes later the follow-up reaches Asha&apos;s chat — by itself while
+          Conversations is open (it runs due work every 30 s), or when you press <em>Process due work now</em>. Each
+          sign-in is its own synthetic customer. <Link to="/brand/conversations">Conversations</Link>
         </li>
         <li>
           <strong>The platform view.</strong> Sign in as the Qwikspot team to see the network as aggregates — never a

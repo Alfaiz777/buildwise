@@ -2,15 +2,15 @@
 
 Every image here was taken by `scripts/judge-script.mjs`, which starts with **Reset demo** and then performs the judge script through the UI only, at desktop (1440 px) and phone (390 px) widths. All data is synthetic: Demo Beauty Co, its Mumbai stores and four weeks of flagged demo history.
 
-Run it yourself on the local stack (emulators, `seed:demo`, backend, Vite): `BASE_URL=http://localhost:5173 node scripts/judge-script.mjs`.
+Run it yourself on the local stack (emulators, `seed:demo`, backend, Vite): `BASE_URL=http://localhost:5173 node scripts/judge-script.mjs`. The full manual plan, [docs/JUDGE_TEST_PLAN.md](../JUDGE_TEST_PLAN.md), runs the same way with `node scripts/judge-test-plan.mjs`.
 
 | # | Surface | Step | What it shows | Desktop | Phone |
 |---|---|---|---|---|---|
 | 01 | Landing | 1 | What Qwikspot does, the Brand and Store doors, "See it as a shopper" | [desktop](01-landing-desktop.jpg) | [phone](01-landing-phone.jpg) |
 | 02 | Shopper demo | 1 | The brand's demo store, products with self-made illustrations | [desktop](02-shop-desktop.jpg) | [phone](02-shop-phone.jpg) |
 | 03 | Shopper demo | 2 | The product page with the Qwikspot widget: "Need it today?", "Chat on WhatsApp", "Powered by Qwikspot" | [desktop](03-shop-product-desktop.jpg) | [phone](03-shop-product-phone.jpg) |
-| 04 | Chat | 3 | Near Powai: Powai is out of stock, so Andheri is offered — image header, facts, reply buttons, footer | [desktop](04-chat-store-found-desktop.jpg) | [phone](04-chat-store-found-phone.jpg) |
-| 05 | Chat | 3 | The pickup pass: pickup code, held until (store time), pay at the store, the store's location card | [desktop](05-chat-pickup-pass-desktop.jpg) | [phone](05-chat-pickup-pass-phone.jpg) |
+| 04 | Chat | 3 | Near Powai: Powai is out of stock, so the card offers "Pick up today at Andheri Store, 7.6 km" vs "Home delivery in 4–5 days" — image header, **Pick up today** · **Home delivery**, footer | [desktop](04-chat-store-found-desktop.jpg) | [phone](04-chat-store-found-phone.jpg) |
+| 05 | Chat | 3 | The pickup pass: pickup code, held until (store time), pay at the store, "Prefer delivery? Home delivery in 4–5 days.", the store's location card | [desktop](05-chat-pickup-pass-desktop.jpg) | [phone](05-chat-pickup-pass-phone.jpg) |
 | 06 | Store Console | 4 | Today: the value strip, **Next up** with one big action, and why this hold came to the store | [desktop](06-store-next-up-desktop.jpg) | [phone](06-store-next-up-phone.jpg) |
 | 07 | Chat | 4 | The store's confirmation arrives in the shopper's chat | [desktop](07-chat-store-update-desktop.jpg) | [phone](07-chat-store-update-phone.jpg) |
 | 08 | Store Console | 4 | History after Complete: "Picked up — in-store purchase" | [desktop](08-store-history-desktop.jpg) | [phone](08-store-history-phone.jpg) |

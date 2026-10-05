@@ -20,6 +20,7 @@ import { INTENT_TYPES, type IntentType } from '../../domain/ai.js';
 import {
   isStockStale,
   onlineProductUrl,
+  resolveDeliveryDays,
   resolveFreshnessHours,
   resolveMessagingSettings,
 } from '../../domain/brandSettings.js';
@@ -149,6 +150,7 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
       price: variant.price,
       currency: variant.currency,
       online_url: onlineProductUrl(settings, product.productId),
+      delivery_days: onlineProductUrl(settings, product.productId) ? resolveDeliveryDays(settings) : null,
       image_url: product.imageUrl ?? null,
     };
   };

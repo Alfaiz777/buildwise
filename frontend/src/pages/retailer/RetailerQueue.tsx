@@ -59,6 +59,7 @@ const NOTIFY_LABEL: Record<string, string> = {
   SENT: 'customer notified',
   NOT_SENT_OPTED_OUT: 'customer opted out; not notified',
   NOT_SENT_NO_CONVERSATION: 'no conversation; not notified',
+  NOT_SENT_OUTSIDE_WINDOW: 'no thank-you (last message over 24 h ago)',
 };
 
 /** "12:40" in the store's timezone. */

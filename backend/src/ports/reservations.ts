@@ -47,7 +47,8 @@ export interface ReservationRecord {
 }
 
 export interface ReservationNotification {
-  status: 'SENT' | 'NOT_SENT_OPTED_OUT' | 'NOT_SENT_NO_CONVERSATION';
+  /** NOT_SENT_OUTSIDE_WINDOW: the thank-you after pickup is never sent as a template. */
+  status: 'SENT' | 'NOT_SENT_OPTED_OUT' | 'NOT_SENT_NO_CONVERSATION' | 'NOT_SENT_OUTSIDE_WINDOW';
   event: string;
   messageKind: 'SESSION' | 'TEMPLATE' | null;
   at: string;

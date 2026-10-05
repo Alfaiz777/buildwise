@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { WAITING_CHANGED } from '../../components/shell/AppShell';
 import { useApi } from '../../api/apiContext';
 import { errorMessage } from '../../components/ConsoleShell';
 
@@ -49,6 +50,7 @@ export function HandoffPanel(props: {
     setError(null);
     try {
       await api.post(`/api/brand/conversations/${props.conversationId}/resolve`, {});
+      window.dispatchEvent(new Event(WAITING_CHANGED));
       setNotice('Returned to the assistant: the next customer message gets an automated reply.');
       props.onChanged();
     } catch (err) {

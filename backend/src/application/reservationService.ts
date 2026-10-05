@@ -359,7 +359,53 @@ export class ReservationService {
               ),
             }
           : null;
-        out.set(r.reservationId, whyThisStore(merged, r.storeId, r.variantId));
+        // A store that refused this customer's earlier hold for the same product is the reason, not a choice.
+        const refusedIds = [
+          ...new Set(
+            (await this.deps.reservations.list(brandId, { customerId: r.customerId, limit: 50 }))
+              .filter(
+                (x) =>
+                  x.reservationId !== r.reservationId &&
+                  x.cancelledBy === 'RETAILER' &&
+                  x.variantId === r.variantId &&
+                  x.storeId !== r.storeId &&
+                  x.createdAt <= r.createdAt,
+              )
+              .map((x) => x.storeId),
+          ),
+        ];
+        const refusedBy = await Promise.all(
+          refusedIds.map(async (id) => ({
+            store_id: id,
+            store_name: (await this.deps.stores.get(brandId, id))?.storeName ?? 'Another store',
+          })),
+        );
+        // The refusal re-offer can reach beyond the normal radius (judge-test fixes): the first
+        // search then listed this store as too far — its distance is still the one to show.
+        const describes = (t: typeof merged) => !!t && t.eligible.some((e) => e.store_id === r.storeId);
+        let trace = describes(merged) ? merged : hold.trace;
+        if (refusedBy.length > 0 && !describes(trace)) {
+          const seen = chain.find((x) =>
+            x.trace?.excluded.some((e) => e.store_id === r.storeId && e.distance_km !== null),
+          );
+          if (seen?.trace) {
+            const own = seen.trace.excluded.find((e) => e.store_id === r.storeId)!;
+            trace = {
+              ...seen.trace,
+              eligible: [
+                ...seen.trace.eligible,
+                {
+                  store_id: own.store_id,
+                  store_name: own.store_name,
+                  distance_km: own.distance_km!,
+                  variant_id: own.variant_id,
+                },
+              ],
+              excluded: seen.trace.excluded.filter((e) => e.store_id !== r.storeId),
+            };
+          }
+        }
+        out.set(r.reservationId, whyThisStore(trace, r.storeId, r.variantId, refusedBy));
       }),
     );
     return out;

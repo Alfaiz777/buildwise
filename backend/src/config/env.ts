@@ -113,7 +113,7 @@ export const LOCAL_DEMO_LOGINS: DemoLogin[] = [
     password: LOCAL_DEMO_PASSWORD,
     role: 'BRAND_ADMIN',
     title: 'Brand Admin — Demo Beauty Co',
-    hint: 'Start here: open the demo guide, chat as a customer in the simulator, and see Outcomes & insights.',
+    hint: 'Start here: open the demo guide on Overview, try the shopper demo, then see Conversations and Insights.',
   },
   {
     email: 'retail-admin-north-1@qwikspot.test',

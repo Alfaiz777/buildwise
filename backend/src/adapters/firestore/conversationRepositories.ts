@@ -400,6 +400,7 @@ const proposalToDoc = (p: PendingProposal | null) =>
         proposed_at: p.proposedAt,
         expires_at: p.expiresAt,
         offered_stores: p.offeredStores,
+        ...(p.radiusKm ? { radius_km: p.radiusKm } : {}),
       }
     : null;
 
@@ -412,6 +413,7 @@ const proposalFromDoc = (d: FirebaseFirestore.DocumentData | null | undefined): 
         proposedAt: d.proposed_at,
         expiresAt: d.expires_at,
         offeredStores: d.offered_stores ?? [],
+        ...(typeof d.radius_km === 'number' ? { radiusKm: d.radius_km } : {}),
       }
     : null;
 

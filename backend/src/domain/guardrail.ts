@@ -28,6 +28,18 @@ export interface PendingProposal {
   proposedAt: string;
   expiresAt: string;
   offeredStores: string[];
+  /**
+   * Set only by the refusal re-offer (judge-test fixes): the store was offered beyond the
+   * normal radius, with its distance, because no nearer store had it. Applies to `storeId` only.
+   */
+  radiusKm?: number;
+}
+
+/** The radius a hold at `storeId` is checked against: wider only for the pending proposal's own store. */
+export function holdRadiusKm(pending: PendingProposal, storeId: string, normalRadiusKm: number): number {
+  return pending.radiusKm && pending.storeId === storeId
+    ? Math.max(normalRadiusKm, Math.min(pending.radiusKm, 25))
+    : normalRadiusKm;
 }
 
 export const isProposalLive = (p: PendingProposal | null, now: Date): p is PendingProposal =>
@@ -72,7 +84,7 @@ export function checkReservationProposal(c: ReservationCheck): GuardrailVerdict 
     return block('NOT_ELIGIBLE');
   if (c.origin && c.store.latitude !== null && c.store.longitude !== null) {
     const km = haversineDistanceKm(c.origin, { latitude: c.store.latitude, longitude: c.store.longitude });
-    if (km > c.radiusKm) return block('NOT_ELIGIBLE');
+    if (km > holdRadiusKm(c.pending, c.proposal.storeId, c.radiusKm)) return block('NOT_ELIGIBLE');
   }
   if (!isOpenNow(c.store.storeHours, c.now)) return block('STORE_CLOSED');
   const available = c.inventory ? availableQuantity(c.inventory.quantity, c.inventory.reservedQuantity) : 0;

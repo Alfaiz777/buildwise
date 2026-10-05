@@ -12,6 +12,7 @@ export interface BrandSettings {
     frequency_hours: number;
     types: { type: string; enabled: boolean; delay_minutes: number; priority: 'NORMAL' | 'HIGH' }[];
   };
+  fulfilment: { home_delivery: boolean; delivery_days: string; radius_km: number; extended_radius_km: number };
   retail_freshness_hours: number;
   attribution_window_minutes: number;
   allowed_storefront_origins: string[];
@@ -111,6 +112,17 @@ export function SettingsPage() {
 
           <Card title="Stores and outcomes">
             <dl className="settings-list">
+              <dt>Stores offered for pickup today</dt>
+              <dd>
+                Within {s.fulfilment.radius_km} km. If a store can&apos;t fulfil a hold and none is that close, the
+                nearest one within {s.fulfilment.extended_radius_km} km is still offered, with its distance.
+              </dd>
+              <dt>Home delivery shown next to pickup</dt>
+              <dd>
+                {s.fulfilment.home_delivery
+                  ? `In ${s.fulfilment.delivery_days} ${s.fulfilment.delivery_days === '1' ? 'day' : 'days'}`
+                  : 'Off (no online store link)'}
+              </dd>
               <dt>Store stock counts as stale after</dt>
               <dd>{duration(s.retail_freshness_hours * 60)} (customers are told when it was last updated)</dd>
               <dt>A purchase counts for a conversation for</dt>

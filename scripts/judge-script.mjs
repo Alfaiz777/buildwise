@@ -102,10 +102,14 @@ async function run(browser, vp) {
   await chat.getByRole('button', { name: 'Send' }).click();
   await chat.locator('.wa-msg--in').first().waitFor({ timeout: T });
 
-  step(3, '📍 Near Powai → Hold at Andheri → the pickup pass');
+  step(3, '📍 Near Powai → Pick up today (Andheri) → the pickup pass');
   await chat.getByRole('button', { name: 'Share location' }).click();
   await chat.getByRole('menuitem', { name: /Near Powai/ }).click();
-  const hold = chat.getByRole('button', { name: /^Hold at Andheri|^Hold here/ }).last();
+  await chat
+    .getByText(/Pick up today at \*?Andheri Store/)
+    .last()
+    .waitFor({ timeout: T });
+  const hold = chat.getByRole('button', { name: 'Pick up today' }).last();
   await hold.waitFor({ timeout: T });
   await shot(shopper, '04-chat-store-found', vp);
   await hold.click();
@@ -114,7 +118,7 @@ async function run(browser, vp) {
   const code = /Pickup code:\s*(\d{6})/.exec(await chat.innerText())?.[1];
   if (!code) throw new Error('no pickup code in the chat');
 
-  step(4, 'Store login (Andheri) → Confirm → Mark ready → Customer arrived → Complete with the code');
+  step(4, 'Store login (Andheri) → Confirm → Mark ready → Customer arrived → Complete with the code → thank-you');
   const store = await signedIn(browser, vp, 'store');
   await store.goto(`${BASE}/store`);
   await store.getByRole('region', { name: 'Next up' }).waitFor({ timeout: T });
@@ -136,6 +140,8 @@ async function run(browser, vp) {
     .getByText(/Completed/)
     .first()
     .waitFor({ timeout: T });
+  // Judge-test fixes: one thank-you from the brand after the pickup.
+  await chat.getByText(/Thanks for picking up/).waitFor({ timeout: T });
   await store.goto(`${BASE}/store/history`);
   await store.getByText('Picked up — in-store purchase').first().waitFor({ timeout: T });
   await shot(store, '08-store-history', vp);

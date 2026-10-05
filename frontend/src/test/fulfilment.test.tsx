@@ -207,18 +207,23 @@ const ROW = {
 };
 
 describe('Brand Console — handoff queue (M6)', () => {
-  it('shows the waiting time, replies as a person, and resolves back to the assistant', async () => {
+  it('shows the waiting time, replies as a person, and resolves back to the assistant; the nav badge clears', async () => {
+    let waiting = true;
     const api = client(
       (p) => {
         if (p === '/api/me') return BRAND;
-        if (p === '/api/brand/conversations') return { conversations: [ROW] };
+        if (p === '/api/brand/conversations') return { conversations: [{ ...ROW, human_handoff: waiting }] };
         if (p === '/api/brand/intents') return { intents: [] };
         if (p === '/api/brand/conversations/conv_1')
           return { ...ROW, brand_display_name: 'Demo Co', web_events: [], messages: [], recommendations: [] };
         throw new Error(p);
       },
       undefined,
-      (p) => (p.endsWith('/resolve') ? { human_handoff: false } : { message_id: 'm1', origin: 'HUMAN_AGENT' }),
+      (p) => {
+        if (!p.endsWith('/resolve')) return { message_id: 'm1', origin: 'HUMAN_AGENT' };
+        waiting = false;
+        return { human_handoff: false };
+      },
     );
     render_('/brand/conversations', api);
     fireEvent.click(await screen.findByRole('button', { name: /sim:c1/ }));
@@ -231,6 +236,8 @@ describe('Brand Console — handoff queue (M6)', () => {
     );
     fireEvent.click(within(panel).getByRole('button', { name: 'Resolve and return to assistant' }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/brand/conversations/conv_1/resolve', {}));
+    // Judge-test plan f4: the nav badge goes away without leaving the page.
+    await waitFor(() => expect(screen.queryByLabelText(/waiting for a person/)).not.toBeInTheDocument());
   });
 });
 

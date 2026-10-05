@@ -90,6 +90,7 @@ export const SETTINGS: BrandSettings = {
       { type: 'STORE_ORIENTED', enabled: false, delay_minutes: 1, priority: 'NORMAL' },
     ],
   },
+  fulfilment: { home_delivery: true, delivery_days: '4–5', radius_km: 10, extended_radius_km: 25 },
   retail_freshness_hours: 24,
   attribution_window_minutes: 10,
   allowed_storefront_origins: ['http://localhost:5173'],

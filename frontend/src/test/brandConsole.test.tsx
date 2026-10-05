@@ -550,6 +550,8 @@ describe('Settings (read-only)', () => {
     expect(screen.getByText(/at most one follow-up per customer every 1 day/)).toBeInTheDocument();
     expect(screen.getByText('Demo Beauty Co', { selector: 'dd' })).toBeInTheDocument();
     expect(screen.getByText('http://localhost:5173')).toBeInTheDocument();
+    expect(screen.getByText('In 4–5 days')).toBeInTheDocument();
+    expect(screen.getByText(/nearest one within 25 km is still offered/)).toBeInTheDocument();
     expect(screen.getByText(/Simulator now; WhatsApp when the live channel is connected/)).toBeInTheDocument();
     expect(screen.getByText('Settings are read-only in this prototype.')).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();

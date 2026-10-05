@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from '../src/config/env.js';
+import { loadConfig, LOCAL_DEMO_LOGINS } from '../src/config/env.js';
 
 /** Fake values for every gcp setting (Change 14, G7) — never real secrets. */
 export const GCP_REQUIRED_FAKE = {
@@ -196,6 +196,15 @@ describe('loadConfig — gcp profile and startup guard (docs/07 §19)', () => {
   it('lists every violation at once', () => {
     expect(() => loadConfig({ ...GCP_REAL, COMMERCE_PROVIDER: 'mock', AGENT_RUNTIME: 'mock' })).toThrow(
       /COMMERCE_PROVIDER=mock, AGENT_RUNTIME=mock/,
+    );
+  });
+});
+
+describe('local demo login hints (judge-test fixes)', () => {
+  it('point at the surfaces that exist: the shopper demo, never the removed Brand Console simulator', () => {
+    for (const login of LOCAL_DEMO_LOGINS) expect(login.hint).not.toMatch(/simulator/i);
+    expect(LOCAL_DEMO_LOGINS.find((l) => l.role === 'BRAND_ADMIN')!.hint).toBe(
+      'Start here: open the demo guide on Overview, try the shopper demo, then see Conversations and Insights.',
     );
   });
 });

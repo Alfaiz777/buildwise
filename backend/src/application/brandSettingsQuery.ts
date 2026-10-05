@@ -1,4 +1,12 @@
-import { allowedStorefrontOrigins, resolveFreshnessHours, resolveMessagingSettings } from '../domain/brandSettings.js';
+import { DEFAULT_RADIUS_KM } from './agent/tools.js';
+import {
+  allowedStorefrontOrigins,
+  onlineProductUrl,
+  resolveDeliveryDays,
+  resolveExtendedRadiusKm,
+  resolveFreshnessHours,
+  resolveMessagingSettings,
+} from '../domain/brandSettings.js';
 import { FOLLOW_UP_TYPES, resolveFollowUpSettings } from '../domain/followUpPolicy.js';
 import { attributionWindowMs } from '../domain/outcomeRules.js';
 import { Errors } from '../lib/errors.js';
@@ -38,6 +46,13 @@ export class BrandSettingsQuery {
           delay_minutes: followUp.types[type].delayMinutes,
           priority: followUp.types[type].priority,
         })),
+      },
+      // Judge-test fixes: pickup vs home delivery, and how far a store is still offered after a refusal.
+      fulfilment: {
+        home_delivery: onlineProductUrl(s, 'x') !== null,
+        delivery_days: resolveDeliveryDays(s),
+        radius_km: DEFAULT_RADIUS_KM,
+        extended_radius_km: resolveExtendedRadiusKm(s, DEFAULT_RADIUS_KM),
       },
       retail_freshness_hours: resolveFreshnessHours(s),
       attribution_window_minutes: Math.round(attributionWindowMs(s) / 60_000),

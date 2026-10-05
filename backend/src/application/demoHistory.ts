@@ -279,6 +279,7 @@ export function generateDemoHistory(input: DemoHistoryInput): DemoHistory {
           price: lookup.variant.price,
           currency: lookup.variant.currency,
           online_url: null,
+          delivery_days: null,
           image_url: null,
         },
         origin: { source: 'SHARED', approximate: false, locality: null },

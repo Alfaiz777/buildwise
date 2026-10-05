@@ -65,7 +65,7 @@ On a wide screen (1440 px), the shop opens the chat **docked to the right of the
 4. You should see a line that starts "Demo reset: 10 products synced, store stock restored, … synthetic outcomes rebuilt."
 5. Reload windows A, B and D.
 
-Reset works at most **once a minute**. A second press within a minute is refused with an error message; wait and press again.
+Reset works at most **once a minute**. A second press within a minute shows, in red under the guide: "The demo was just reset. Try again in a minute. (RATE_LIMITED)". Nothing is reset; wait a minute and press again.
 
 Reset deletes every chat, hold and demo shopper from earlier tests. It keeps the accounts, stores and the audit log.
 
@@ -81,12 +81,12 @@ Reset deletes every chat, hold and demo shopper from earlier tests. It keeps the
 | a2 | Shopper | Click **Vitamin C Glow Serum**. | The product page shows sizes **30 ml · ₹795** and **50 ml · ₹1,195**, **Add to bag**, and the Qwikspot widget: **Need it today? Check a store near you**, **Chat on WhatsApp**, "Powered by Qwikspot". | — |
 | a3 | Shopper | Keep **30 ml** selected. Click **Need it today? Check a store near you**. | The brand's chat opens ("Demo Beauty Co · usually replies instantly"). The message box already holds a ready-made message. | — |
 | a4 | Shopper | Press **Send** (the arrow). | Your message appears on the right. The brand replies on the left. | Brand (C) → **Conversations**: a new conversation `sim:judge_…` appears (press **Refresh** if needed). |
-| a5 | Shopper | Press the 📍 pin (**Share location**) and pick **Near Powai**. | A product card with the serum picture. It says *Vitamin C Glow Serum 30 ml* · ₹795, "Available today at **Andheri Store**", the distance and opening time, and "I can hold one for you to pick up and pay at the store." Buttons: **Hold at Andheri** and **Buy online**. Footer: "Powered by Qwikspot". | — |
-| a6 | Shopper | Press **Hold at Andheri**. | The pickup pass: "✅ **On hold for you**", 1 × Vitamin C Glow Serum 30 ml, "**Andheri Store**" with its address, "Pickup code: **six digits**", "Held until HH:MM (store time) · pay at the store", "The store will confirm when it's ready." A location card with **Open in Maps**, and a **Cancel reservation** button. | Store (B) → **Today**: within about 15 seconds (or press **Refresh**) a toast "New hold: 1 × Vitamin C Glow Serum 30 ml — confirm it" appears, the hold shows in **Next up**, and the **Today** tab shows a badge **1**. |
+| a5 | Shopper | Press the 📍 pin (**Share location**) and pick **Near Powai**. | A product card with the serum picture: *Vitamin C Glow Serum 30 ml* · ₹795, then the choice — "🏬 Pick up today at **Andheri Store**, 7.6 km · open until HH:MM" and "🚚 Home delivery in 4–5 days" — and "I can hold one for you to pick up and pay at the store." Buttons: **Pick up today** and **Home delivery**. Footer: "Powered by Qwikspot". | — |
+| a6 | Shopper | Press **Pick up today**. | The pickup pass: "✅ **On hold for you**", 1 × Vitamin C Glow Serum 30 ml, "**Andheri Store**" with its address, "Pickup code: **six digits**", "Held until HH:MM (store time) · pay at the store", "The store will confirm when it's ready.", "Prefer delivery? Home delivery in 4–5 days." A location card with **Open in Maps**, and a **Cancel reservation** button. | Store (B) → **Today**: within about 15 seconds (or press **Refresh**) a toast "New hold: 1 × Vitamin C Glow Serum 30 ml — confirm it" appears, the hold shows in **Next up**, and the **Today** tab shows a badge **1**. |
 
-**Note:** the chat never promises a delivery time. The "4–5 day delivery" comparison appears only in the landing page copy.
+**Note:** "4–5 days" is the brand's own delivery time (Brand → **Settings** → "Home delivery shown next to pickup"). The chat shows it only when the product can be bought online. WhatsApp allows at most 3 buttons of 20 characters, so the choice is two short buttons (plus **Other stores** when there are more stores).
 
-**Pass if:** the chat offers **Andheri Store** (not Powai, which is out of stock), the pickup pass shows a 6-digit code, and the hold appears in Andheri's **Today**.
+**Pass if:** the chat offers "Pick up today at **Andheri Store**" (not Powai, which is out of stock) next to "Home delivery in 4–5 days", the pickup pass shows a 6-digit code and the delivery line, and the hold appears in Andheri's **Today**.
 
 ### Story b — The store fulfils the hold
 
@@ -97,15 +97,15 @@ Continue from story a, without a reset.
 | b1 | Store (B) | Look at the **Next up** card. | 1 × Vitamin C Glow Serum 30 ml, "New — needs confirming", "Customer •••• XXXX" (masked), held until (store time) and "expires in N min". It also says: **Why this hold came to you:** "Powai Store was closer but out of stock. You were the nearest store with stock — 7.6 km from the customer." | — |
 | b2 | Store | Press **Confirm**. | A notice: "1 × Vitamin C Glow Serum 30 ml: Confirmed (customer notified). …" and a toast. The card now offers **Mark ready**. | Shopper chat (A): "✅ **Andheri Store confirmed your hold**", with the pickup code and held-until time (it arrives within about 3 seconds). |
 | b3 | Store | Press **Mark ready**. | Status "Ready for pickup". | Shopper chat: "🛍️ **Ready at Andheri Store** … Show code **XXXXXX** at the counter.", plus a location card. |
-| b4 | Store | Press **Customer arrived**. | Status "Customer here". A box "Customer's pickup code" appears with the hint "Ask for the 6-digit code in their WhatsApp." | No new chat message (expected). |
-| b5 | Store | Type the 6-digit code from the shopper's chat. Press **Complete**. | "…: Completed." The hold leaves **Today**. **History** shows it as "Picked up — in-store purchase". | No new chat message (expected). |
+| b4 | Store | Press **Customer arrived**. | Status "Customer here". A box "Customer's pickup code" appears with the hint "Ask for the 6-digit code in their WhatsApp." | **No** chat message (by design: the customer is standing at the counter). |
+| b5 | Store | Type the 6-digit code from the shopper's chat. Press **Complete**. | "…: Completed (customer notified)." The hold leaves **Today**. **History** shows it as "Picked up — in-store purchase". | Shopper chat: exactly **one** message, "Thanks for picking up *Vitamin C Glow Serum 30 ml* at Andheri Store. Enjoy it! — Demo Beauty Co". Plain text, so **no** "Powered by Qwikspot" footer. It is sent only inside the 24-hour window; outside it nothing is sent and the store's card says "no thank-you (last message over 24 h ago)". |
 | b6 | Brand (C) | **Conversations** → open the `sim:judge_…` conversation. | The **Journey** timeline runs: Visited the store → Opened Vitamin C Glow Serum → Tapped "Need it today?" → Started a WhatsApp chat → Shared a location → Qwikspot looked for a store → Hold placed at Andheri Store → Andheri Store confirmed the hold → Ready for pickup at Andheri Store → Customer arrived at Andheri Store → **Picked up at Andheri Store — in-store purchase · ₹795 est.** **Why Qwikspot did this** shows a card like "Offered Andheri Store (7.6 km) because Powai Store (0.7 km) is out of stock and Bandra Store (10.6 km) is too far." The **Messages** card shows the chat exactly as the shopper saw it, with labels (AI assistant, Store update). | — |
 | b7 | Brand | **Reservations**. | The hold's row: product, Andheri Store, status **Completed**, outcome "Picked up — in-store purchase". Clicking the row opens the conversation. | — |
-| b8 | Platform (D) | Before b2, note the Overview tiles **Holds** and **Store pickups**. After b5, reload. | **Holds** and **Store pickups** are each **one higher**. **Retail network** (Demo Beauty Co) → Andheri Store shows **Picked up** one higher. | — |
+| b8 | Platform (D) | Before a6 (before pressing **Pick up today**), note the Overview tiles **Holds** and **Store pickups**. After b5, reload. (A hold counts the moment it is placed, so noting **Holds** after a6 would show no change.) | **Holds** and **Store pickups** are each **one higher**. **Retail network** (Demo Beauty Co) → Andheri Store shows **Picked up** one higher. | — |
 
 **Pass if:**
 - the store sees the masked customer and the "why" text;
-- the chat shows the confirmed and ready updates;
+- the chat shows the confirmed and ready updates, nothing after "Customer arrived", and one thank-you after Complete;
 - the brand journey ends with "Picked up at Andheri Store — in-store purchase";
 - the platform totals each go up by one.
 
@@ -115,12 +115,20 @@ Reset first. Use **Near Bandra**, so that Bandra is the nearest store and Andher
 
 | # | Who | Action | Expected on that screen | Expected on other screens |
 |---|---|---|---|---|
-| c1 | Shopper (A) | Shop → Vitamin C Glow Serum 30 ml → **Need it today? Check a store near you** → **Send** → 📍 **Near Bandra**. | The card offers **Bandra Store** (about 0.7 km) with **Hold at Bandra**, **Other stores** and **Buy online**. | — |
-| c2 | Shopper | Press **Hold at Bandra**. | The pickup pass for Bandra Store. | Store window logged in as **Retail Admin — Bandra Store** (window B2): the hold appears in **Next up**. |
-| c3 | Store (Bandra) | In **Refuse because…** pick **Not actually in stock**. Press **Refuse**. | "…: Cancelled (customer notified)." **History** shows "Refused: Not actually in stock". | Shopper chat: "Sorry — Bandra Store can't fulfil your reservation for Vitamin C Glow Serum 30 ml after all." It then offers **Andheri Store** with a **Hold at Andheri** button. |
-| c4 | Shopper | Press **Hold at Andheri**. | A new pickup pass for Andheri Store. | Andheri's **Today** (window B): the new hold, with a "Why this hold came to you" line. |
+| c1 | Shopper (A) | Shop → Vitamin C Glow Serum 30 ml → **Need it today? Check a store near you** → **Send** → 📍 **Near Bandra**. | The card offers "Pick up today at **Bandra Store**, 0.7 km" and "Home delivery in 4–5 days", with **Pick up today**, **Home delivery** and **Other stores**. | — |
+| c2 | Shopper | Press **Pick up today**. | The pickup pass for Bandra Store. | Store window logged in as **Retail Admin — Bandra Store** (window B2): the hold appears in **Next up**. |
+| c3 | Store (Bandra) | In **Refuse because…** pick **Not actually in stock**. Press **Refuse**. | "…: Cancelled (customer notified)." **History** shows "Refused: Not actually in stock". | Shopper chat: "Sorry — Bandra Store can't fulfil your reservation for Vitamin C Glow Serum 30 ml after all." It then offers "Pick up today at **Andheri Store**, 8.5 km" and home delivery, with **Pick up today** and **Home delivery**. |
+| c4 | Shopper | Press **Pick up today**. | A new pickup pass for Andheri Store. | Andheri's **Today** (window B): the new hold, with **Why this hold came to you:** "Bandra Store couldn't fulfil the customer's hold, so it came to you — 8.5 km from the customer." (Bandra's reason is never shown to Andheri.) |
 | c5 | Brand (C) | **Conversations** → this conversation. **Overview**. **Reservations** (filter **Refused**). | The journey shows "Bandra Store refused: not actually in stock", then the new hold at Andheri. **Overview → Needs your attention**: "Bandra Store refused 1 hold in the last 24 h — not actually in stock". Reservations → **Refused**: the Bandra row, with outcome "Refused: not actually in stock". | — |
-| c6 | Store (Bandra) | **Demand**. | Under "When you were the nearest store", the line "Holds you refused: Not actually in stock 1" (with synthetic history included). | — |
+| c6 | Store (Bandra) | **Demand**, right after c3 (no need to wait or press anything). | Under "When you were the nearest store", the line "Holds you refused: Not actually in stock 1" (with synthetic history included). | — |
+
+**Refusal when no other store is near (beyond the 10 km radius).** Reset first. Sign in window B as **Retail Admin — Andheri Store** and a second store window as **Bandra**.
+
+| # | Who | Action | Expected on that screen | Expected on other screens |
+|---|---|---|---|---|
+| c7 | Shopper (A) | 📍 **Near Powai** → **Pick up today** (Andheri). | The pickup pass for Andheri Store. | Andheri's **Next up**: the hold. |
+| c8 | Store (Andheri) | **Refuse because… Damaged** → **Refuse**. | "…: Cancelled (customer notified)." | Shopper chat: "Sorry — Andheri Store can't fulfil …", then "No other store near you has it. The nearest one is **Bandra Store**, 10.6 km away.", "Pick up today at Bandra Store, 10.6 km …" and "Home delivery in 4–5 days", with **Pick up today** and **Home delivery**. Bandra is beyond the normal 10 km, but it is still offered with its distance; it is not dropped. |
+| c9 | Shopper | Press **Pick up today**. | The pickup pass for **Bandra Store**. | Bandra's **Next up**: the hold, "Andheri Store couldn't fulfil the customer's hold, so it came to you — 10.6 km from the customer." |
 
 **Out of stock without a refusal** is story a: Powai Store is out of stock, so Andheri is offered. In the Brand Console it reads "Powai Store (0.7 km) is out of stock".
 
@@ -128,6 +136,8 @@ Reset first. Use **Near Bandra**, so that Bandra is the nearest store and Andher
 
 **Pass if:**
 - after the refusal the shopper is apologised to and offered **Andheri Store**, never Bandra again;
+- when the only other store is beyond 10 km (c8), it is still offered with its distance, next to home delivery, and the hold there works;
+- the next store's "why" says the first store couldn't fulfil the hold;
 - the reason "not actually in stock" shows for the store (History) and the brand (journey, Overview, Reservations);
 - the shopper never sees the store's reason.
 
@@ -137,8 +147,8 @@ Reset first.
 
 | # | Who | Action | Expected on that screen | Expected on other screens |
 |---|---|---|---|---|
-| d1 | Shopper (A) | Shop → Vitamin C Glow Serum 30 ml → **Need it today? Check a store near you** → **Send** → 📍 **Near Powai**. | The Andheri card with **Hold at Andheri** and **Buy online**. | — |
-| d2 | Shopper | Press **Buy online**. | "You can order Vitamin C Glow Serum online here: http://localhost:5173/shop?qs_ref=…#product=prd_1001" | — |
+| d1 | Shopper (A) | Shop → Vitamin C Glow Serum 30 ml → **Need it today? Check a store near you** → **Send** → 📍 **Near Powai**. | The Andheri card with **Pick up today** and **Home delivery**. | — |
+| d2 | Shopper | Press **Home delivery** (this is the "buy online" choice). | "You can order Vitamin C Glow Serum online here: http://localhost:5173/shop?qs_ref=…#product=prd_1001" | — |
 | d3 | Shopper | Click the link. | The demo store opens on the Vitamin C Glow Serum product page. | — |
 | d4 | Shopper | **Add to bag** → the bag icon → **Checkout** → **Place order**. | "**Order placed** — Thank you! Any pending follow-up for this session is now suppressed." | — |
 | d5 | Brand (C) | **Conversations** → this conversation. | The journey ends with "**Ordered online · ₹795 est.**" | — |
@@ -151,14 +161,20 @@ Reset first.
 
 Reset first. The demo brand sends a cart follow-up when the shopper has been inactive for **1 minute** and the follow-up's **2-minute** delay has passed. Allow about **3 minutes**.
 
-**Note:** while the Brand **Conversations** page is open locally, it also processes due work by itself every 30 seconds. So the follow-up may arrive before you press the button. That is fine.
+**Follow-up timing — read this before e3.** Locally, the Brand **Conversations** page processes due work **by itself every 30 seconds** while it is open. So the follow-up may reach Asha's chat on its own, about 3 minutes after she leaves, before you press anything. Either way is a Pass:
+
+- **It already arrived by itself:** Asha's chat shows the follow-up. **Process due work now** then says "Due work processed: **0** follow-ups sent, …" — nothing was left to send.
+- **It had not arrived yet:** **Process due work now** says "Due work processed: **1** follow-up sent, …", and the follow-up appears in Asha's chat.
+- **Too early** (under about 3 minutes): "0 follow-ups sent" and nothing in the chat. Wait 30 seconds and press again.
+
+What matters is that Asha ends with **exactly one** follow-up in her chat, and Ravi and the guest get none.
 
 | # | Who | Action | Expected on that screen | Expected on other screens |
 |---|---|---|---|---|
 | e1 | Shopper (A) | Shop → **Demo controls** → **Sign in as demo shopper: Asha (opted in)**. | "Signed in as Asha (opted in to messages)." The drawer closes. | — |
 | e2 | Shopper | Vitamin C Glow Serum → **Add to bag**. Then do nothing ("leave"). | "Vitamin C Glow Serum added to your bag." | Brand → **Conversations** → **Intents** tab: an intent for Asha's customer (`sim:shopper_3002_…`), Cart abandonment, follow-up **Scheduled**. |
-| e3 | Brand (C) | After about 3 minutes: **Conversations** → **Process due work now**. | A toast and a line: "Due work processed: 1 follow-up sent, …". | — |
-| e4 | Shopper | Open the chat (**Chat on WhatsApp** on the product page, or `/chat?brand=brd_demo` in the same tab). | A message with the serum picture: "Hi, this is Demo Beauty Co. You still have Vitamin C Glow Serum (30 ml) in your cart. Any questions before you complete your order?" then "Reply STOP to opt out." Buttons: **Find a store near me**, **Buy online**, **Talk to a person**. Footer "Powered by Qwikspot". | Brand: the conversation's **Messages** labels it "Follow-up · Template". |
+| e3 | Brand (C) | After about 3 minutes: **Conversations** → **Process due work now**. | A toast and a line "Due work processed: N follow-up(s) sent, …" — **1** if the follow-up was still waiting, **0** if the open page had already sent it (see the timing note). | — |
+| e4 | Shopper | Open the chat (**Chat on WhatsApp** on the product page, or `/chat?brand=brd_demo` in the same tab). | Exactly **one** message with the serum picture: "Hi, this is Demo Beauty Co. You still have Vitamin C Glow Serum (30 ml) in your cart. Any questions before you complete your order?" then "Reply STOP to opt out." Buttons: **Find a store near me**, **Buy online**, **Talk to a person**. Footer "Powered by Qwikspot". | Brand: the conversation's **Messages** labels it "Follow-up · Template". |
 | e5 | Shopper (new tab or private window) | **Demo controls** → **Sign in as demo shopper: Ravi (not opted in)** → add the serum to the bag → leave. | — | After about 3 minutes, **Process due work now** sends **no** follow-up to Ravi. **Intents** shows the reason "The customer has not opted in to messages." |
 | e6 | Shopper (another new tab) | **Continue as guest** → add to bag → leave. | — | No follow-up. **Intents** reason: "Anonymous visitor: no known, reachable customer to message." |
 
@@ -240,22 +256,30 @@ Set the browser to a phone width: open the developer tools' device toolbar and c
 
 ## 5. Results
 
+Run on 2026-10-05/06 by `scripts/judge-test-plan.mjs` (Playwright, Chromium) on the local stack — emulators, `seed:demo`, backend and Vite on `http://localhost:5173` — through the UI only. Each story starts from **Reset demo** where the plan says so. Stories a–h ran at 1440 px; the phone check at 390 px. Rerun it with `BASE_URL=http://localhost:5173 node scripts/judge-test-plan.mjs` (about 20 minutes; Reset works once a minute and stories e and g wait 3 minutes for the follow-up timing).
+
 | Story / check | Pass / Fail | Notes |
 |---|---|---|
-| Setup and Reset demo | | |
-| a — Intent capture, same-day pickup | | |
-| b — Store fulfils, all screens update | | |
-| c — Store refusal, next store offered | | |
-| d — Online purchase attributed | | |
-| e — Cart follow-up, opted-in only | | |
-| f — Human handoff, no footer on human replies | | |
-| g — Opt-out stops follow-ups | | |
-| h — Demand insights (brand and store) | | |
-| p1 — Two "Asha" windows isolated | | |
-| p2 — Store cannot see another store | | |
-| p3 — Store never sees the customer | | |
-| p4 — Platform shows totals only | | |
-| p5 — Roles kept out of other consoles | | |
-| p6 — Signed-out access needs login | | |
-| Phone — story a | | |
-| Phone — story b | | |
+| Setup and Reset demo | Pass | "Demo reset: 10 products synced, …". A second Reset within a minute shows "The demo was just reset. Try again in a minute. (RATE_LIMITED)". |
+| a — Intent capture, same-day pickup | Pass | Card: "Pick up today at Andheri Store, 7.6 km · open until 23:59" (demo hours) vs "Home delivery in 4–5 days"; buttons **Pick up today** · **Home delivery**; image and footer. Pickup pass with a 6-digit code, held until (store time) and "Prefer delivery? Home delivery in 4–5 days."; the hold in Andheri's Next up. |
+| b — Store fulfils, all screens update | Pass | Why: "Powai Store was closer but out of stock. You were the nearest store with stock — 7.6 km from the customer." Confirmed and ready reach the chat; nothing after "Customer arrived"; one thank-you after Complete ("Thanks for picking up … — Demo Beauty Co", no footer). The journey ends "Picked up at Andheri Store — in-store purchase". Platform Holds 10 → 11, Store pickups 7 → 8. |
+| c — Store refusal, next store offered | Pass | Bandra refuses → apology → "Pick up today at Andheri Store, 8.5 km" (no reason shown to the shopper). Andheri's why: "Bandra Store couldn't fulfil the customer's hold, so it came to you — 8.5 km from the customer." The journey, Overview and Reservations → Refused show the refusal. Bandra's Demand shows "Holds you refused: Not actually in stock 1" immediately. |
+| c — Refusal beyond the 10 km radius (c7–c9) | Pass | Near Powai, Andheri refuses → "No other store near you has it. The nearest one is Bandra Store, 10.6 km away." with **Pick up today** · **Home delivery**. The hold at Bandra is allowed; Bandra's why: "Andheri Store couldn't fulfil the customer's hold, so it came to you — 10.6 km from the customer." |
+| d — Online purchase attributed | Pass | **Home delivery** → the `qs_ref` link → Order placed. The journey ends "Ordered online · ₹795 est."; Insights online orders 7 → 8; Platform attributed online orders 7 → 8. |
+| e — Cart follow-up, opted-in only | Pass | After about 3 minutes: "Due work processed: 1 follow-up sent". Asha has exactly one follow-up (three quick replies, "Reply STOP to opt out.", footer). Ravi: "The customer has not opted in to messages."; guest: "Anonymous visitor: …"; neither got a message. |
+| f — Human handoff, no footer on human replies | Pass | The acknowledgement and the team's reply have no footer and no team identity. Attention line and nav badge while waiting; no automated reply during the handoff. After Resolve the badge clears at once and automated replies resume. |
+| g — Opt-out stops follow-ups | Pass | No reply to STOP or after it; Intents: "The customer opted out."; "0 follow-ups sent" and nothing in the chat; the transcript ends with STOP and has no Reply-as-a-person box. |
+| h — Demand insights (brand and store) | Pass | Synthetic-history notice, funnel, weekday reading with a problem day, suggestions with "Open Andheri Store →", unmet demand; unticking synthetic history changes the numbers. Andheri's Demand has its own slice; Bandra sees only its own. |
+| p1 — Two "Asha" windows isolated | Pass | Each window sees only its own "secret"; the brand lists separate `sim:shopper_3002_…` conversations. |
+| p2 — Store cannot see another store | Pass | Bandra's Today, History and Demand never show the Andheri hold; no store picker. |
+| p3 — Store never sees the customer | Pass | Only "Customer •••• XXXX"; no ref, coordinates or messages. |
+| p4 — Platform shows totals only | Pass | Overview, Brands, Retail network, Audit: counts and names only; the only email on screen is the signed-in user's. |
+| p5 — Roles kept out of other consoles | Pass | Brand, Store and Platform typing `/brand`, `/store`, `/platform` each land back in their own console. |
+| p6 — Signed-out access needs login | Pass | `/brand`, `/store`, `/platform` go to the sign-in page. |
+| Phone — story a | Pass | "Need it today?" opens `/chat` full screen; the same card, buttons and pass; no sideways scroll on the product page or the chat. |
+| Phone — story b | Pass | Store Today without sideways scroll; confirm → ready → arrived (no message) → complete (one thank-you); the brand journey without sideways scroll. |
+
+**Found and fixed while running the plan:**
+- c4: the next store's "why" wrongly said "The customer chose you … Bandra Store was nearer". It now says the first store couldn't fulfil the hold.
+- f4: the Brand nav badge stayed after **Resolve** until you changed page. It now clears at once.
+- b8: the plan said to note the tiles before b2. It now says before a6, because the hold counts when it is placed.

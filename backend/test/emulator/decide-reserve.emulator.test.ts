@@ -218,7 +218,7 @@ describe('docs/08 §7.2 scenarios on MockAgentRuntime (emulator, stores A–E)',
       decision_source: 'AGENT',
       guardrail_status: 'ALLOWED',
     });
-    expect(optionsOf(res)).toEqual(['hold:sc_A', 'other_stores', 'buy_online']);
+    expect(optionsOf(res)).toEqual(['hold:sc_A', 'buy_online', 'other_stores']);
     const trace = (await recommendationOf(B1, res)).trace;
     expect(trace.eligible.map((e: { store_id: string }) => e.store_id)).toEqual(['sc_A', 'sc_E', 'sc_B']);
     expect(trace.excluded).toEqual(
