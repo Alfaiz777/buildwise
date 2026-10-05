@@ -822,3 +822,115 @@ ul.plain {
   width: auto;
   margin: 0;
 }
+
+/* ---------------------------------------------------------------- Store Console (UI-4) */
+.strip-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.today-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+}
+.sound-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sound-toggle input {
+  width: auto;
+  margin: 0;
+}
+.queue-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.next-up {
+  margin-bottom: var(--space-4);
+}
+.next-up__title,
+.queue-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg, 1.125rem);
+}
+.queue-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.queue-card {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.queue-card--next {
+  border: 2px solid var(--role, var(--color-primary));
+  box-shadow: var(--shadow-md);
+}
+.queue-card__head {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+.queue-card--next .queue-card__item {
+  font-size: var(--text-lg, 1.125rem);
+}
+.why-here {
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--info-bg);
+}
+.queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.next-up__action {
+  min-height: 48px;
+  padding: 0 var(--space-6);
+  font-size: var(--text-md, 1rem);
+}
+.pickup-code {
+  display: grid;
+  gap: 2px;
+}
+.pickup-code input {
+  max-width: 12rem;
+  font-size: 1.125rem;
+  letter-spacing: 0.15em;
+}
+.refuse {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.kpi-grid--store {
+  grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+}
+@media (max-width: 640px) {
+  .refuse {
+    margin-left: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .badge.new {
+    animation: ui-rise var(--duration-base) var(--ease-out);
+  }
+}

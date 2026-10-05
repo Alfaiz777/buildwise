@@ -14,6 +14,7 @@ import {
   type RetailerTransitionRequest,
 } from '../domain/reservationStatus.js';
 import type { RetailPrincipal, TenantPrincipal } from '../domain/principal.js';
+import { whyThisStore, type WhyHere } from '../domain/storeReason.js';
 import { hashedId } from '../lib/ids.js';
 import type {
   CreateReservationResult,
@@ -255,17 +256,30 @@ export class ReservationService {
   }
 
   /** The Retailer Console "This week" strip for the own store (created in the last 7 days). */
-  async weekSummary(principal: RetailPrincipal) {
+  /**
+   * The store's value strip (M6 "This week"; UI-4): the last 7 days of its reservations.
+   * Completion = picked up ÷ finished holds (active ones are left out). Value = Σ quantity
+   * × the store's CURRENT offline price per SKU — an estimate, so the UI says "est.".
+   */
+  async weekSummary(principal: RetailPrincipal, prices: Map<string, number> = new Map(), currency = 'INR') {
     const since = new Date(this.deps.now().getTime() - 7 * 24 * 60 * 60_000).toISOString();
     const rows = (
       await this.deps.reservations.list(principal.brandId, { storeId: principal.storeId, limit: 1000 })
     ).filter((r) => r.createdAt >= since);
+    const completed = rows.filter((r) => r.status === 'COMPLETED');
+    const finished = rows.filter((r) => !ACTIVE_RESERVATION_STATUSES.includes(r.status));
     return {
       days: 7,
       reservations: rows.length,
-      completed: rows.filter((r) => r.status === 'COMPLETED').length,
+      completed: completed.length,
       refused: rows.filter((r) => r.status === 'CANCELLED' && r.cancelledBy === 'RETAILER').length,
       expired: rows.filter((r) => r.status === 'EXPIRED').length,
+      completion_pct: finished.length === 0 ? null : Math.round((completed.length / finished.length) * 100),
+      value: {
+        amount: completed.reduce((sum, r) => sum + r.quantity * (prices.get(r.sku) ?? 0), 0),
+        currency,
+      },
+      synthetic: rows.filter((r) => r.demoHistory === true).length,
     };
   }
 
@@ -296,9 +310,59 @@ export class ReservationService {
     );
     const ordered = (filter.view === 'active' ? sortQueue(rows) : rows).slice(0, filter.limit);
     const lookup = await this.lookup(principal.brandId);
-    if (principal.scope !== 'BRAND') return ordered.map((r) => view(r, lookup));
+    if (principal.scope !== 'BRAND') {
+      const why = await this.whyHere(principal.brandId, ordered);
+      return ordered.map((r) => ({ ...view(r, lookup), ...storeFields(r, lookup, why) }));
+    }
     const conversations = await this.conversationIds(principal.brandId, ordered);
     return ordered.map((r) => ({ ...view(r, lookup), ...brandFields(r, lookup, conversations) }));
+  }
+
+  /**
+   * UI-4 "Why this hold came to you": from the decision that offered this store. A hold's
+   * own decision often carries no store lists, so the conversation's earlier decisions are
+   * searched (newest first) for the trace that lists this store. Store-safe output only.
+   */
+  private async whyHere(brandId: string, rows: ReservationRecord[]) {
+    const out = new Map<string, WhyHere | null>();
+    const recs = this.deps.recommendations;
+    if (!recs) return out;
+    await Promise.all(
+      rows.map(async (r) => {
+        if (!r.aiRecommendationId) return out.set(r.reservationId, null);
+        const hold = await recs.get(brandId, r.aiRecommendationId);
+        if (!hold) return out.set(r.reservationId, null);
+        // The hold's own decision often re-checks only the chosen store; the reason lives in the
+        // decision that offered the choice (the latest one listing more than this one store).
+        const earlier = (await recs.listByConversation(brandId, hold.conversationId))
+          .filter((x) => x.recommendationId !== hold.recommendationId && x.proposedAt <= hold.proposedAt)
+          .reverse();
+        const lists = (t: typeof hold.trace) =>
+          !!t && t.eligible.some((e) => e.store_id === r.storeId) && t.eligible.length + t.excluded.length > 1;
+        const chain = [hold, ...earlier];
+        const source = chain.find((x) => lists(x.trace)) ?? hold;
+        // "Other stores" leaves out the store offered first: merge the stores seen by every
+        // decision made from the same customer position (this store at the same distance).
+        const ownKm = source.trace?.eligible.find((e) => e.store_id === r.storeId)?.distance_km;
+        const sameSpot = chain.filter((x) => {
+          const km = x.trace?.eligible.find((e) => e.store_id === r.storeId)?.distance_km;
+          return ownKm !== undefined && km !== undefined && Math.abs(km - ownKm) < 0.05;
+        });
+        const unique = <T extends { store_id: string }>(list: T[]) =>
+          list.filter((x, i) => list.findIndex((y) => y.store_id === x.store_id) === i);
+        const eligible = unique(sameSpot.flatMap((x) => x.trace!.eligible));
+        const merged = source.trace
+          ? {
+              eligible,
+              excluded: unique(sameSpot.flatMap((x) => x.trace!.excluded)).filter(
+                (x) => !eligible.some((e) => e.store_id === x.store_id),
+              ),
+            }
+          : null;
+        out.set(r.reservationId, whyThisStore(merged, r.storeId, r.variantId));
+      }),
+    );
+    return out;
   }
 
   /**
@@ -318,7 +382,8 @@ export class ReservationService {
     const r = await this.deps.reservations.get(principal.brandId, reservationId);
     if (!r || (principal.scope === 'RETAIL' && r.storeId !== principal.storeId)) return null;
     const lookup = await this.lookup(principal.brandId);
-    if (principal.scope !== 'BRAND') return view(r, lookup);
+    if (principal.scope !== 'BRAND')
+      return { ...view(r, lookup), ...storeFields(r, lookup, await this.whyHere(principal.brandId, [r])) };
     return { ...view(r, lookup), ...brandFields(r, lookup, await this.conversationIds(principal.brandId, [r])) };
   }
 
@@ -351,6 +416,20 @@ export function sortQueue<T extends { status: ReservationStatus; expiresAt: stri
   return [...rows].sort(
     (a, b) => Number(b.status === 'PENDING') - Number(a.status === 'PENDING') || a.expiresAt.localeCompare(b.expiresAt),
   );
+}
+
+/**
+ * Store-only row fields (UI-4): why the hold came here (store names and this store's
+ * distance only), the product image and the synthetic flag. Never a conversation,
+ * recommendation, customer or location.
+ */
+function storeFields(r: ReservationRecord, lookup: Lookup, why: Map<string, WhyHere | null>) {
+  const variant = lookup.variants.get(r.variantId);
+  return {
+    why_here: why.get(r.reservationId) ?? null,
+    image_url: variant ? (lookup.products.get(variant.productId)?.imageUrl ?? null) : null,
+    demo_history: r.demoHistory === true,
+  };
 }
 
 /** Brand-only row fields (UI-3): its conversation, the product image and the synthetic flag. */

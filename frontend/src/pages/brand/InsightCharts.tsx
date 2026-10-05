@@ -108,10 +108,13 @@ export function WeekdayChart({
   days,
   problemDay,
   caption,
+  keys = ['Store lookups', 'found no store with stock'],
 }: {
   days: WeekdayBar[];
   problemDay: string | null;
   caption: string;
+  /** Legend for the two bars (UI-4: the Store Console reads them differently). */
+  keys?: [string, string];
 }) {
   const [table, setTable] = useState(false);
   const max = Math.max(1, ...days.map((d) => d.lookups));
@@ -186,8 +189,8 @@ export function WeekdayChart({
         </svg>
       )}
       <figcaption className="chart__caption">
-        <span className="chart__key chart__key--all" /> Store lookups <span className="chart__key chart__key--danger" />{' '}
-        found no store with stock. {caption}{' '}
+        <span className="chart__key chart__key--all" /> {keys[0]} <span className="chart__key chart__key--danger" />{' '}
+        {keys[1]}. {caption}{' '}
         <button type="button" className="ui-link-button" onClick={() => setTable(!table)}>
           {table ? 'Show as chart' : 'Show as table'}
         </button>

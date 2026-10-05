@@ -274,6 +274,8 @@ export interface Suggestion {
   rule: 'STOCK_UNMET_AREA' | 'RAISE_STOCK_BEFORE_PEAK' | 'REUPLOAD_STOCK';
   text: string;
   evidence: { kind: 'EVENTS' | 'RESERVATIONS'; ids: string[] };
+  /** UI-4: the store the suggestion is about (null when it names an area, not a store). */
+  store_id: string | null;
 }
 
 export const UNMET_THRESHOLD = 3;
@@ -304,6 +306,7 @@ export function suggestions(rows: InsightRows, catalog: InsightCatalog, days: nu
       rule: 'STOCK_UNMET_AREA',
       text: `${label(g.sku)} was requested ${g.ids.length} times in ${titleCase(g.area)} ${period} with no store in stock. Suggested: ${who}.`,
       evidence: { kind: 'EVENTS', ids: g.ids },
+      store_id: store?.storeId ?? null,
     });
   }
 
@@ -330,6 +333,7 @@ export function suggestions(rows: InsightRows, catalog: InsightCatalog, days: nu
       rule: 'RAISE_STOCK_BEFORE_PEAK',
       text: `${store?.storeName ?? worst[0]} was the nearest store but out of stock of ${label(sku)} ${worst[1].length} times on ${titleCase(reading.peak_weekday)}s ${period}. Suggested: raise its ${label(sku)} stock before ${titleCase(reading.peak_weekday)}.`,
       evidence: { kind: 'EVENTS', ids: worst[1] },
+      store_id: worst[0],
     });
   }
 
@@ -349,7 +353,57 @@ export function suggestions(rows: InsightRows, catalog: InsightCatalog, days: nu
       rule: 'REUPLOAD_STOCK',
       text: `${store?.storeName ?? storeId} refused ${ids.length} reservations as "not actually in stock" ${period}. Suggested: ask ${store?.retailerName ?? 'its retailer'} to re-upload ${store?.storeName ?? 'the store'}'s stock file.`,
       evidence: { kind: 'RESERVATIONS', ids },
+      store_id: storeId,
     });
   }
   return out;
+}
+
+// ------------------------------------------------------------------ 7. one store's slice (UI-4)
+
+/**
+ * "Demand near your store" for a Store Console (Change 16, UI-4): only what concerns this
+ * store — lookups where it was the nearest store but could not serve, its fill rate by
+ * weekday, its refusals and the suggestions that name it. No other store's numbers, no
+ * evidence ids, no customer data.
+ */
+export function storeSlice(rows: InsightRows, catalog: InsightCatalog, storeId: string, days: number) {
+  const store = catalog.stores.find((s) => s.storeId === storeId);
+  const tz = store?.timezone ?? catalog.defaultTimezone;
+  const label = (sku: string) => catalog.variants.find((v) => v.sku === sku)?.label ?? sku;
+  const missed = new Map<string, { sku: string; label: string; weekday: Weekday; reason: string; count: number }>();
+  for (const l of rows.lookups) {
+    if (l.nearestStoreId !== storeId || l.nearestReason === null || !l.sku) continue;
+    const weekday = weekdayOf(l.timestamp, l.timezone ?? tz);
+    const key = `${l.sku}|${weekday}|${l.nearestReason}`;
+    const g = missed.get(key) ?? { sku: l.sku, label: label(l.sku), weekday, reason: l.nearestReason, count: 0 };
+    g.count++;
+    missed.set(key, g);
+  }
+  const refusals: Record<string, number> = { NOT_ACTUALLY_IN_STOCK: 0, DAMAGED: 0, STORE_CLOSING_EARLY: 0, OTHER: 0 };
+  for (const r of rows.reservations) {
+    if (r.storeId === storeId && r.cancelledBy === 'RETAILER') {
+      const reason = r.cancelReason ?? 'OTHER';
+      refusals[reason] = (refusals[reason] ?? 0) + 1;
+    }
+  }
+  return {
+    missed: [...missed.values()].sort(
+      (a, b) =>
+        b.count - a.count || WEEKDAYS.indexOf(a.weekday) - WEEKDAYS.indexOf(b.weekday) || a.sku.localeCompare(b.sku),
+    ),
+    fill_rate: fillRate(rows, catalog)
+      .filter((f) => f.store_id === storeId)
+      .map(({ weekday, nearest, had_stock, fill_pct, refusals: r }) => ({
+        weekday,
+        nearest,
+        had_stock,
+        fill_pct,
+        refusals: r,
+      })),
+    refusals,
+    suggestions: suggestions(rows, catalog, days)
+      .filter((s) => s.store_id === storeId)
+      .map(({ rule, text }) => ({ rule, text })),
+  };
 }

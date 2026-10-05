@@ -117,7 +117,7 @@ describe('reservation rows: brand-only fields', () => {
     const row = store.body.reservations.find((r: { reservation_id: string }) => r.reservation_id === id);
     expect(row).toBeDefined();
     expect(row).not.toHaveProperty('conversation_id');
-    expect(row).not.toHaveProperty('demo_history');
+    expect(row).toHaveProperty('why_here'); // UI-4: the store's own, store-safe reason instead
     const one = await s.get(`/api/reservations/${id}`, 'radmin_scA');
     expect(one.body).not.toHaveProperty('conversation_id');
   });

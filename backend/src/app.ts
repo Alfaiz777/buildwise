@@ -158,7 +158,11 @@ export function createApp(deps: AppDeps): Express {
   tenant.use('/channels/simulator', requireScope('BRAND'), simulatorRouter(services.simulator, services.conversations));
   if (localUploads) tenant.use('/local-files', requireScope('BRAND'), localFilesRouter(localUploads));
   // Retailer Console: store-scoped, RETAIL_ADMIN only.
-  tenant.use('/retail', requireScope('RETAIL'), retailRouter(services.account, services.reservations));
+  tenant.use(
+    '/retail',
+    requireScope('RETAIL'),
+    retailRouter(services.account, services.reservations, services.insights),
+  );
   tenant.use('/reservations', reservationsRouter(services.reservations, services.fulfilment));
   api.use(tenant);
 

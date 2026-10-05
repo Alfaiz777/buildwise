@@ -254,6 +254,14 @@ describe('M7 full journey — platform → brand → stores → customer → sto
     const queue = await as('andheri').get('/api/reservations?view=active');
     expect(queue.body.reservations.map((r: { reservation_id: string }) => r.reservation_id)).toEqual([id]);
     expect(JSON.stringify(queue.body)).not.toMatch(/asha|sim:|cus_/); // no customer identity at the store
+    // UI-4: why the hold came here — store names and Andheri's own distance only.
+    expect(queue.body.reservations[0].why_here.text).toMatch(
+      /^Powai Store was closer but out of stock\. You were the nearest store with stock — \d+(\.\d)? km from the customer\.$/,
+    );
+    expect(JSON.stringify(queue.body)).not.toMatch(/latitude|longitude|conversation_id/);
+    // UI-4: the store's own demand slice; a sibling store of the same retailer is 404.
+    expect((await as('andheri').get('/api/retail/stores/st_north_2/insights')).status).toBe(200);
+    expect((await as('andheri').get('/api/retail/stores/st_north_1/insights')).status).toBe(404);
     expect((await as('bandra').get('/api/reservations?view=active')).body.reservations).toEqual([]);
 
     expect((await move('andheri', id, 'CONFIRMED', 'PENDING')).body.notification.status).toBe('SENT');

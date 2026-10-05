@@ -46,6 +46,9 @@ const SHOTS = [
   ['brand-network', 'brand', '/brand/network'],
   ['brand-settings', 'brand', '/brand/settings'],
   ['store-today', 'store', '/store'],
+  ['store-history', 'store', '/store/history'],
+  ['store-stock', 'store', '/store/stock'],
+  ['store-demand', 'store', '/store/demand'],
   ['platform-overview', 'platform', '/platform'],
 ];
 
@@ -66,6 +69,9 @@ const shot = async (page, name, vp, fullPage = false) => {
  * pass) → the store confirms in its own tab → the store update appears in the chat.
  */
 async function shopperJourney(vp, newPage, storePage, brandPage) {
+  // UI-4: the store has Today open before the hold arrives, to show the new-hold alert.
+  await storePage.goto(`${BASE}/store`);
+  await storePage.getByRole('region', { name: 'Last 7 days' }).waitFor({ timeout: T });
   const page = await newPage();
   await page.goto(`${BASE}/shop`);
   await page
@@ -121,11 +127,25 @@ async function shopperJourney(vp, newPage, storePage, brandPage) {
   }
   await chat.getByText('On hold for you').waitFor({ timeout: T });
   await shot(page, 'chat-pickup-pass', vp);
-  await storePage.goto(`${BASE}/store`);
+  await storePage.getByRole('button', { name: 'Refresh' }).first().click();
+  try {
+    await storePage
+      .getByText(/New hold:/)
+      .first()
+      .waitFor({ timeout: T });
+    await shot(storePage, 'store-new-hold', vp);
+  } catch {
+    console.error('(no new-hold toast: alert shot skipped)');
+  }
   const confirm = storePage.getByRole('button', { name: 'Confirm' }).first();
   try {
     await confirm.waitFor({ timeout: T });
     await confirm.click();
+    await storePage
+      .getByText(/Confirmed \(customer notified\)/)
+      .first()
+      .waitFor({ timeout: T });
+    await shot(storePage, 'store-next-up', vp, true);
     await chat.getByText(/confirmed your hold/).waitFor({ timeout: T });
     await shot(page, 'chat-store-update', vp);
     // UI-3: finish the pickup, so the brand's journey timeline ends on the outcome.

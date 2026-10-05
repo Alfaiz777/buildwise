@@ -395,13 +395,13 @@ describe('scope routing — each of the three roles lands in its own console are
     expect(api.post).toHaveBeenCalledWith('/api/brand/stores/st_2/admins', { email: 'owner-andheri@north.test' });
   });
 
-  it('RETAIL_ADMIN → Retailer Console with exactly its one store and no store picker', async () => {
-    renderAt('/app', signedIn, apiFor(ME.retailAdmin));
+  it('RETAIL_ADMIN → Store Console with exactly its one store and no store picker', async () => {
+    renderAt('/store/stock', signedIn, apiFor(ME.retailAdmin));
     expect(await screen.findByText('Your store')).toBeInTheDocument();
-    expect(screen.getByText('Bandra Store · Brand A')).toBeInTheDocument();
+    expect(screen.getByText('Bandra Store · for Brand A via North Retail')).toBeInTheDocument();
     expect(screen.getByRole('note')).toHaveTextContent('You run Bandra Store for Brand A via North Retail.');
-    expect(screen.getByText('Bandra Store')).toBeInTheDocument();
-    expect(screen.getByText('North Retail')).toBeInTheDocument();
+    expect(screen.getByText('Bandra Store', { selector: 'dd' })).toBeInTheDocument();
+    expect(screen.getByText('North Retail', { selector: 'dd' })).toBeInTheDocument();
     expect(screen.getByText('Hill Road, Bandra')).toBeInTheDocument();
     expect(screen.getByText('mon 10:00-21:00 (Asia/Kolkata)')).toBeInTheDocument();
     expect(screen.getByText(/Reserved = units held for customers at this store/)).toBeInTheDocument();
@@ -411,7 +411,7 @@ describe('scope routing — each of the three roles lands in its own console are
 
   it('RETAIL_ADMIN → Store stock shows only its own store (read-only)', async () => {
     const api = apiFor(ME.retailAdmin);
-    renderAt('/app', signedIn, api);
+    renderAt('/store/stock', signedIn, api);
     const row = (await screen.findByText('DBC-VCSERUM-30')).closest('tr')!;
     expect(within(row).getByText('Vitamin C Glow Serum')).toBeInTheDocument();
     expect(within(row).getByText('Low stock')).toBeInTheDocument();
@@ -421,10 +421,11 @@ describe('scope routing — each of the three roles lands in its own console are
     const paths = (api.get as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
     expect(paths.filter((p: string) => p.includes('/inventory'))).toEqual(['/api/retail/stores/st_1/inventory']);
     expect(screen.queryByRole('button', { name: /sync|import|upload/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Your brand updates this from its retail file/)).toBeInTheDocument();
   });
 
   it('RETAIL_ADMIN → Store stock empty state', async () => {
-    renderAt('/app', signedIn, apiFor(ME.retailAdmin, EMPTY));
+    renderAt('/store/stock', signedIn, apiFor(ME.retailAdmin, EMPTY));
     expect(await screen.findByText(/No stock has been imported for this store yet/)).toBeInTheDocument();
   });
 

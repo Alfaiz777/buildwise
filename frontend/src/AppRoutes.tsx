@@ -13,7 +13,8 @@ import { LandingPage } from './pages/landing/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { PlatformHome } from './pages/platform/PlatformHome';
-import { RetailerHome } from './pages/retailer/RetailerHome';
+import { RetailerHome, StoreHistory, StoreStock } from './pages/retailer/RetailerHome';
+import { StoreDemand } from './pages/retailer/StoreDemand';
 import { ChatPage } from './pages/shopper/ChatPage';
 import { ShopPage } from './pages/shopper/ShopPage';
 import { UiKitPage } from './pages/uikit/UiKitPage';
@@ -61,6 +62,9 @@ export function AppRoutes({ profile = 'local' }: { profile?: FrontendProfile }) 
             </Route>
             <Route element={<ScopeRoute scope="RETAIL" />}>
               <Route path="/store" element={<RetailerHome autoPoll={local} />} />
+              <Route path="/store/history" element={<StoreHistory />} />
+              <Route path="/store/stock" element={<StoreStock autoPoll={local} />} />
+              <Route path="/store/demand" element={<StoreDemand />} />
             </Route>
           </Route>
         </Route>

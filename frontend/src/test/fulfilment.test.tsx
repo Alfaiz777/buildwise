@@ -108,18 +108,19 @@ describe('Retailer Console — reservation queue (M6)', () => {
       },
     );
     render_('/retailer', api);
-    expect(await screen.findByText('1 × Vitamin C Glow Serum 30 ml')).toBeInTheDocument();
-    expect(await screen.findByLabelText('This week')).toHaveTextContent(
-      'This week: 3 reservations · 1 completed · 1 refused · 0 expired',
-    );
-    const card = screen.getByText('1 × Vitamin C Glow Serum 30 ml').closest('li')!;
+    const card = await screen.findByRole('article', { name: '1 × Vitamin C Glow Serum 30 ml' });
+    const strip = await screen.findByRole('region', { name: 'Last 7 days' });
+    expect(within(strip).getByText('Holds').parentElement).toHaveTextContent('3');
+    expect(within(strip).getByText('Picked up').parentElement).toHaveTextContent('1');
+    // The most urgent hold is the "Next up" card.
+    expect(within(screen.getByRole('region', { name: 'Next up' })).getByRole('article')).toBe(card);
     expect(within(card).getByText(/Customer •••• 4821/)).toBeInTheDocument();
     expect(within(card).getByText(/expires in (39|40) min/)).toBeInTheDocument();
     expect(card.textContent).not.toMatch(/@|\+91|phone/);
     fireEvent.click(within(card).getByRole('button', { name: 'Confirm' }));
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      /Confirmed \(customer notified\)\. Next up: 1 × Vitamin C Glow Serum 30 ml, expires in/,
-    );
+    expect(
+      await screen.findByText(/Confirmed \(customer notified\)\. Next up: 1 × Vitamin C Glow Serum 30 ml, expires in/),
+    ).toBeInTheDocument();
   });
 
   it('Complete needs the 6-digit code; a refusal needs a reason, OTHER asks for an internal note', async () => {
