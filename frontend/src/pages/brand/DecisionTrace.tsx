@@ -1,13 +1,15 @@
+import { Badge } from '../../components/ui';
+import { label } from '../../lib/labels';
 import { EXCLUSION_TEXT, GUARDRAIL_TEXT, humanize, type Recommendation } from './conversationTypes';
 import { formatDateTime } from './types';
+import { safetyLabel, whySentence } from './whySentence';
 
-const RUNTIME_TEXT: Record<string, string> = { MOCK: 'Mock AI, deterministic', ADK_GEMINI: 'Gemini' };
+const RUNTIME_TEXT: Record<string, string> = { MOCK: 'Mock AI · deterministic', ADK_GEMINI: 'Gemini' };
 
 /**
- * "Why Qwikspot did this" (docs/11 §4): for each decision, what the agent saw (a summary,
- * never the raw context), the tools it called, which stores were eligible or excluded and
- * why, what the guardrail decided, the action, runtime / decision source, and any
- * reservation that was created. Newest decision first.
+ * "Why Qwikspot did this" (docs/11 §4; Change 16, UI-3): for each decision, newest first,
+ * one plain sentence built from the trace, the safety check in words and the runtime. The
+ * technical trace — context, store table, tool calls — sits under "Technical details".
  */
 export function DecisionTrace({ recommendations }: { recommendations: Recommendation[] }) {
   if (recommendations.length === 0) return null;
@@ -15,21 +17,25 @@ export function DecisionTrace({ recommendations }: { recommendations: Recommenda
   return (
     <div className="decision-trace">
       <h3>Why Qwikspot did this</h3>
-      {newestFirst.map((r, i) => (
-        <details key={r.recommendation_id} open={i === 0} className="trace-card">
-          <summary>
-            <strong>{humanize(r.action)}</strong>{' '}
-            <span className={`badge ${r.guardrail_status === 'BLOCKED' ? 'warn' : ''}`}>
-              guardrail {humanize(r.guardrail_status)}
-            </span>{' '}
-            <span className="badge">{RUNTIME_TEXT[r.runtime] ?? r.runtime}</span>{' '}
-            <span className="badge">{r.decision_source === 'AGENT' ? 'agent' : 'deterministic fallback'}</span>{' '}
-            <span className="muted small">{formatDateTime(r.proposed_at)}</span>
-          </summary>
-          <p className="small">{r.rationale_summary}</p>
-          {r.trace ? <TraceBody r={r} /> : <p className="muted small">No trace recorded for this decision.</p>}
-        </details>
-      ))}
+      {newestFirst.map((r) => {
+        const safety = safetyLabel(r);
+        return (
+          <article key={r.recommendation_id} className="trace-card" aria-label={label(r.action)}>
+            <header className="trace-card__head">
+              <strong>{label(r.action)}</strong> <Badge tone={safety.tone}>{safety.text}</Badge>{' '}
+              <Badge>{RUNTIME_TEXT[r.runtime] ?? r.runtime}</Badge>
+              {r.decision_source !== 'AGENT' && <Badge tone="warning">Safe fallback reply</Badge>}
+              <span className="muted small"> {formatDateTime(r.proposed_at)}</span>
+            </header>
+            <p className="why-sentence">{whySentence(r)}</p>
+            <details className="small">
+              <summary>Technical details</summary>
+              <p className="small">{r.rationale_summary}</p>
+              {r.trace ? <TraceBody r={r} /> : <p className="muted small">No trace recorded for this decision.</p>}
+            </details>
+          </article>
+        );
+      })}
     </div>
   );
 }

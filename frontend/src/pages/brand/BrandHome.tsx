@@ -1,111 +1,80 @@
-import { useCallback, useState, type FormEvent } from 'react';
+import { AlertTriangle, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMe } from '../../account/meContext';
-import { useApi, type ProvisionedUser, type Role } from '../../api/apiContext';
-import { ConsoleShell, errorMessage, Section, SetupLink, useLoad } from '../../components/ConsoleShell';
-import { CatalogSection } from './CatalogSection';
+import { useApi } from '../../api/apiContext';
+import { ConsoleShell, errorMessage, useLoad } from '../../components/ConsoleShell';
+import { Card, ErrorState, KpiTile, Skeleton, useToast } from '../../components/ui';
+import type { ConversationRow, ReservationRow } from './conversationTypes';
 import { DemoGuide } from './DemoGuide';
-import { RetailImportSection } from './RetailImportSection';
+import { storesNamedIn, type InsightsResponse } from './InsightsPage';
+import { attentionItems, kpis } from './overview';
+import type { BrandSettings } from './SettingsPage';
 import { SetupChecklist } from './SetupChecklist';
-import { label } from '../../lib/labels';
-import { formatDateTime, type BrandStore, type CatalogResponse, type Connection, type RetailImport } from './types';
-
-interface BrandUser {
-  user_id: string;
-  email: string | null;
-  role: Role;
-  retailer_id: string | null;
-  store_id: string | null;
-  status: string;
-}
-interface Retailer {
-  retailer_id: string;
-  name: string;
-  status: string;
-}
+import type { BrandStore, CatalogResponse, Connection } from './types';
 
 /**
- * Brand Console shell (M2) for the brand's single BRAND_ADMIN: manage the brand's
- * retailer network and store-level Retail Admin provisioning
- * (docs/11_INTERFACE_CONTRACT.md).
- *
- * Hierarchy: Retailer → its Stores → each Store's Retail Admin. A retailer may own many
- * stores; each store has at most one Retail Admin, provisioned from that store's row.
- * The Brand Admin is provisioned by the Platform Admin (there is no "add brand admin"
- * here). Stores come from the retail CSV import (M3): there is no store-ID entry and no
- * store-assignment UI. M3 adds the setup checklist, catalogue & mapping, and retail import.
+ * Brand Console → Overview (docs/11 §4; Change 16, UI-3; audit P0-1): results first. KPI
+ * tiles from the insights numbers, what needs the brand's attention now, the weekday
+ * reading and the top suggestion, the demo guide (demo brand only) and a collapsible
+ * setup card that closes itself once everything is done.
  */
 export function BrandHome() {
   const me = useMe();
   const api = useApi();
-  const users = useLoad(useCallback(() => api.get<{ users: BrandUser[] }>('/api/brand/users'), [api]));
-  const retailers = useLoad(useCallback(() => api.get<{ retailers: Retailer[] }>('/api/brand/retailers'), [api]));
+  const toast = useToast();
+  const [days, setDays] = useState<7 | 28>(7);
+  const [includeHistory, setIncludeHistory] = useState(true);
+  const insights = useLoad(
+    useCallback(
+      () => api.get<InsightsResponse>(`/api/brand/insights?days=${days}&include_history=${includeHistory}`),
+      [api, days, includeHistory],
+    ),
+  );
+  const conversations = useLoad(
+    useCallback(() => api.get<{ conversations: ConversationRow[] }>('/api/brand/conversations'), [api]),
+  );
+  const reservations = useLoad(
+    useCallback(() => api.get<{ reservations: ReservationRow[] }>('/api/reservations?view=history&limit=200'), [api]),
+  );
   const stores = useLoad(useCallback(() => api.get<{ stores: BrandStore[] }>('/api/brand/stores'), [api]));
+  const catalog = useLoad(useCallback(() => api.get<CatalogResponse>('/api/products'), [api]));
+  const settings = useLoad(useCallback(() => api.get<BrandSettings>('/api/brand/settings'), [api]));
   const connections = useLoad(
     useCallback(() => api.get<{ connections: Connection[] }>('/api/brand/connections'), [api]),
   );
-  const catalog = useLoad(useCallback(() => api.get<CatalogResponse>('/api/products'), [api]));
-  const imports = useLoad(useCallback(() => api.get<{ imports: RetailImport[] }>('/api/brand/retail-imports'), [api]));
   const [syncing, setSyncing] = useState(false);
-  const [provisioned, setProvisioned] = useState<ProvisionedUser | null>(null);
-  const [provisioningStore, setProvisioningStore] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  async function run(action: () => Promise<void>) {
-    setError(null);
-    try {
-      await action();
-      users.reload();
-      retailers.reload();
-      stores.reload();
-    } catch (err) {
-      setError(errorMessage(err));
-    }
-  }
-
-  const submit = (handler: (form: FormData) => Promise<void>) => (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    void run(async () => {
-      await handler(new FormData(form));
-      form.reset();
-    });
-  };
 
   const syncCatalog = () => {
     setSyncing(true);
-    void run(async () => {
-      try {
-        await api.post('/api/integrations/shopify/sync', {});
-      } finally {
+    setError(null);
+    api
+      .post('/api/integrations/shopify/sync', {})
+      .then(() => toast.show('Catalog synced.'))
+      .catch((err: unknown) => setError(errorMessage(err)))
+      .finally(() => {
         setSyncing(false);
         connections.reload();
         catalog.reload();
-      }
-    });
-  };
-  const afterImport = () => {
-    imports.reload();
-    stores.reload();
-    catalog.reload();
+      });
   };
 
-  const addRetailer = submit(async (f) => {
-    await api.post('/api/brand/retailers', { name: f.get('name') });
-  });
-  const addRetailAdmin = (storeId: string) =>
-    submit(async (f) => {
-      setProvisioned(
-        await api.post<ProvisionedUser>(`/api/brand/stores/${encodeURIComponent(storeId)}/admins`, {
-          email: f.get('email'),
-        }),
-      );
-      setProvisioningStore(null);
-    });
-
-  const emailOf = (userId: string) => users.data?.users.find((u) => u.user_id === userId)?.email ?? userId;
-  const brandAdmin = users.data?.users.find((u) => u.role === 'BRAND_ADMIN');
-  const storesOf = (retailerId: string) => stores.data?.stores.filter((s) => s.retailer_id === retailerId) ?? [];
-  const unassigned = stores.data?.stores.filter((s) => !s.retailer_id).length ?? 0;
+  const d = insights.data;
+  const history = d?.demo_history.included && d.demo_history.records > 0 ? d.demo_history.records : 0;
+  const attention =
+    conversations.data && reservations.data && stores.data && catalog.data
+      ? attentionItems({
+          conversations: conversations.data.conversations,
+          reservations: reservations.data.reservations,
+          stores: stores.data.stores,
+          freshnessHours: settings.data?.retail_freshness_hours ?? null,
+          mappingIssues: catalog.data.mapping_summary.needs_attention,
+          now: Date.now(),
+        })
+      : null;
+  const suggestion = d?.suggestions[0] ?? null;
+  const suggestionStores = suggestion ? storesNamedIn(suggestion.text, stores.data?.stores ?? []) : [];
 
   return (
     <ConsoleShell>
@@ -114,8 +83,96 @@ export function BrandHome() {
           {error}
         </p>
       )}
+
+      <div className="overview-head">
+        <div className="filters" role="group" aria-label="Period">
+          {([7, 28] as const).map((n) => (
+            <button
+              key={n}
+              type="button"
+              className={days === n ? '' : 'secondary'}
+              aria-pressed={days === n}
+              onClick={() => setDays(n)}
+            >
+              Last {n} days
+            </button>
+          ))}
+        </div>
+        <label className="small">
+          <input type="checkbox" checked={includeHistory} onChange={(e) => setIncludeHistory(e.target.checked)} />{' '}
+          Include synthetic history
+        </label>
+        {d && <span className="muted small">Weekdays and times in store time ({d.period.timezone}).</span>}
+      </div>
+
+      {insights.error && <ErrorState message={insights.error} onRetry={insights.reload} />}
+      {!d && !insights.error && <Skeleton lines={2} label="Loading results" />}
+      {d && (
+        <section className="kpi-grid" aria-label="Results">
+          {kpis(d).map((k) => (
+            <KpiTile
+              key={k.key}
+              label={k.label}
+              value={k.value}
+              sub={k.sub}
+              estimated={k.estimated}
+              synthetic={history > 0}
+            />
+          ))}
+        </section>
+      )}
+      {history > 0 && (
+        <p className="muted small">
+          These numbers include synthetic demo history ({history} generated records). Untick "Include synthetic history"
+          to see only live activity.
+        </p>
+      )}
+
+      <div className="overview-grid">
+        <Card title="Needs your attention">
+          {!attention ? (
+            <Skeleton lines={2} />
+          ) : attention.length === 0 ? (
+            <p className="attention-empty">
+              <CheckCircle2 size={18} aria-hidden="true" /> Nothing needs you right now.
+            </p>
+          ) : (
+            <ul className="attention-list">
+              {attention.map((a) => (
+                <li key={a.key} className={`attention attention--${a.tone}`}>
+                  <AlertTriangle size={16} aria-hidden="true" />
+                  <Link to={a.to}>{a.text}</Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="What we're seeing">
+          {d ? (
+            <>
+              <p className="reading">{d.weekday.reading.text}</p>
+              {suggestion && (
+                <p className="small">
+                  <strong>Suggested:</strong> {suggestion.text}{' '}
+                  {suggestionStores.map((s) => (
+                    <Link key={s.store_id} to={`/brand/network#store-${s.store_id}`}>
+                      Open {s.store_name} →
+                    </Link>
+                  ))}
+                </p>
+              )}
+              <Link to="/brand/insights" className="small">
+                See insights <ArrowRight size={14} aria-hidden="true" />
+              </Link>
+            </>
+          ) : (
+            <Skeleton lines={2} />
+          )}
+        </Card>
+      </div>
+
       {me.scope === 'BRAND' && <DemoGuide brandId={me.brand_id} />}
-      <SetupLink result={provisioned} />
 
       <SetupChecklist
         connection={connections.data?.connections.find((c) => c.provider === 'SHOPIFY') ?? null}
@@ -124,101 +181,6 @@ export function BrandHome() {
         syncing={syncing}
         onSync={syncCatalog}
       />
-
-      <Section title="Brand administrator">
-        {users.error && <p className="error">{users.error}</p>}
-        <p>
-          {brandAdmin?.email ?? '—'} <span className="badge">Brand Admin</span>
-        </p>
-        <p className="muted small">One Brand Admin per brand, provisioned by the Qwikspot platform admin.</p>
-      </Section>
-
-      <CatalogSection catalog={catalog.data} error={catalog.error} syncing={syncing} onSync={syncCatalog} />
-
-      <RetailImportSection imports={imports.data?.imports ?? null} error={imports.error} onImported={afterImport} />
-
-      <Section title="Retailers and stores" id="retailers">
-        {retailers.error && <p className="error">{retailers.error}</p>}
-        {stores.error && <p className="error">{stores.error}</p>}
-        {retailers.data?.retailers.length === 0 && <p className="muted">No retailers yet.</p>}
-        {retailers.data?.retailers.map((r) => (
-          <div key={r.retailer_id} className="retailer">
-            <h3>
-              Retailer: {r.name} <span className="muted small mono">{r.retailer_id}</span>{' '}
-              {r.status !== 'ACTIVE' && <span className="badge">{label(r.status)}</span>}
-            </h3>
-            {storesOf(r.retailer_id).length === 0 ? (
-              <p className="muted small">No stores yet. Stores arrive through the retail CSV import.</p>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Store</th>
-                    <th>City</th>
-                    <th>Status</th>
-                    <th>SKUs</th>
-                    <th>Stock updated</th>
-                    <th>Retail Admin</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {storesOf(r.retailer_id).map((s) => (
-                    <tr key={s.store_id}>
-                      <td>
-                        {s.store_name} <span className="muted small mono">{s.store_id}</span>
-                      </td>
-                      <td>{s.city}</td>
-                      <td>{label(s.store_status)}</td>
-                      <td>{s.sku_count}</td>
-                      <td className="small">{formatDateTime(s.stock_updated_at)}</td>
-                      <td>
-                        {s.retail_admin_user_id ? (
-                          emailOf(s.retail_admin_user_id)
-                        ) : provisioningStore === s.store_id ? (
-                          <form className="inline" onSubmit={addRetailAdmin(s.store_id)}>
-                            <input
-                              name="email"
-                              type="email"
-                              aria-label={`Retail admin email for ${s.store_name}`}
-                              placeholder="owner@store.example"
-                              required
-                            />
-                            <button type="submit">Provision</button>
-                            <button type="button" className="secondary" onClick={() => setProvisioningStore(null)}>
-                              Cancel
-                            </button>
-                          </form>
-                        ) : (
-                          <>
-                            <span className="muted">Not provisioned</span>{' '}
-                            <button
-                              type="button"
-                              className="secondary"
-                              aria-label={`Provision Retail Admin for ${s.store_name}`}
-                              onClick={() => setProvisioningStore(s.store_id)}
-                            >
-                              Provision Retail Admin
-                            </button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        ))}
-        <form className="inline" onSubmit={addRetailer}>
-          <input name="name" aria-label="Retailer name" placeholder="Retailer name" required />
-          <button type="submit">Create retailer</button>
-        </form>
-        <p className="muted small">
-          A retailer may own several stores. Each store has one Retail Admin, who operates only that store. Stores and
-          their retailer come from the retail CSV import
-          {unassigned > 0 && `; ${unassigned} store(s) are not yet associated with a retailer`}.
-        </p>
-      </Section>
     </ConsoleShell>
   );
 }

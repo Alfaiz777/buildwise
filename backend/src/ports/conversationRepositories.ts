@@ -192,6 +192,8 @@ export interface ConversationRecord {
   pendingProposal: PendingProposal | null;
   /** M6: when the conversation was handed to a person (null when automated). */
   handoffAt: string | null;
+  /** Generated demo history (`demo_history: true` on the document; Change 16, UI-3). Read-only. */
+  demoHistory?: boolean;
 }
 
 export type MessageOrigin =

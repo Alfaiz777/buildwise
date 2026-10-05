@@ -29,6 +29,8 @@ export interface CatalogProduct {
   product_id: string;
   title: string;
   category: string | null;
+  /** Change 16: the product image (relative path or https URL). */
+  image_url?: string | null;
   tags: string[];
   variants: CatalogVariant[];
 }

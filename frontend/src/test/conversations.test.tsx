@@ -196,14 +196,15 @@ describe('Brand Console — Conversations & intents', () => {
     expect(api.post).not.toHaveBeenCalled();
   });
 
-  it('"Run due follow-ups" calls process-due and reports the result', async () => {
+  it('"Process due work now" calls process-due and reports the result', async () => {
     const api = apiFor();
     (api.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ abandoned: 1, sent: 1, suppressed: 0, results: [] });
     renderAt('/brand/conversations', api);
-    fireEvent.click(await screen.findByRole('button', { name: 'Run due follow-ups' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Process due work now' }));
     expect(
-      await screen.findByText(/Due follow-ups: 1 sent, 0 suppressed, 1 sessions marked abandoned/),
-    ).toBeInTheDocument();
+      (await screen.findAllByText(/Due work processed: 1 follow-up sent, 0 suppressed, 1 session marked abandoned/))
+        .length,
+    ).toBeGreaterThan(0);
     expect(api.post).toHaveBeenCalledWith('/api/brand/follow-ups/process-due', {});
   });
 
@@ -321,7 +322,7 @@ describe('Brand Console — M5 decision trace and reservations', () => {
     const base = api.get as (path: string) => Promise<unknown>;
     const get = vi.fn(async (path: string) => {
       if (path === '/api/brand/conversations/conv_1') return TRACED;
-      if (path === '/api/reservations')
+      if (path.startsWith('/api/reservations'))
         return {
           reservations: [
             {
@@ -337,6 +338,7 @@ describe('Brand Console — M5 decision trace and reservations', () => {
               customer_display: 'Customer •••• 4821',
               created_at: '2026-10-05T10:05:00.000Z',
               expires_at: '2026-10-05T12:05:00.000Z',
+              conversation_id: 'conv_1',
             },
           ],
         };
@@ -345,18 +347,32 @@ describe('Brand Console — M5 decision trace and reservations', () => {
     return { ...api, get: get as ApiClient['get'] };
   }
 
-  it('"Why Qwikspot did this": guardrail, runtime, source, stores with reasons, tool calls, reservation', async () => {
+  it('"Why Qwikspot did this": a plain sentence per decision, safety check in words, technical details collapsed', async () => {
     renderAt('/brand/conversations', api5());
     fireEvent.click(await screen.findByRole('button', { name: /sim:shopper_3002/ }));
     expect(await screen.findByText('Why Qwikspot did this')).toBeInTheDocument();
-    expect(screen.getByText('store reservation')).toBeInTheDocument();
-    expect(screen.getByText(/Allowed after re-checking create reservation on fresh data/)).toBeInTheDocument();
-    expect(screen.getByText(/Andheri Store · pending · pickup code/)).toBeInTheDocument();
-    expect(screen.getAllByText('004271').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Mock AI, deterministic').length).toBeGreaterThan(1);
-    expect(screen.getAllByText('agent').length).toBe(2);
+    const offer = screen.getByRole('article', { name: 'Store discovery' });
+    expect(
+      within(offer).getByText(
+        'Offered Andheri Store (7.6 km) because Powai Store (0.7 km) is out of stock and Bandra Store (10.6 km) is too far.',
+      ),
+    ).toBeInTheDocument();
+    const hold = screen.getByRole('article', { name: 'Store reservation' });
+    expect(
+      within(hold).getByText('Held 1 at Andheri Store. Stock was re-checked just before holding.'),
+    ).toBeInTheDocument();
+    expect(within(hold).getByText('Safety check passed')).toBeInTheDocument();
+    expect(screen.getAllByText('Mock AI · deterministic')).toHaveLength(2);
+    // Jargon stays under Technical details: the visible header and sentence are plain words.
+    for (const card of [offer, hold]) {
+      expect(card.querySelector('.trace-card__head')!.textContent).not.toMatch(/guardrail|tool/i);
+      expect(card.querySelector('.why-sentence')!.textContent).not.toMatch(/guardrail|tool/i);
+    }
 
-    fireEvent.click(screen.getByText('store discovery'));
+    fireEvent.click(within(hold).getByText('Technical details'));
+    expect(within(hold).getByText(/Allowed after re-checking create reservation on fresh data/)).toBeInTheDocument();
+    expect(within(hold).getByText(/Andheri Store · pending · pickup code/)).toBeInTheDocument();
+    fireEvent.click(within(offer).getByText('Technical details'));
     expect(await screen.findByText('excluded: out of stock')).toBeInTheDocument();
     expect(screen.getByText('excluded: too far')).toBeInTheDocument();
     expect(screen.getByText('Tool calls (1)')).toBeInTheDocument();
@@ -366,13 +382,15 @@ describe('Brand Console — M5 decision trace and reservations', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
-  it('the Reservations tab lists status, store, product, masked customer, created and expires', async () => {
-    renderAt('/brand/conversations', api5());
-    fireEvent.click(await screen.findByRole('tab', { name: 'Reservations' }));
+  it('the Reservations page lists status, store, product, masked customer and outcome; a row opens its conversation', async () => {
+    renderAt('/brand/reservations', api5());
     expect(await screen.findByText('Customer •••• 4821')).toBeInTheDocument();
     const row = screen.getByText('Customer •••• 4821').closest('tr')!;
-    expect(within(row).getByText('pending')).toBeInTheDocument();
+    expect(within(row).getByText('Pending')).toBeInTheDocument();
     expect(within(row).getByText('Andheri Store')).toBeInTheDocument();
     expect(within(row).getByText(/Vitamin C Glow Serum/)).toBeInTheDocument();
+    expect(within(row).getByText(/In progress/)).toBeInTheDocument();
+    fireEvent.click(row);
+    expect(await screen.findByRole('log', { name: 'Messages' })).toBeInTheDocument();
   });
 });

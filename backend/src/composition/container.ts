@@ -32,6 +32,7 @@ import {
   FirestoreWebhookReceiptRepository,
 } from '../adapters/firestore/conversationRepositories.js';
 import { createConversationModule } from '../application/conversationModule.js';
+import { BrandSettingsQuery, type ChannelMode } from '../application/brandSettingsQuery.js';
 import { InsightsService } from '../application/insightsService.js';
 import { FirestoreInsightsReader } from '../adapters/firestore/insightsReader.js';
 import { LocalFileStorageProvider } from '../adapters/storage/localFileStorageProvider.js';
@@ -123,6 +124,11 @@ export function profileFeatures(
 }
 
 /** Which brands the shopper demo answers for: any in local; only the demo allowlist in gcp. */
+/** The customer channel the Settings page names (Change 16, UI-3): WhatsApp once it is wired. */
+export function channelModeOf(config: Pick<Config, 'adapters'>): ChannelMode {
+  return config.adapters.messagingChannels.includes('whatsapp') ? 'WHATSAPP' : 'SIMULATOR';
+}
+
 export function shopperBrandAllowed(config: Pick<Config, 'profile' | 'demo'>): (brandId: string) => boolean {
   return config.profile === 'local' ? () => true : (brandId) => config.demo.brandIds.includes(brandId);
 }
@@ -250,6 +256,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         reservations: conversation.reservations,
         fulfilment: conversation.fulfilment,
         handoff: conversation.handoff,
+        brandSettings: new BrandSettingsQuery({ brands, channelMode: channelModeOf(config) }),
         insights: new InsightsService({
           reader: new FirestoreInsightsReader(db),
           stores,

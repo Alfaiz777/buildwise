@@ -42,6 +42,8 @@ export interface ReservationRecord {
   pickupCodeAttempts: number;
   /** M6: what the customer was told about the last store update. */
   lastNotification: ReservationNotification | null;
+  /** Generated demo history (`demo_history: true` on the document; Change 16, UI-3). Read-only. */
+  demoHistory?: boolean;
 }
 
 export interface ReservationNotification {

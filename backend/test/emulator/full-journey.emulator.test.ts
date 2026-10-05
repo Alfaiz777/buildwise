@@ -269,6 +269,14 @@ describe('M7 full journey — platform → brand → stores → customer → sto
       trace: { guardrail: { status: 'ALLOWED', checked: 'CREATE_RESERVATION' } },
       reservation: { store_id: 'st_north_2', status: 'COMPLETED' },
     });
+    // UI-3: the journey timeline reads the status history and the outcome from the detail.
+    expect(
+      detail.body.recommendations.at(-1).reservation.status_history.map((h: { status: string }) => h.status),
+    ).toEqual(['PENDING', 'CONFIRMED', 'READY', 'CUSTOMER_ARRIVED', 'COMPLETED']);
+    expect(detail.body.outcomes).toEqual([
+      expect.objectContaining({ purchase_type: 'OFFLINE', store_name: 'Andheri Store', value: 795 }),
+    ]);
+    expect(insights.body.funnel.value.amount).toBeGreaterThanOrEqual(795);
   }, 60_000);
 
   it('5 · Buy online → qs_ref → demo storefront order → ONLINE outcome', async () => {
@@ -330,12 +338,19 @@ describe('M7 full journey — platform → brand → stores → customer → sto
     const offer = (await say({ type: 'LOCATION', ...NEAR_POWAI })).body.messages.at(-1);
     expect(offer.parts.header).toMatchObject({ type: 'IMAGE' });
     expect(offer.parts.footer).toBe('Powered by Qwikspot');
+    // Earlier steps may leave other holds at Andheri: take the one this tap created.
+    const pendingAtAndheri = async () =>
+      (await db.collection(`brands/${brandId}/reservations`).where('store_id', '==', 'st_north_2').get()).docs
+        .map((d) => d.data())
+        .filter((r) => r.status === 'PENDING')
+        .map((r) => r.reservation_id as string);
+    const before = new Set(await pendingAtAndheri());
     const hold = (await say({ type: 'INTERACTIVE_REPLY', option_id: 'hold:st_north_2' })).body.messages.at(-1);
     expect(hold.text).toContain('On hold for you');
     const all = (await shopper('get', '/messages')).body.messages;
-    const id = (await db.collection(`brands/${brandId}/reservations`).where('customer_id', '!=', '').get()).docs
-      .map((d) => d.data())
-      .find((r) => r.status === 'PENDING' && r.store_id === 'st_north_2')!.reservation_id;
+    const created = (await pendingAtAndheri()).filter((r) => !before.has(r));
+    expect(created).toHaveLength(1);
+    const id = created[0]!;
     await move('andheri', id, 'CONFIRMED', 'PENDING');
     const update = (await shopper('get', `/messages?after=${all.at(-1).message_id}`)).body.messages;
     expect(update.map((m: { text: string }) => m.text)).toEqual([expect.stringContaining('confirmed your hold')]);

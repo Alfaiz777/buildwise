@@ -63,6 +63,12 @@ export function RetailImportSection(props: {
         Upload a CSV in the canonical retail format (one row per store × SKU, up to 10 MB). Stores are created or
         updated, stock is replaced per store and SKU, and every rejected row is listed below.
       </p>
+      <p className="small">
+        <a href="/samples/retail-stock-sample.csv" download="retail-stock-sample.csv">
+          Download sample CSV
+        </a>{' '}
+        <span className="muted">— the canonical columns, with synthetic Mumbai and Pune stores.</span>
+      </p>
       <form className="inline" onSubmit={upload}>
         <input
           name="file"

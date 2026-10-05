@@ -299,11 +299,15 @@ describe('Brand Console — Outcomes & insights (M6)', () => {
           : INSIGHTS;
       throw new Error(p);
     });
-    render_('/brand/outcomes', api);
+    render_('/brand/outcomes', api); // the old link redirects to /brand/insights
     expect(await screen.findByText(/Saturday lookups for Vitamin C Glow Serum 30 ml were 2.4×/)).toBeInTheDocument();
     expect(screen.getByText(/Includes synthetic demo history \(412 generated records\)/)).toBeInTheDocument();
+    // The funnel is a chart with the step conversion, and a table on request.
+    expect(screen.getByRole('img', { name: /Journey funnel: Storefront intents 40/ })).toBeInTheDocument();
+    expect(screen.getByText('→ 58%')).toBeInTheDocument(); // holds 12 → pickups 7
+    fireEvent.click(screen.getAllByRole('button', { name: 'Show as table' })[0]!);
     const funnel = screen.getByRole('table', { name: 'Journey funnel' });
-    expect(within(funnel).getByText('Completed pickups').closest('tr')).toHaveTextContent('7');
+    expect(within(funnel).getByText('Pickups').closest('tr')).toHaveTextContent('7');
     expect(screen.getByText(/ask North Retail to stock Andheri Store/)).toBeInTheDocument();
     expect(screen.getByText('Based on 4 store lookups')).toBeInTheDocument();
     expect(screen.getByRole('table', { name: 'Conversion by action' })).toHaveTextContent('7 (70%)');

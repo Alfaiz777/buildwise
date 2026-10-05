@@ -100,8 +100,16 @@ describe('insight calculations (Change 13, F8) on fixed datasets', () => {
         },
       ],
       outcomes: [
-        { outcomeId: 'o1', purchaseType: 'OFFLINE', aiRecommendationId: 'rec1', timestamp: TUE },
-        { outcomeId: 'o2', purchaseType: 'NONE', aiRecommendationId: 'rec2', timestamp: TUE },
+        {
+          outcomeId: 'o1',
+          purchaseType: 'OFFLINE',
+          aiRecommendationId: 'rec1',
+          timestamp: TUE,
+          value: 795,
+          currency: 'INR',
+        },
+        // A NONE outcome carries no purchase value and is never counted in it.
+        { outcomeId: 'o2', purchaseType: 'NONE', aiRecommendationId: 'rec2', timestamp: TUE, value: 0, currency: null },
       ],
     };
     expect(funnel(rows)).toEqual({
@@ -112,7 +120,10 @@ describe('insight calculations (Change 13, F8) on fixed datasets', () => {
       reservations: 2,
       completed: 1,
       outcomes: { ONLINE: 0, OFFLINE: 1, ALTERNATIVE: 0, NONE: 1 },
+      // Est. value (UI-3): the recorded value of purchase outcomes only.
+      value: { amount: 795, currency: 'INR' },
     });
+    expect(funnel({ ...rows, outcomes: [] }).value).toEqual({ amount: 0, currency: null });
   });
 
   it('conversion by action: intended vs recorded purchase type (docs/04 §16.1)', () => {

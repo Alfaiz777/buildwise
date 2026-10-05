@@ -5,6 +5,7 @@ import { ApiContext, type MeResponse } from '../api/apiContext';
 import { ApiError, type ApiClient } from '../api/client';
 import { AppRoutes } from '../AppRoutes';
 import { AuthContext, type AuthState } from '../auth/authContext';
+import { overviewReads } from './brandFixtures';
 
 const ME: Record<'platform' | 'brandAdmin' | 'retailAdmin', MeResponse> = {
   platform: {
@@ -220,6 +221,8 @@ function apiFor(me: MeResponse, fixtures: Fixtures = FULL): ApiClient {
     if (path.startsWith('/api/platform/audit')) return { events: [] };
     if (path.startsWith('/api/brand/retail-imports/imp_')) return REPORT;
     if (path in fixtures) return fixtures[path];
+    const overview = overviewReads(path);
+    if (overview !== undefined) return overview;
     throw new Error(`unexpected GET ${path}`);
   });
   const post = vi.fn(async (path: string, body: { email?: string }) => {
@@ -350,12 +353,12 @@ describe('scope routing — each of the three roles lands in its own console are
     );
   });
 
-  it('BRAND_ADMIN → Brand Console shows Retailer → Stores → Retail Admin, with no brand-admin or store-ID UI', async () => {
-    renderAt('/app', signedIn, apiFor(ME.brandAdmin));
+  it('BRAND_ADMIN → Brand Console Network shows Retailer → Stores → Retail Admin, with no brand-admin or store-ID UI', async () => {
+    renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin));
     expect(await screen.findByText('Brand Console')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create retailer' })).toBeInTheDocument();
     expect(await screen.findByText('Bandra Store')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Retailer: North Retail/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'North Retail' })).toBeInTheDocument();
     expect(screen.getByText('Andheri Store')).toBeInTheDocument();
     expect(screen.getByText('No stores yet. Stores arrive through the retail CSV import.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /brand admin/i })).not.toBeInTheDocument();
@@ -365,7 +368,7 @@ describe('scope routing — each of the three roles lands in its own console are
   });
 
   it('a store with a Retail Admin shows it and offers no provisioning; a store without one offers it', async () => {
-    renderAt('/app', signedIn, apiFor(ME.brandAdmin));
+    renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin));
     const bandra = (await screen.findByText('Bandra Store')).closest('tr')!;
     expect(within(bandra).getByText('owner@north.test')).toBeInTheDocument();
     expect(within(bandra).queryByRole('button')).not.toBeInTheDocument();
@@ -378,9 +381,9 @@ describe('scope routing — each of the three roles lands in its own console are
     expect(screen.getAllByRole('button', { name: /Provision Retail Admin/ })).toHaveLength(1);
   });
 
-  it('provisioning is store-based and shows the local password-setup link', async () => {
+  it('provisioning is store-based and shows the local password-setup link with a Copy button', async () => {
     const api = apiFor(ME.brandAdmin);
-    renderAt('/app', signedIn, api);
+    renderAt('/brand/network', signedIn, api);
     fireEvent.click(await screen.findByRole('button', { name: 'Provision Retail Admin for Andheri Store' }));
     fireEvent.change(screen.getByLabelText('Retail admin email for Andheri Store'), {
       target: { value: 'owner-andheri@north.test' },
@@ -388,6 +391,7 @@ describe('scope routing — each of the three roles lands in its own console are
     fireEvent.click(screen.getByRole('button', { name: 'Provision' }));
 
     expect(await screen.findByText(/oobCode=abc/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument();
     expect(api.post).toHaveBeenCalledWith('/api/brand/stores/st_2/admins', { email: 'owner-andheri@north.test' });
   });
 
@@ -445,12 +449,22 @@ describe('Brand Console — M3 catalog & store truth', () => {
     expect(await screen.findByText('Not synced yet.')).toBeInTheDocument();
     expect(await screen.findByText('No store stock imported yet.')).toBeInTheDocument();
     expect(await screen.findByText('Nothing mapped yet.')).toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: 'Import a retail CSV' })).toHaveAttribute('href', '#retail-import');
-    expect(await screen.findByText('No products yet. Sync the catalog from your commerce store.')).toBeInTheDocument();
-    expect(await screen.findByText('No imports yet.')).toBeInTheDocument();
-
+    expect(await screen.findByRole('link', { name: 'Import a retail CSV' })).toHaveAttribute(
+      'href',
+      '/brand/network#retail-import',
+    );
     fireEvent.click(screen.getAllByRole('button', { name: 'Sync catalog' })[0]!);
     expect(api.post).toHaveBeenCalledWith('/api/integrations/shopify/sync', {});
+  });
+
+  it('Network on an empty brand: no products, no imports, and a sample CSV to start from', async () => {
+    renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin, EMPTY));
+    expect(await screen.findByText('No products yet. Sync the catalog from your commerce store.')).toBeInTheDocument();
+    expect(await screen.findByText('No imports yet.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Download sample CSV' })).toHaveAttribute(
+      'href',
+      '/samples/retail-stock-sample.csv',
+    );
   });
 
   it('setup checklist: done steps show their facts; open issues stay to do', async () => {
@@ -479,18 +493,21 @@ describe('Brand Console — M3 catalog & store truth', () => {
   });
 
   it('catalog & mapping: variants with SKU, price and mapping status; unmapped retail SKUs stay visible', async () => {
-    renderAt('/app', signedIn, apiFor(ME.brandAdmin));
+    renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin));
     const row = (await screen.findByText('Vitamin C Glow Serum')).closest('tr')!;
     expect(within(row).getByText('DBC-VCSERUM-30')).toBeInTheDocument();
     expect(within(row).getByText('₹795')).toBeInTheDocument();
-    expect(within(row).getByText('auto-matched')).toBeInTheDocument();
+    expect(within(row).getByText('Matched')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Retail SKUs needing attention' })).toBeInTheDocument();
     expect(screen.getAllByText('DBC-LIPBALM-10').length).toBeGreaterThan(0);
+    // Mapping reasons in words, not codes (audit E).
+    expect(screen.getByText('No product in your catalogue has this SKU')).toBeInTheDocument();
+    expect(screen.queryByText('NO_CATALOG_MATCH')).not.toBeInTheDocument();
   });
 
   it('retail import: create → upload the file → process → report with row errors', async () => {
     const api = apiFor(ME.brandAdmin);
-    renderAt('/app', signedIn, api);
+    renderAt('/brand/network', signedIn, api);
     const input = await screen.findByLabelText('Retail CSV file');
     const file = new File(['store_id\n'], 'demo-retail.csv', { type: 'text/csv' });
     fireEvent.change(input, { target: { files: [file] } });
@@ -510,7 +527,7 @@ describe('Brand Console — M3 catalog & store truth', () => {
   });
 
   it('import history opens a past report; stores show SKU count and last stock update', async () => {
-    renderAt('/app', signedIn, apiFor(ME.brandAdmin));
+    renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin));
     fireEvent.click(await screen.findByRole('button', { name: 'View report' }));
     expect(await screen.findByLabelText('Import report')).toBeInTheDocument();
     const bandra = screen.getByText('Bandra Store').closest('tr')!;
