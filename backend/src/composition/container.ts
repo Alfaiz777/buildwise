@@ -234,6 +234,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
   const conversation = createConversationModule({
     brands,
     products,
+    connections,
     customers,
     visitors: new FirestoreVisitorLinkRepository(db),
     intents: new FirestoreIntentRepository(db),

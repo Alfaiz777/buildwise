@@ -42,6 +42,7 @@ import type {
 } from '../../ports/conversationRepositories.js';
 import type {
   BrandRepository,
+  ConnectionRepository,
   InventoryRepository,
   ProductRepository,
   StoreRepository,
@@ -66,6 +67,7 @@ import {
 export interface ConversationDeps extends OutboundDeps {
   brands: BrandRepository;
   products: ProductRepository;
+  connections: ConnectionRepository;
   customers: CustomerRepository;
   visitors: VisitorLinkRepository;
   intents: IntentRepository;

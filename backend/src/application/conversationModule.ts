@@ -18,6 +18,7 @@ import type { ReservationRepository } from '../ports/reservations.js';
 import type {
   AuditRepository,
   BrandRepository,
+  ConnectionRepository,
   InventoryRepository,
   ProductRepository,
   StoreRepository,
@@ -42,6 +43,7 @@ import { SimulatorService } from './simulatorService.js';
 export interface ConversationModuleDeps {
   brands: BrandRepository;
   products: ProductRepository;
+  connections: ConnectionRepository;
   customers: CustomerRepository;
   visitors: VisitorLinkRepository;
   intents: IntentRepository;
