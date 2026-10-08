@@ -292,6 +292,12 @@ Never:
 - put secrets into prompts
 - send secrets to Gemini or any agent runtime
 
+**Shopify (L2-Shopify).** One Shopify app per deployment: `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` and `TOKEN_ENCRYPTION_KEY` (32 bytes) come only from the environment (Secret Manager when deployed; `backend/.env` locally, never committed) and are validated only when `COMMERCE_PROVIDER=shopify`; a startup error names a bad variable, never its value. Each brand's offline access and refresh tokens are sealed with **AES-256-GCM** (random 12-byte IV, auth tag, key version) in `brands/{brand_id}/integrationSecrets/SHOPIFY`; Firestore rules deny every client, and no API response, URL, redirect or log line carries a token, the client secret or the key (tested).
+
+- **OAuth state:** HMAC-signed with the client secret, bound to brand + user + shop, 10-minute expiry, and a stored nonce consumed in a transaction — a replayed or forged callback fails. The callback's query HMAC is checked timing-safe before anything else; the shop must match an anchored `myshopify.com` pattern and the state's shop.
+- **Webhooks:** the raw body's HMAC is verified timing-safe before parsing (`401` on failure, nothing processed); the brand comes from the verified shop domain, never from the payload; each event is processed once (receipt per event id + topic + brand).
+- **Tokens expire:** expiring offline tokens are refreshed server-side; a rejected token marks the connection for reconnecting. Disconnect and `app/uninstalled` delete the stored tokens.
+
 ---
 
 # 7. AI Action Guardrail
@@ -407,6 +413,9 @@ Consent, opt-out and the customer-service window are enforced in the `Conversati
 ---
 
 # 11. Logging
+
+(L2-Shopify) Request logs keep the path without the query string, so the OAuth callback's `code`, `hmac` and `state` are never logged.
+
 
 Audit important decisions:
 

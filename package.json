@@ -12,7 +12,7 @@
   "scripts": {
     "dev:backend": "npm run dev --workspace backend",
     "dev:frontend": "npm run dev --workspace frontend",
-    "emulators": "firebase emulators:start --project demo-qwikspot --only auth,firestore",
+    "emulators": "node scripts/emulators.mjs",
     "seed:platform-admin": "npm run seed:platform-admin --workspace backend --",
     "seed:demo": "npm run seed:demo --workspace backend",
     "demo:check": "npm run demo:check --workspace backend",

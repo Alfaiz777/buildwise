@@ -157,6 +157,8 @@ export interface ProductRecord {
   attributes: Record<string, string>;
   /** Absolute URL or a path on the public web origin (Change 16); null when there is none. */
   imageUrl?: string | null;
+  /** L2-Shopify: the storefront handle, when the source has one. */
+  handle?: string | null;
 }
 
 /** docs/04_DATA_MODEL.md §8 */
@@ -249,7 +251,11 @@ export interface ConnectionRecord {
   provider: 'SHOPIFY' | 'WHATSAPP' | 'RETAIL_FILE';
   /** Which adapter served the data (MOCK locally, SHOPIFY live). */
   source: string;
-  status: 'CONNECTED' | 'ERROR';
+  /** DISCONNECTED (L2-Shopify): the brand disconnected the store or uninstalled the app. */
+  status: 'CONNECTED' | 'ERROR' | 'DISCONNECTED';
+  /** L2-Shopify: the connected store (status only — credentials live elsewhere, server-side). */
+  shopDomain?: string | null;
+  shopName?: string | null;
   /** ISO-8601 */
   connectedAt: string | null;
   lastSyncAt: string | null;

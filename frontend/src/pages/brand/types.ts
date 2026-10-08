@@ -6,7 +6,10 @@ export interface Connection {
   connection_id: string;
   provider: string;
   source: string;
-  status: 'CONNECTED' | 'ERROR';
+  status: 'CONNECTED' | 'ERROR' | 'DISCONNECTED';
+  /** L2-Shopify: the connected store (status only, never a credential). */
+  shop_domain?: string | null;
+  shop_name?: string | null;
   connected_at: string | null;
   last_sync_at: string | null;
   last_error: { code: string; message: string } | null;

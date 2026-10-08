@@ -21,7 +21,9 @@ export type ChannelMode = 'SIMULATOR' | 'WHATSAPP';
  * connection secrets, WhatsApp number or user data.
  */
 export class BrandSettingsQuery {
-  constructor(private readonly deps: { brands: BrandRepository; channelMode: ChannelMode }) {}
+  constructor(
+    private readonly deps: { brands: BrandRepository; channelMode: ChannelMode; commerceMode?: 'MOCK' | 'SHOPIFY' },
+  ) {}
 
   async get(brandId: string) {
     const brand = await this.deps.brands.getById(brandId);
@@ -58,6 +60,8 @@ export class BrandSettingsQuery {
       attribution_window_minutes: Math.round(attributionWindowMs(s) / 60_000),
       allowed_storefront_origins: allowedStorefrontOrigins(s),
       channel: { mode: this.deps.channelMode },
+      // L2-Shopify: where the catalogue comes from on this server (the Settings page's Shopify card).
+      commerce: { provider: this.deps.commerceMode ?? 'MOCK' },
     };
   }
 }

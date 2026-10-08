@@ -138,6 +138,18 @@ form.inline input {
   flex: 1 1 12rem;
 }
 
+/* L2-Shopify: a row of actions under a settings list; the connect form's label on its own line. */
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+form.shopify-connect label {
+  flex-basis: 100%;
+}
+
 select {
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--border);

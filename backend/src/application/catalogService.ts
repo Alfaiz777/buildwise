@@ -36,6 +36,10 @@ export class CatalogService {
       this.deps.inventory.listByBrand(brandId),
     ]);
     const shopify = new Map(mappings.filter((m) => m.sourceSystem === 'SHOPIFY').map((m) => [m.variantId, m]));
+    // L2-Shopify: a catalogue replaced by a Shopify sync leaves archived variants; their
+    // catalogue mappings are history, not work — they never count as matched or needing attention.
+    const archived = new Set(variants.filter((v) => v.status === 'ARCHIVED').map((v) => v.variantId));
+    const counted = mappings.filter((m) => !(m.sourceSystem === 'SHOPIFY' && m.variantId && archived.has(m.variantId)));
     const stocked = new Map<string, number>();
     for (const row of inventory) stocked.set(row.variantId, (stocked.get(row.variantId) ?? 0) + 1);
 
@@ -61,8 +65,8 @@ export class CatalogService {
         .filter((m) => m.sourceSystem === 'RETAIL_FILE' && m.mappingStatus !== 'AUTO_MATCHED')
         .sort((a, b) => a.sourceIdentifier.localeCompare(b.sourceIdentifier)),
       mappingSummary: {
-        autoMatched: mappings.filter((m) => m.mappingStatus === 'AUTO_MATCHED').length,
-        needsAttention: mappings.filter((m) => m.mappingStatus !== 'AUTO_MATCHED').length,
+        autoMatched: counted.filter((m) => m.mappingStatus === 'AUTO_MATCHED').length,
+        needsAttention: counted.filter((m) => m.mappingStatus !== 'AUTO_MATCHED').length,
       },
     };
   }

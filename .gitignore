@@ -40,3 +40,4 @@ temp/
 
 # Playwright review screenshots (per phase); the committed set is docs/screenshots (scripts/judge-script.mjs)
 .screenshots/
+.emulator-data/

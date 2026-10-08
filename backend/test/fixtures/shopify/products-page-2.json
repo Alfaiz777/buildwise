@@ -1,0 +1,41 @@
+{
+  "data": {
+    "shop": { "currencyCode": "INR" },
+    "products": {
+      "pageInfo": { "hasNextPage": false, "endCursor": "cursor-page-2" },
+      "nodes": [
+        {
+          "id": "gid://shopify/Product/9013",
+          "title": "Hydrating Lip Balm",
+          "handle": "hydrating-lip-balm",
+          "descriptionHtml": "<div>Soft, glossy lips all day.<br>When to use: any time</div>",
+          "productType": "Lip care",
+          "status": "DRAFT",
+          "tags": [],
+          "featuredMedia": {
+            "preview": { "image": { "url": "https://cdn.shopify.com/s/files/1/demo/lip-balm.png" } }
+          },
+          "variants": {
+            "pageInfo": { "hasNextPage": false, "endCursor": null },
+            "nodes": [
+              {
+                "id": "gid://shopify/ProductVariant/7013",
+                "sku": "DBC-LIPBALM-10",
+                "barcode": "8906123000999",
+                "title": "10 g",
+                "price": "249"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "extensions": {
+    "cost": {
+      "requestedQueryCost": 52,
+      "actualQueryCost": 6,
+      "throttleStatus": { "maximumAvailable": 2000, "currentlyAvailable": 1990, "restoreRate": 100 }
+    }
+  }
+}

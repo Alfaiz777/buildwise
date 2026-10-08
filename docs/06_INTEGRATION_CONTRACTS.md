@@ -66,7 +66,9 @@ MockCommerceProvider
 ShopifyCommerceProvider
 ```
 
-Products carry optional `tags` and `attributes` (`04_DATA_MODEL.md` §7) in the same normalized shape for every adapter.
+Products carry optional `tags` and `attributes` (`04_DATA_MODEL.md` §7) in the same normalized shape for every adapter. L2-Shopify adds an optional `handle` (the storefront handle; `null` for the mock), stored on the product for the "Buy online" link.
+
+`ShopifyCommerceProvider` (L2-Shopify) implements the port over the **GraphQL Admin API** (version pinned by `SHOPIFY_API_VERSION`, default `2026-10`). It is built **per brand** from that brand's stored connection (`CommerceProviderResolver`): products are paginated 50 at a time with their variants (SKU, barcode, price in the shop's currency, featured image, tags, `productType` → category, status — `UNLISTED` counts as `ACTIVE` — and handle). The description HTML becomes plain text, and its "Label: value" lines for *Best for, Skin type, Key ingredients, Texture, When to use* become `attributes` (`best_for`, `skin_type`, …). A `THROTTLED` response waits for the cost bucket to refill (restore rate) and retries up to 5 times. Customers (first name, default email/phone, marketing consent) and orders (lines, totals, customer) are read with the minimum fields the port needs.
 
 `MockCommerceProvider` serves a deterministic fixture dataset (products, variants, customers, orders, inventory, locations) in the same normalized shapes, including Shopify-format IDs. It is the commerce source for the local profile and for automated tests. It is **not** the judged demo path: the `gcp` profile uses `ShopifyCommerceProvider`.
 
@@ -284,6 +286,8 @@ inventory change
 
 Every event must be idempotent.
 
+**L2-Shopify sync** (`POST /api/integrations/shopify/sync`) uses the brand's connected store (`409 SHOPIFY_NOT_CONNECTED` without one; `409 SHOPIFY_RECONNECT_REQUIRED` when Shopify rejects the token) and keeps the existing response shape, plus `shop_domain` / `shop_name`. Ids are deterministic from the GIDs, so a re-sync overwrites. **Catalogue switch:** a Shopify sync archives the brand's products and variants that the store does not have — e.g. the mock catalogue a demo brand was seeded with — and clears their `canonical_sku`, so SKUs never conflict; retail matching ignores archived variants. Retail stock is re-pointed by importing the stock file again (for the demo brand, **Reset demo** does it: it keeps the Shopify connection, syncs, then imports the judge stock).
+
 Use:
 
 ```text
@@ -305,6 +309,11 @@ local (M6):  demo storefront → POST /api/demo-storefront/orders { ..., qs_ref 
 L2:          qs_ref as a Shopify cart attribute → orders/create webhook (verified) → OrderService.recordOrder
 ```
 
+**`POST /api/webhooks/shopify`** (L2-Shopify, public): the raw body's `X-Shopify-Hmac-Sha256` (base64 HMAC-SHA256 with the app's client secret) is checked timing-safe first — `401`, nothing processed. The brand comes from `X-Shopify-Shop-Domain` (`shopifyShops/{shop}`; an unknown shop → `200`, ignored). Each event is processed once: a `webhookReceipts` entry keyed `shopify:{brand_id}:{topic}:{X-Shopify-Event-Id}`. It answers `200` well inside Shopify's 5-second limit.
+
+- `orders/create`: `qs_ref` (and optionally `qs_ws`, the web session) from the order's `note_attributes`; `OrderService.recordOrder` for each line-item variant with `source: SHOPIFY`, `external_order_id` = the order GID. ORDER_CREATED stays idempotent per order; the journey's first purchase wins.
+- `app/uninstalled`: the stored token is deleted and the connection becomes `DISCONNECTED` (audited `SHOPIFY_UNINSTALLED`).
+
 `OrderService.recordOrder({ brand_id, web_session_id, external_order_id, variant_id, source, attribution_ref })` validates the ref (exists by hash, same brand, not expired) and links the order to the ref's journey; the Outcome service then records ONLINE (or ALTERNATIVE for another variant). An invalid, expired or other-brand ref never fails the order: it is recorded unattributed. The ref only links; the purchase evidence is the order from the commerce source.
 
 ---
@@ -323,6 +332,27 @@ Do not let Shopify-specific credentials leak into:
 The exact Shopify auth/distribution mechanism must be verified against the current Shopify development setup during spike S1 and phase L2 (`10_EXECUTION_PLAN.md`). Local milestones use `MockCommerceProvider`.
 
 For the hackathon MVP, one controlled development-store setup is acceptable as long as the end-to-end product behavior works.
+
+**L2-Shopify (implemented):** one Shopify app (Dev Dashboard, not embedded) and the OAuth **authorization-code grant** per brand:
+
+```text
+POST /api/integrations/shopify/connect { shop }   (BRAND_ADMIN) → { authorize_url }
+   shop must match ^[a-z0-9][a-z0-9-]*\.myshopify\.com$ (anchored) → else 400 INVALID_SHOP_DOMAIN
+   state = HMAC-signed { nonce, brand_id, user_id, shop, exp (10 min) }; the nonce is stored and single-use
+GET  /api/integrations/shopify/callback            (public; Shopify redirects the browser here)
+   1 query hmac (sorted params, HMAC-SHA256 hex, client secret) — timing-safe
+   2 state signature + expiry; nonce consumed once (a replay fails); shop = the state's shop
+   3 code → expiring offline token (expiring=1) + refresh token; shop name
+   4 tokens sealed (AES-256-GCM, TOKEN_ENCRYPTION_KEY) in brands/{brand_id}/integrationSecrets/SHOPIFY;
+     shopifyShops/{shop} → brand (one shop, one brand); connection CONNECTED; audited SHOPIFY_CONNECTED
+   5 webhooks orders/create + app/uninstalled → <PUBLIC_BACKEND_URL>/api/webhooks/shopify (idempotent)
+   6 302 → <FRONTEND_URL>/brand/settings?shopify=connected
+     or ?shopify=error&reason=INVALID_HMAC|INVALID_STATE|STATE_EXPIRED|SHOP_MISMATCH|
+                              TOKEN_EXCHANGE_FAILED|SHOP_ALREADY_CONNECTED|WEBHOOKS_FAILED
+POST /api/integrations/shopify/disconnect          (BRAND_ADMIN) → token deleted, DISCONNECTED, audited
+```
+
+No token or secret ever appears in a URL, an API response, a log line or the browser. An access token expiring within 5 minutes is refreshed before use; a refresh or call rejected with 401 marks the connection `ERROR` (`SHOPIFY_RECONNECT_REQUIRED`). With `COMMERCE_PROVIDER=mock`, connect and disconnect answer `409 SHOPIFY_NOT_CONFIGURED`.
 
 ---
 
@@ -564,8 +594,9 @@ GET   /api/brand/stores                           (stores with their retailer, R
 GET   /api/brand/connections                      (integration status only; never credentials)
 POST  /api/brand/stores/:storeId/admins           (provision the store's single RETAIL_ADMIN)
 PATCH /api/brand/stores/:storeId                   (associate store → retailer; backend-only, no UI)
-POST  /api/integrations/shopify/connect            (BRAND_ADMIN)
-POST  /api/integrations/shopify/sync               (BRAND_ADMIN)
+POST  /api/integrations/shopify/connect            (BRAND_ADMIN; L2-Shopify — §9)
+POST  /api/integrations/shopify/disconnect         (BRAND_ADMIN; L2-Shopify — §9)
+POST  /api/integrations/shopify/sync               (BRAND_ADMIN; the brand's connected store in Shopify mode — §8)
 GET   /api/products
 GET   /api/customers/:id
 POST  /api/brand/retail-imports                    (create an import + upload target; 06 §6a)
@@ -600,7 +631,8 @@ POST  /api/reservations                            (page mutation token)
 
 # Storefront + commerce events
 POST  /api/intents
-POST  /api/webhooks/shopify
+POST  /api/webhooks/shopify                        (L2-Shopify: raw-body HMAC; orders/create, app/uninstalled — §8.1)
+GET   /api/integrations/shopify/callback           (L2-Shopify, public: OAuth callback — §9)
 
 # Internal / profile-specific
 POST  /api/internal/reservations/expire            (expiry sweep, 03 §15; not callable by browsers)
@@ -1197,7 +1229,23 @@ Each port has **one** contract test suite. The local adapter runs it in every bu
 Findings from the isolated integration spikes (S1 Shopify, S2 Meta WhatsApp, S3 ADK + Gemini; `10_EXECUTION_PLAN.md` §5) are recorded here when available. They must not change a contract without an explicit spec update.
 
 ```text
-S1 Shopify:        (pending)
+S1 Shopify:        recorded below (L2-Shopify, checked against shopify.dev on 2026-10-08)
 S2 Meta WhatsApp:  (pending)
 S3 ADK + Gemini:   (pending; record in 05_AI_AGENT_SPEC.md)
 ```
+
+**S1 Shopify — what the current Shopify docs say (2026-10-08):**
+
+| Topic | Finding | What Qwikspot does |
+|---|---|---|
+| API version | Quarterly; supported stable 2026-01, 2026-04, 2026-07 and **2026-10** (latest, supported to 2027-10-16). Always send a version. | Pinned `SHOPIFY_API_VERSION=2026-10`. |
+| OAuth | Authorization-code grant: `https://{shop}/admin/oauth/authorize?client_id&scope&redirect_uri&state`; the redirect URI must match the app's configuration exactly. Validate the shop with an **anchored** `myshopify.com` regex. | §9 flow; `redirect_uri` = `<PUBLIC_BACKEND_URL>/api/integrations/shopify/callback`. |
+| Callback HMAC | Remove `hmac`, sort the remaining params, join `key=value` with `&`, HMAC-SHA256 with the client secret, hex; compare timing-safe. | `verifyCallbackHmac` (domain/shopifyOAuth.ts). |
+| Token exchange | `POST https://{shop}/admin/oauth/access_token`, form-encoded `client_id, client_secret, code` (+ `expiring=1`). | As documented. |
+| Offline tokens | **Expiring offline tokens** are now the standard: `expires_in` 3600 s, `refresh_token` valid 90 days (`refresh_token_expires_in` 7776000). New public apps must use them; existing public apps by 2027-01-01; custom/merchant apps are exempt. Refresh: same endpoint, `grant_type=refresh_token, refresh_token, client_id, client_secret`; each refresh returns a new pair; 401 = terminal. | Always `expiring=1`; refresh 5 min before expiry; store the newest pair; 401 → reconnect. |
+| Webhook HMAC | `X-Shopify-Hmac-Sha256` = base64 HMAC-SHA256 of the **raw** body with the client secret. 1 s connect / 5 s total timeout; 8 retries over 4 h, then the subscription is deleted. | Raw-body route before JSON parsing; quick 200; receipts. |
+| Webhook ids | `X-Shopify-Event-Id` identifies the event (same across retries); `X-Shopify-Webhook-Id` the delivery. | Dedupe on event id + topic + brand (webhook id as fallback). |
+| Subscriptions | `webhookSubscriptionCreate(topic, webhookSubscription: { uri })`; `callbackUrl` is deprecated; topics `ORDERS_CREATE`, `APP_UNINSTALLED`. | Listed first, created only when missing (idempotent). |
+| Product fields | `featuredMedia` replaces the deprecated `featuredImage`; `ProductStatus` has `ACTIVE, ARCHIVED, DRAFT, UNLISTED`; prices in the shop's `currencyCode`. | `featuredMedia.preview.image.url`; UNLISTED → ACTIVE. |
+| Customer fields | `email`, `phone`, `emailMarketingConsent`, `smsMarketingConsent` are deprecated → `defaultEmailAddress { emailAddress marketingState }`, `defaultPhoneNumber { phoneNumber marketingState }`. | Uses the new fields; `SUBSCRIBED` → OPTED_IN. |
+| Order attributes | GraphQL `Order.customAttributes`; the REST-shaped webhook payload carries `note_attributes [{ name, value }]`. | Webhook reads `note_attributes` (`qs_ref`, `qs_ws`). |

@@ -14,6 +14,8 @@ export const connectionJson = (c: ConnectionRecord) => ({
   provider: c.provider,
   source: c.source,
   status: c.status,
+  shop_domain: c.shopDomain ?? null,
+  shop_name: c.shopName ?? null,
   connected_at: c.connectedAt,
   last_sync_at: c.lastSyncAt,
   last_error: c.lastError,
