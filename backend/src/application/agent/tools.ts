@@ -41,6 +41,7 @@ import type {
 import type { ToolInput } from '../../ports/agentTools.js';
 import type {
   BrandRepository,
+  ConnectionRepository,
   InventoryRepository,
   ProductRecord,
   ProductRepository,
@@ -48,6 +49,7 @@ import type {
   StoreRepository,
   VariantRecord,
 } from '../../ports/repositories.js';
+import { SHOPIFY_CONNECTION_ID } from '../commerceSyncService.js';
 import type { EventRecorder } from '../eventRecorder.js';
 import type { ReservationService } from '../reservationService.js';
 import type { ToolHandlers, ToolOutcome, ToolScope } from './toolExecutor.js';
@@ -63,6 +65,7 @@ export interface ToolDeps {
   stores: StoreRepository;
   inventory: InventoryRepository;
   customers: CustomerRepository;
+  connections: ConnectionRepository;
   conversations: ConversationRepository;
   intents: IntentRepository;
   reservations: ReservationService;
@@ -76,6 +79,7 @@ export function sheetOf(
   product: ProductRecord,
   variants: VariantRecord[],
   settings: Record<string, unknown>,
+  onlineUrl: string | null = onlineProductUrl(settings, product.productId),
 ): ProductSheet {
   return {
     product_id: product.productId,
@@ -84,10 +88,11 @@ export function sheetOf(
     category: product.category,
     tags: product.tags,
     attributes: product.attributes,
+
     variants: variants
       .filter((v) => v.productId === product.productId && v.status !== 'ARCHIVED')
       .map((v) => ({ variant_id: v.variantId, title: v.title, sku: v.sku, price: v.price, currency: v.currency })),
-    online_url: onlineProductUrl(settings, product.productId),
+    online_url: onlineUrl,
     image_url: product.imageUrl ?? null,
   };
 }
@@ -126,7 +131,44 @@ export function matchCatalog(query: string, products: ProductRecord[], variants:
   return { matches: best, variantIn };
 }
 
+export function shopifyVariantNumber(variant: any): string | null {
+  if (!variant) return null;
+  const raw =
+    typeof variant === 'string'
+      ? variant
+      : variant.externalId ??
+        variant.attributes?.shopify_variant_id ??
+        variant.shopifyVariantId ??
+        null;
+  if (!raw || typeof raw !== 'string') return null;
+  const tail = raw.split('/').pop();
+  return tail && /^\d+$/.test(tail) ? tail : null;
+}
+
 export function createToolHandlers(deps: ToolDeps): ToolHandlers {
+  const shopifyOnlineUrl = async (
+    brandId: string,
+    variant: VariantRecord | any | null,
+  ): Promise<string | null> => {
+    if (!variant) return null;
+    const connection = await deps.connections.get(brandId, SHOPIFY_CONNECTION_ID);
+    if (connection?.status !== 'CONNECTED' || !connection.shopDomain) return null;
+
+    const variantId = shopifyVariantNumber(variant);
+    if (!variantId) return null;
+
+    return `https://${connection.shopDomain}/cart/${variantId}:1`;
+  };
+
+  const onlineUrlFor = async (
+    brandId: string,
+    settings: Record<string, unknown>,
+    product: ProductRecord,
+    variant: VariantRecord | any | null,
+  ): Promise<string | null> => {
+    return (await shopifyOnlineUrl(brandId, variant)) ?? onlineProductUrl(settings, product.productId);
+  };
+
   const catalog = async (brandId: string) => {
     const [brand, products, variants] = await Promise.all([
       deps.brands.getById(brandId),
@@ -141,6 +183,9 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
     const variant = variants.find((v) => v.variantId === variantId);
     const product = variant && products.find((p) => p.productId === variant.productId);
     if (!variant || !product) return null;
+
+    const onlineUrl = await onlineUrlFor(brandId, settings, product, variant);
+
     return {
       variant_id: variant.variantId,
       product_id: product.productId,
@@ -149,8 +194,8 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
       sku: variant.sku,
       price: variant.price,
       currency: variant.currency,
-      online_url: onlineProductUrl(settings, product.productId),
-      delivery_days: onlineProductUrl(settings, product.productId) ? resolveDeliveryDays(settings) : null,
+      online_url: onlineUrl,
+      delivery_days: onlineUrl ? resolveDeliveryDays(settings) : null,
       image_url: product.imageUrl ?? null,
     };
   };
@@ -224,10 +269,20 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
           variantId = variantIn(product)?.variantId ?? null;
         } else candidates = matches;
       }
+
+      let productOnlineUrl: string | null = null;
+      if (product) {
+        const selectedVariant =
+          (variantId ? variants.find((v) => v.variantId === variantId) : null) ??
+          variants.find((v) => v.productId === product!.productId && v.status !== 'ARCHIVED') ??
+          null;
+        productOnlineUrl = await onlineUrlFor(scope.brandId, settings, product, selectedVariant);
+      }
+
       const output: ProductContextOutput = product
         ? {
             status: 'FOUND',
-            product: sheetOf(product, variants, settings),
+            product: sheetOf(product, variants, settings, productOnlineUrl),
             variant_id: variantId,
             alternatives: alternativesOf(product, products).map((p) => sheetOf(p, variants, settings)),
             candidates: [],
@@ -246,12 +301,15 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
       const brand = await deps.brands.getById(scope.brandId);
       const settings = brand?.settings ?? {};
       const policy = resolveReservationPolicy(settings);
+      const shopifyConnection = await deps.connections.get(scope.brandId, SHOPIFY_CONNECTION_ID);
       const output: BrandPolicyOutput = {
         reservations_enabled: policy.reservationsEnabled,
         hold_minutes: policy.holdMinutes,
         max_quantity_per_reservation: policy.maxQuantityPerReservation,
         handoff_enabled: resolveMessagingSettings(settings, brand?.name ?? '').handoffEnabled,
-        online_purchase_available: onlineProductUrl(settings, 'x') !== null,
+        online_purchase_available:
+          onlineProductUrl(settings, 'x') !== null ||
+          (shopifyConnection?.status === 'CONNECTED' && !!shopifyConnection.shopDomain),
         payment: 'PAY_AT_STORE',
       };
       return ok(output);

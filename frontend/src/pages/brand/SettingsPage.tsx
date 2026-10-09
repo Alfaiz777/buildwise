@@ -3,6 +3,7 @@ import { useApi } from '../../api/apiContext';
 import { ConsoleShell, useLoad } from '../../components/ConsoleShell';
 import { Badge, Card, ErrorState, Skeleton } from '../../components/ui';
 import { label } from '../../lib/labels';
+import { ShopifyCard } from './ShopifyCard';
 
 export interface BrandSettings {
   brand_id: string;
@@ -17,6 +18,8 @@ export interface BrandSettings {
   attribution_window_minutes: number;
   allowed_storefront_origins: string[];
   channel: { mode: 'SIMULATOR' | 'WHATSAPP' };
+  /** L2-Shopify: where this server's catalogue comes from. */
+  commerce?: { provider: 'MOCK' | 'SHOPIFY' };
 }
 
 /** "after 2 min", "after 1 h", "after 2 days". */
@@ -51,6 +54,8 @@ export function SettingsPage() {
       {!s && !settings.error && <Skeleton lines={6} />}
       {s && (
         <>
+          <ShopifyCard provider={s.commerce?.provider ?? 'MOCK'} />
+
           <Card
             title="How Qwikspot follows up for you"
             description="Shoppers who leave are followed up on WhatsApp only when they opted in and the type is on."

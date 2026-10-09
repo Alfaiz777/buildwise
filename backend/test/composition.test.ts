@@ -28,8 +28,14 @@ describe('composition root — adapter selection', () => {
     });
   });
 
+  it('COMMERCE_PROVIDER=shopify: each brand gets its own Shopify provider; the shared one stays the synthetic-shopper mock', () => {
+    const adapters = { ...LOCAL, commerce: 'shopify' } as AdapterSelection;
+    const providers = createProviders({ adapters, localDataDir: '.d' });
+    expect(providers.commerce).toBeInstanceOf(MockCommerceProvider);
+    expect(describeProviders(providers, adapters).commerce).toBe('SHOPIFY');
+  });
+
   it.each([
-    [{ commerce: 'shopify' }, /ShopifyCommerceProvider/],
     [{ agentRuntime: 'adk_gemini' }, /AdkGeminiAgentRuntime/],
     [{ fileStorage: 'gcs' }, /GCSFileStorageProvider/],
     [{ eventSink: 'bigquery' }, /BigQueryEventSink/],

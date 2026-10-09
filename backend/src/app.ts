@@ -7,6 +7,8 @@ import type { CommerceSyncService } from './application/commerceSyncService.js';
 import type { ConversationQueryService } from './application/conversationQueryService.js';
 import type { DemoResetService } from './application/demoResetService.js';
 import type { ShopperChannelService } from './application/shopperChannel.js';
+import type { ShopifyAuthService } from './application/shopifyAuthService.js';
+import type { ShopifyWebhookService } from './application/shopifyWebhookService.js';
 import type { DemoStorefrontService } from './application/demoStorefrontService.js';
 import type { FollowUpService } from './application/followUpService.js';
 import type { IntentService } from './application/intentService.js';
@@ -37,6 +39,7 @@ import { brandConversationsRouter, simulatorRouter } from './routes/conversation
 import { demoStorefrontRouter } from './routes/demoStorefront.js';
 import { brandDemoRouter, demoRouter } from './routes/demo.js';
 import { shopperRouter } from './routes/shopper.js';
+import { shopifyBrandRouter, shopifyCallbackRouter, shopifyWebhookRouter } from './routes/shopify.js';
 import { healthRouter } from './routes/health.js';
 import { intentsRouter } from './routes/intents.js';
 import { localFilesRouter } from './routes/localFiles.js';
@@ -79,6 +82,9 @@ export interface AppDeps {
     demoReset?: DemoResetService;
     /** The shopper demo channel (Change 16): local, or gcp with DEMO_MODE on. */
     shopper?: ShopperChannelService;
+    /** L2-Shopify: wired only with COMMERCE_PROVIDER=shopify. */
+    shopifyAuth?: ShopifyAuthService;
+    shopifyWebhooks?: ShopifyWebhookService;
   };
   /** Local profile only: receives browser uploads for LocalFileStorageProvider. */
   localUploads?: LocalUploadReceiver;
@@ -107,6 +113,8 @@ export function createApp(deps: AppDeps): Express {
       }),
     );
   }
+  // PUBLIC Shopify webhooks: before express.json, so the HMAC is checked on the raw body (L2-Shopify).
+  if (services.shopifyWebhooks) app.use('/api', shopifyWebhookRouter(services.shopifyWebhooks));
   app.use(express.json({ limit: '100kb' }));
 
   // Public routes.
@@ -146,6 +154,8 @@ export function createApp(deps: AppDeps): Express {
       ),
     );
   }
+  // PUBLIC Shopify OAuth callback: HMAC + signed single-use state; redirects to the Brand Console.
+  if (services.shopifyAuth) app.use('/api', shopifyCallbackRouter(services.shopifyAuth));
   // PUBLIC shopper demo channel (Change 16): signed session tokens, origin allowlist, rate limits.
   if (services.shopper) app.use('/api/shopper', shopperRouter(services.shopper));
 
@@ -165,6 +175,7 @@ export function createApp(deps: AppDeps): Express {
   tenant.use('/brand', requireScope('BRAND'), connectionsRouter(services.commerceSync));
   tenant.use('/brand/retail-imports', requireScope('BRAND'), retailImportsRouter(services.retailImports));
   tenant.use('/integrations', requireScope('BRAND'), integrationsRouter(services.commerceSync));
+  tenant.use('/integrations', requireScope('BRAND'), shopifyBrandRouter(services.shopifyAuth));
   tenant.use('/products', requireScope('BRAND'), productsRouter(services.catalog));
   tenant.use(
     '/brand',

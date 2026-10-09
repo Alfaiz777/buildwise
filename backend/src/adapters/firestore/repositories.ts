@@ -501,6 +501,7 @@ const ProductDoc = z.object({
   tags: z.array(z.string()).default([]),
   attributes: z.record(z.string(), z.string()).default({}),
   image_url: z.string().nullable().optional(),
+  handle: z.string().nullable().optional(),
 });
 
 const VariantDoc = z.object({
@@ -538,6 +539,7 @@ export class FirestoreProductRepository implements ProductRepository {
         tags: d.tags,
         attributes: d.attributes,
         imageUrl: d.image_url ?? null,
+        handle: d.handle ?? null,
       };
     });
   }
@@ -579,6 +581,7 @@ export class FirestoreProductRepository implements ProductRepository {
             tags: p.tags,
             attributes: p.attributes,
             image_url: p.imageUrl ?? null,
+            handle: p.handle ?? null,
             asset_references: [],
             updated_at: now,
           }),
@@ -765,7 +768,9 @@ export class FirestoreInventoryRepository implements InventoryRepository {
 const ConnectionDoc = z.object({
   provider: z.enum(['SHOPIFY', 'WHATSAPP', 'RETAIL_FILE']),
   source: z.string().default(''),
-  status: z.enum(['CONNECTED', 'ERROR']),
+  status: z.enum(['CONNECTED', 'ERROR', 'DISCONNECTED']),
+  shop_domain: z.string().nullable().optional(),
+  shop_name: z.string().nullable().optional(),
   connected_at: z.string().nullable().optional(),
   last_sync_at: z.string().nullable().optional(),
   last_error: z.object({ code: z.string(), message: z.string() }).nullable().optional(),
@@ -788,6 +793,8 @@ export class FirestoreConnectionRepository implements ConnectionRepository {
       provider: d.provider,
       source: d.source,
       status: d.status,
+      shopDomain: d.shop_domain ?? null,
+      shopName: d.shop_name ?? null,
       connectedAt: d.connected_at ?? null,
       lastSyncAt: d.last_sync_at ?? null,
       lastError: d.last_error ?? null,
@@ -808,21 +815,25 @@ export class FirestoreConnectionRepository implements ConnectionRepository {
   }
 
   async put(c: ConnectionRecord): Promise<void> {
-    await this.col(c.brandId).doc(c.connectionId).set({
-      connection_id: c.connectionId,
-      brand_id: c.brandId,
-      provider: c.provider,
-      source: c.source,
-      status: c.status,
-      external_account_id: null,
-      credential_reference: null,
-      connected_at: c.connectedAt,
-      last_sync_at: c.lastSyncAt,
-      last_error: c.lastError,
-      product_count: c.productCount,
-      variant_count: c.variantCount,
-      updated_at: FieldValue.serverTimestamp(),
-    });
+    await this.col(c.brandId)
+      .doc(c.connectionId)
+      .set({
+        connection_id: c.connectionId,
+        brand_id: c.brandId,
+        provider: c.provider,
+        source: c.source,
+        status: c.status,
+        shop_domain: c.shopDomain ?? null,
+        shop_name: c.shopName ?? null,
+        external_account_id: null,
+        credential_reference: null,
+        connected_at: c.connectedAt,
+        last_sync_at: c.lastSyncAt,
+        last_error: c.lastError,
+        product_count: c.productCount,
+        variant_count: c.variantCount,
+        updated_at: FieldValue.serverTimestamp(),
+      });
   }
 }
 

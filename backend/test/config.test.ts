@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { loadConfig, LOCAL_DEMO_LOGINS } from '../src/config/env.js';
 
+/** Fake Shopify app settings (L2-Shopify) — never real secrets; the key is 32 bytes of "x". */
+export const SHOPIFY_FAKE = {
+  SHOPIFY_API_KEY: 'fake-shopify-key',
+  SHOPIFY_API_SECRET: 'fake-shopify-secret',
+  TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 'x').toString('base64'),
+  PUBLIC_BACKEND_URL: 'https://api.example.test',
+};
+
 /** Fake values for every gcp setting (Change 14, G7) — never real secrets. */
 export const GCP_REQUIRED_FAKE = {
   GCP_REGION: 'asia-south1',
@@ -10,9 +18,7 @@ export const GCP_REQUIRED_FAKE = {
   WHATSAPP_PHONE_NUMBER_ID: '000000000000',
   WHATSAPP_APP_SECRET: 'fake-app-secret',
   WHATSAPP_VERIFY_TOKEN: 'fake-verify',
-  SHOPIFY_SHOP_DOMAIN: 'demo-shop.myshopify.com',
-  SHOPIFY_ADMIN_TOKEN: 'fake-shopify-token',
-  SHOPIFY_WEBHOOK_SECRET: 'fake-hook-secret',
+  ...SHOPIFY_FAKE,
   BIGQUERY_DATASET: 'qwikspot_events',
   GCS_BUCKET: 'qwikspot-uploads-test',
   DEMO_MODE: 'false',
@@ -54,7 +60,11 @@ describe('loadConfig — local profile (default)', () => {
   });
 
   it('allows per-adapter overrides for isolated spikes', () => {
-    const config = loadConfig({ COMMERCE_PROVIDER: 'shopify', MESSAGING_CHANNELS: 'simulator,whatsapp' });
+    const config = loadConfig({
+      ...SHOPIFY_FAKE,
+      COMMERCE_PROVIDER: 'shopify',
+      MESSAGING_CHANNELS: 'simulator,whatsapp',
+    });
     expect(config.adapters.commerce).toBe('shopify');
     expect(config.adapters.messagingChannels).toEqual(['simulator', 'whatsapp']);
   });
@@ -129,7 +139,7 @@ describe('loadConfig — gcp profile and startup guard (docs/07 §19)', () => {
   });
 
   it('validates the whole gcp configuration contract at once, naming missing settings but never values', () => {
-    const { WHATSAPP_APP_SECRET: _a, SHOPIFY_ADMIN_TOKEN: _b, ...rest } = GCP_REAL;
+    const { WHATSAPP_APP_SECRET: _a, SHOPIFY_API_SECRET: _b, ...rest } = GCP_REAL;
     let message = '';
     try {
       loadConfig({ ...rest, VERTEX_MODEL: '  ' });
@@ -137,16 +147,16 @@ describe('loadConfig — gcp profile and startup guard (docs/07 §19)', () => {
       message = (err as Error).message;
     }
     expect(message).toBe(
-      'The gcp profile is missing required settings: VERTEX_MODEL, WHATSAPP_APP_SECRET, SHOPIFY_ADMIN_TOKEN',
+      'The gcp profile is missing required settings: VERTEX_MODEL, WHATSAPP_APP_SECRET, SHOPIFY_API_SECRET',
     );
     expect(message).not.toMatch(/fake-|asia-south1/);
     expect(loadConfig(GCP_REAL).gcp).toMatchObject({
       region: 'asia-south1',
       firestoreDatabase: '(default)',
       vertex: { model: 'gemini-test-model' },
-      shopify: { shopDomain: 'demo-shop.myshopify.com' },
       gcsBucket: 'qwikspot-uploads-test',
     });
+    expect(loadConfig(GCP_REAL).shopify).toMatchObject({ apiKey: SHOPIFY_FAKE.SHOPIFY_API_KEY, apiVersion: '2026-10' });
     expect(loadConfig({}).gcp).toBeNull(); // the local profile needs none of it
   });
 
@@ -206,5 +216,42 @@ describe('local demo login hints (judge-test fixes)', () => {
     expect(LOCAL_DEMO_LOGINS.find((l) => l.role === 'BRAND_ADMIN')!.hint).toBe(
       'Start here: open the demo guide on Overview, try the shopper demo, then see Conversations and Insights.',
     );
+  });
+});
+
+describe('Shopify app settings (L2-Shopify)', () => {
+  const SHOPIFY = { ...SHOPIFY_FAKE, COMMERCE_PROVIDER: 'shopify' };
+
+  it('are validated only with COMMERCE_PROVIDER=shopify; mock needs none of them', () => {
+    expect(loadConfig({}).shopify).toBeNull();
+    expect(loadConfig({ COMMERCE_PROVIDER: 'mock', SHOPIFY_API_KEY: '' }).shopify).toBeNull();
+    const config = loadConfig(SHOPIFY);
+    expect(config.shopify).toMatchObject({
+      apiKey: SHOPIFY_FAKE.SHOPIFY_API_KEY,
+      scopes: 'read_products,read_inventory,read_customers,read_orders',
+      apiVersion: '2026-10',
+      publicBackendUrl: 'https://api.example.test',
+      frontendUrl: 'http://localhost:5173',
+    });
+    expect(config.shopify!.encryptionKey).toHaveLength(32);
+  });
+
+  it('name every missing or invalid setting at once, never a value', () => {
+    let message = '';
+    try {
+      loadConfig({
+        COMMERCE_PROVIDER: 'shopify',
+        SHOPIFY_API_SECRET: 'super-secret-value',
+        PUBLIC_BACKEND_URL: 'http://not-https.example',
+        TOKEN_ENCRYPTION_KEY: Buffer.alloc(16, 'k').toString('base64'),
+        SHOPIFY_API_VERSION: '2026-11',
+      });
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toBe(
+      'COMMERCE_PROVIDER=shopify needs valid settings: SHOPIFY_API_KEY, SHOPIFY_API_VERSION, PUBLIC_BACKEND_URL, TOKEN_ENCRYPTION_KEY',
+    );
+    expect(message).not.toMatch(/super-secret|not-https|a2tr/);
   });
 });

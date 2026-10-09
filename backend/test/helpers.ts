@@ -1,3 +1,9 @@
+import { ShopifyHttpAdminApi } from '../src/adapters/commerce/shopifyAdminApi.js';
+import { ShopifyCommerceProvider } from '../src/adapters/commerce/shopifyCommerceProvider.js';
+import { ShopifyAuthService } from '../src/application/shopifyAuthService.js';
+import { CommerceProviderResolver, ShopifyConnections } from '../src/application/shopifyConnections.js';
+import { ShopifyWebhookService } from '../src/application/shopifyWebhookService.js';
+import { MemoryShopifyStore, SHOPIFY_TEST_APP, type FakeShopify } from './shopifyFakes.js';
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { MockAgentRuntime } from '../src/adapters/agent/mockAgentRuntime.js';
@@ -590,6 +596,8 @@ export function buildTestWorld(
     /** M7: DEMO_MODE configuration (default off) and the execution profile reported by the app. */
     demo?: DemoConfig;
     profile?: 'local' | 'gcp';
+    /** L2-Shopify: COMMERCE_PROVIDER=shopify against a FakeShopify (no network). */
+    shopify?: FakeShopify;
   } = {},
 ) {
   const world = seedWorld();
@@ -606,8 +614,37 @@ export function buildTestWorld(
   const connections = new MemoryConnections();
   const imports = new MemoryImports();
   const files = new MemoryFiles();
+  const shopifyStore = new MemoryShopifyStore();
+  const shopifyApi = options.shopify
+    ? new ShopifyHttpAdminApi(SHOPIFY_TEST_APP, {
+        fetch: options.shopify.fetch,
+        sleep: async () => {},
+        now: options.now,
+      })
+    : null;
+  const shopifyConnections = shopifyApi
+    ? new ShopifyConnections({ store: shopifyStore, api: shopifyApi, connections, now: options.now })
+    : null;
+  const resolver =
+    shopifyApi && shopifyConnections
+      ? new CommerceProviderResolver({
+          mode: 'shopify',
+          connections: shopifyConnections,
+          create: (shop, token) => new ShopifyCommerceProvider(shopifyApi, shop, token),
+        })
+      : new CommerceProviderResolver({ mode: 'mock', mock: options.commerce ?? new MockCommerceProvider() });
+  const shopifyAuth = shopifyApi
+    ? new ShopifyAuthService({
+        app: SHOPIFY_TEST_APP,
+        store: shopifyStore,
+        api: shopifyApi,
+        connections,
+        audit,
+        now: options.now,
+      })
+    : undefined;
   const commerceSync = new CommerceSyncService({
-    commerce: options.commerce ?? new MockCommerceProvider(),
+    resolver,
     products,
     mappings,
     connections,
@@ -644,6 +681,7 @@ export function buildTestWorld(
   const conversation = createConversationModule({
     brands,
     products,
+    connections,
     customers,
     visitors,
     intents,
@@ -679,6 +717,19 @@ export function buildTestWorld(
                 : (brandId: string) => (options.demo?.brandIds ?? []).includes(brandId),
           },
   });
+
+  const shopifyWebhooks = shopifyAuth
+    ? new ShopifyWebhookService({
+        apiSecret: SHOPIFY_TEST_APP.apiSecret,
+        store: shopifyStore,
+        receipts,
+        orders: conversation.orders,
+        products,
+        auth: shopifyAuth,
+        audit,
+        now: options.now,
+      })
+    : undefined;
 
   const demoData = new MemoryDemoData(brands);
   const demoReset = new DemoResetService({
@@ -732,7 +783,11 @@ export function buildTestWorld(
       reservations: conversation.reservations,
       fulfilment: conversation.fulfilment,
       handoff: conversation.handoff,
-      brandSettings: new BrandSettingsQuery({ brands, channelMode: 'SIMULATOR' }),
+      brandSettings: new BrandSettingsQuery({
+        brands,
+        channelMode: 'SIMULATOR',
+        commerceMode: options.shopify ? 'SHOPIFY' : 'MOCK',
+      }),
       insights: new InsightsService({
         reader: new MemoryInsightsReader({ intents, conversations, recommendations, events, reservations, outcomes }),
         stores,
@@ -743,6 +798,8 @@ export function buildTestWorld(
       demoStorefront: conversation.demoStorefront,
       shopper: conversation.shopper,
       demoReset,
+      shopifyAuth,
+      shopifyWebhooks,
     },
     localUploads: options.localUploads === false ? undefined : files,
   });
@@ -779,6 +836,8 @@ export function buildTestWorld(
     attributionRefs,
     demoData,
     demoReset,
+    shopifyStore,
+    shopifyAuth,
   };
 }
 

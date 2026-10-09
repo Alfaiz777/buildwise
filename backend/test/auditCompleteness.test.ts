@@ -11,6 +11,30 @@ import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { bearer, buildTestWorld, TEST_ORIGIN } from './helpers.js';
 import { buildScenarioWorld, type ScenarioWorld } from './scenarioWorld.js';
+import { FakeShopify, signedCallback, TEST_SHOP, webhookHmac } from './shopifyFakes.js';
+
+/** L2-Shopify routes run in their own COMMERCE_PROVIDER=shopify world; their new events land in ctx. */
+async function inShopifyWorld(
+  ctx: Record<string, string>,
+  name: string,
+  act: (w: ReturnType<typeof buildTestWorld>) => Promise<request.Response>,
+) {
+  const w = buildTestWorld({ shopify: new FakeShopify() });
+  const connect = await request(w.app)
+    .post('/api/integrations/shopify/connect')
+    .set('Authorization', bearer('admin_a'))
+    .send({ shop: TEST_SHOP });
+  const state = new URL(connect.body.authorize_url).searchParams.get('state')!;
+  await request(w.app)
+    .get('/api/integrations/shopify/callback')
+    .query(signedCallback({ code: 'c', shop: TEST_SHOP, state, timestamp: '1' }));
+  const before = w.audit.brandEvents.length;
+  const res = name.endsWith('/shopify/connect') ? connect : await act(w);
+  ctx[`own:${name}`] = JSON.stringify(
+    name.endsWith('/shopify/connect') ? w.audit.brandEvents : w.audit.brandEvents.slice(before),
+  );
+  return res;
+}
 
 const ROUTES_DIR = fileURLToPath(new URL('../src/routes', import.meta.url));
 
@@ -170,6 +194,32 @@ const ROUTES: [string, Step][] = [
     (s) => as(s, 'platform').post('/api/platform/brands/brand_C/admins', { email: 'brand-c-admin@example.test' }),
   ],
   [
+    'shopify.ts POST /shopify/connect',
+    (_s, ctx) => inShopifyWorld(ctx, 'shopify.ts POST /shopify/connect', async (r) => r as never),
+  ],
+  [
+    'shopify.ts POST /shopify/disconnect',
+    (_s, ctx) =>
+      inShopifyWorld(ctx, 'shopify.ts POST /shopify/disconnect', (w) =>
+        request(w.app).post('/api/integrations/shopify/disconnect').set('Authorization', bearer('admin_a')),
+      ),
+  ],
+  [
+    'shopify.ts POST /webhooks/shopify',
+    (_s, ctx) =>
+      inShopifyWorld(ctx, 'shopify.ts POST /webhooks/shopify', (w) => {
+        const raw = JSON.stringify({ id: 1, admin_graphql_api_id: 'gid://shopify/Order/1', line_items: [] });
+        return request(w.app)
+          .post('/api/webhooks/shopify')
+          .set('Content-Type', 'application/json')
+          .set('X-Shopify-Topic', 'orders/create')
+          .set('X-Shopify-Shop-Domain', TEST_SHOP)
+          .set('X-Shopify-Event-Id', 'evt-audit-1')
+          .set('X-Shopify-Hmac-Sha256', webhookHmac(raw))
+          .send(raw);
+      }),
+  ],
+  [
     'demo.ts POST /demo/reset',
     async (_s, ctx) => {
       // Its own world: Reset demo exists only with DEMO_MODE on and an allowlisted brand.
@@ -207,8 +257,10 @@ describe('audit completeness (docs/07 §11)', () => {
       ]);
       return;
     }
-    expect(added.length + addedPlatform.length).toBeGreaterThan(0);
-    for (const e of added) {
+    const own = ctx[`own:${name}`];
+    const events: typeof added = own ? JSON.parse(own) : added;
+    expect(events.length + (own ? 0 : addedPlatform.length)).toBeGreaterThan(0);
+    for (const e of events) {
       expect(e.brandId).toMatch(/^[\w-]+$/);
       expect(e.actorType).toMatch(/^(USER|SYSTEM|AGENT|CUSTOMER|PLATFORM_ADMIN)$/);
       expect(e.actorId).toBeTruthy();

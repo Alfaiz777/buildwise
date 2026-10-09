@@ -213,7 +213,20 @@ IntegrationConnection
 - last_error            ({ code, message } — normalized, never a raw provider message)
 - source                (adapter that served the data: MOCK locally, SHOPIFY live)
 - product_count / variant_count   (result of the last sync)
+- shop_domain / shop_name         (L2-Shopify: the connected store — status only)
 ```
+
+`status` is `CONNECTED`, `ERROR` (e.g. `SHOPIFY_RECONNECT_REQUIRED`) or, since L2-Shopify, `DISCONNECTED` (the brand disconnected or uninstalled the app).
+
+**ShopifyConnection secret** (L2-Shopify) — `brands/{brand_id}/integrationSecrets/SHOPIFY`, server-only, never returned by any API and never wiped by Reset demo:
+
+```text
+- shop_domain, shop_name, scopes, installed_at
+- access_token, refresh_token     ({ iv, tag, ciphertext, key_version } — AES-256-GCM with TOKEN_ENCRYPTION_KEY)
+- access_token_expires_at, refresh_token_expires_at
+```
+
+`shopifyShops/{shop_domain}` → `{ brand_id }` resolves a webhook to its brand and lets one shop belong to one brand only. `oauthStates/{nonce}` → `{ brand_id, user_id, shop, expires_at }` holds a pending OAuth state; it is deleted when the callback uses it (single use).
 
 The SHOPIFY connection uses the deterministic ID `SHOPIFY` (one per brand).
 
@@ -278,6 +291,8 @@ Only relevant customer data should be retained/used. Customer records and conver
 ---
 
 # 7. Product
+
+L2-Shopify adds `handle` (the Shopify storefront handle; `null` for the mock catalogue). A Shopify sync sets products the store no longer has to `ARCHIVED`.
 
 ```text
 Product
@@ -1194,6 +1209,7 @@ Tenant-owned entities live under their brand. Paths are always resolved server-s
 ```text
 brands/{brand_id}
 brands/{brand_id}/connections/{connection_id}
+brands/{brand_id}/integrationSecrets/{provider}                      (L2-Shopify: encrypted tokens; server-only)
 brands/{brand_id}/customers/{customer_id}
 brands/{brand_id}/channelIdentities/{sha256(channel:external_ref)}   (uniqueness guard → customer_id)
 brands/{brand_id}/webVisitors/{sha256(visitor_id)}                   (visitor → customer link)
@@ -1222,6 +1238,8 @@ users/{user_id}                 (Firebase uid → role, brand_id, retailer_id, s
 intentTokens/{token_hash}
 pageAccessTokens/{token_hash}
 webhookReceipts/{receipt_id}
+shopifyShops/{shop_domain}      (L2-Shopify: shop → brand_id)
+oauthStates/{nonce}             (L2-Shopify: single-use OAuth state, 10 minutes)
 platformAuditEvents/{audit_id}  (platform-level; no brand owner)
 ```
 

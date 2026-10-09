@@ -39,6 +39,14 @@ const EnvSchema = z.object({
   // Change 16 (UI-2): the shopper demo channel and media URLs.
   SHOPPER_SESSION_SECRET: z.string().optional(),
   PUBLIC_WEB_ORIGIN: z.string().trim().url().optional().or(z.literal('')),
+  // L2-Shopify: the Shopify app (OAuth) — validated only when COMMERCE_PROVIDER=shopify.
+  SHOPIFY_API_KEY: z.string().optional(),
+  SHOPIFY_API_SECRET: z.string().optional(),
+  SHOPIFY_SCOPES: z.string().optional(),
+  SHOPIFY_API_VERSION: z.string().optional(),
+  PUBLIC_BACKEND_URL: z.string().optional(),
+  FRONTEND_URL: z.string().optional(),
+  TOKEN_ENCRYPTION_KEY: z.string().optional(),
   // Build identity for /api/health (set by Cloud Build).
   BUILD_VERSION: z.string().trim().max(40).optional(),
   BUILD_COMMIT: z.string().trim().max(64).optional(),
@@ -59,9 +67,11 @@ export const GCP_REQUIRED_SETTINGS = [
   'WHATSAPP_PHONE_NUMBER_ID',
   'WHATSAPP_APP_SECRET',
   'WHATSAPP_VERIFY_TOKEN',
-  'SHOPIFY_SHOP_DOMAIN',
-  'SHOPIFY_ADMIN_TOKEN',
-  'SHOPIFY_WEBHOOK_SECRET',
+  // L2-Shopify: one Shopify app (OAuth); each brand's store token is stored encrypted.
+  'SHOPIFY_API_KEY',
+  'SHOPIFY_API_SECRET',
+  'TOKEN_ENCRYPTION_KEY',
+  'PUBLIC_BACKEND_URL',
   'BIGQUERY_DATASET',
   'GCS_BUCKET',
   'DEMO_MODE',
@@ -73,9 +83,66 @@ export interface GcpSettings {
   firestoreDatabase: string;
   vertex: { model: string; location: string };
   whatsapp: { accessToken: string; phoneNumberId: string; appSecret: string; verifyToken: string };
-  shopify: { shopDomain: string; adminToken: string; webhookSecret: string };
   bigQueryDataset: string;
   gcsBucket: string;
+}
+
+/** The pinned Shopify Admin API version (latest stable when L2-Shopify was built; docs/06 §17.1). */
+export const DEFAULT_SHOPIFY_API_VERSION = '2026-10';
+export const DEFAULT_SHOPIFY_SCOPES = 'read_products,read_inventory,read_customers,read_orders';
+
+/** The Shopify app (L2-Shopify). Secrets: never logged, never returned by an API. */
+export interface ShopifyAppConfig {
+  apiKey: string;
+  apiSecret: string;
+  scopes: string;
+  apiVersion: string;
+  /** https origin Shopify calls back to (a dev tunnel locally). */
+  publicBackendUrl: string;
+  /** Where the browser lands after OAuth. */
+  frontendUrl: string;
+  /** AES-256-GCM key for stored tokens (32 bytes). */
+  encryptionKey: Buffer;
+}
+
+/** Shopify's settings, validated together; the message names the variables, never their values. */
+export function parseShopifyConfig(env: NodeJS.ProcessEnv): ShopifyAppConfig {
+  const v = (name: string) => String(env[name] ?? '').trim();
+  const bad: string[] = [];
+  for (const name of ['SHOPIFY_API_KEY', 'SHOPIFY_API_SECRET']) if (!v(name)) bad.push(name);
+  const apiVersion = v('SHOPIFY_API_VERSION') || DEFAULT_SHOPIFY_API_VERSION;
+  if (!/^\d{4}-(01|04|07|10)$/.test(apiVersion)) bad.push('SHOPIFY_API_VERSION');
+  const scopes = (v('SHOPIFY_SCOPES') || DEFAULT_SHOPIFY_SCOPES).replace(/\s+/g, '');
+  if (!/^[a-z_]+(,[a-z_]+)*$/.test(scopes)) bad.push('SHOPIFY_SCOPES');
+  const url = (name: string, https: boolean) => {
+    try {
+      const u = new URL(v(name));
+      if (https ? u.protocol !== 'https:' : !/^https?:$/.test(u.protocol)) throw new Error();
+      return u.origin;
+    } catch {
+      bad.push(name);
+      return '';
+    }
+  };
+  const publicBackendUrl = url('PUBLIC_BACKEND_URL', true);
+  const frontendUrl = v('FRONTEND_URL') ? url('FRONTEND_URL', false) : 'http://localhost:5173';
+  let encryptionKey = Buffer.alloc(0);
+  try {
+    encryptionKey = Buffer.from(v('TOKEN_ENCRYPTION_KEY'), 'base64');
+  } catch {
+    /* reported below */
+  }
+  if (encryptionKey.length !== 32) bad.push('TOKEN_ENCRYPTION_KEY');
+  if (bad.length > 0) throw new Error(`COMMERCE_PROVIDER=shopify needs valid settings: ${bad.join(', ')}`);
+  return {
+    apiKey: v('SHOPIFY_API_KEY'),
+    apiSecret: v('SHOPIFY_API_SECRET'),
+    scopes,
+    apiVersion,
+    publicBackendUrl,
+    frontendUrl,
+    encryptionKey,
+  };
 }
 
 export interface DemoLogin {
@@ -166,6 +233,8 @@ export interface Config {
   publicWebOrigin: string;
   /** Present only in the gcp profile (validated as a whole). */
   gcp: GcpSettings | null;
+  /** L2-Shopify: present only when COMMERCE_PROVIDER=shopify. */
+  shopify: ShopifyAppConfig | null;
 }
 
 const LOCAL_PROJECT_ID = 'demo-qwikspot';
@@ -236,15 +305,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
         appSecret: v('WHATSAPP_APP_SECRET'),
         verifyToken: v('WHATSAPP_VERIFY_TOKEN'),
       },
-      shopify: {
-        shopDomain: v('SHOPIFY_SHOP_DOMAIN'),
-        adminToken: v('SHOPIFY_ADMIN_TOKEN'),
-        webhookSecret: v('SHOPIFY_WEBHOOK_SECRET'),
-      },
       bigQueryDataset: v('BIGQUERY_DATASET'),
       gcsBucket: v('GCS_BUCKET'),
     };
   }
+
+  // After the gcp contract check, so a deploy names every missing setting in one message.
+  const shopify = adapters.commerce === 'shopify' ? parseShopifyConfig(env) : null;
 
   const projectId = e.GOOGLE_CLOUD_PROJECT || (profile === 'local' ? LOCAL_PROJECT_ID : '');
   if (!projectId) throw new Error('Invalid environment configuration: GOOGLE_CLOUD_PROJECT');
@@ -302,5 +369,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       e.PUBLIC_WEB_ORIGIN || (profile === 'local' ? 'http://localhost:5173' : corsOrigins[0] || 'http://localhost:5173')
     ).replace(/\/$/, ''),
     gcp,
+    shopify,
   };
 }

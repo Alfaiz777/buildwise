@@ -15,7 +15,7 @@ const server = app.listen(config.port, () => {
     profile: config.profile,
     project_id: config.projectId,
     using_emulators: config.usingEmulators,
-    adapters: describeProviders(container.providers),
+    adapters: describeProviders(container.providers, config.adapters),
   });
 });
 

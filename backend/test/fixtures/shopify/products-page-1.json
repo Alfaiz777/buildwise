@@ -1,0 +1,77 @@
+{
+  "data": {
+    "shop": { "currencyCode": "INR" },
+    "products": {
+      "pageInfo": { "hasNextPage": true, "endCursor": "cursor-page-1" },
+      "nodes": [
+        {
+          "id": "gid://shopify/Product/9001",
+          "title": "Vitamin C Glow Serum",
+          "handle": "vitamin-c-glow-serum",
+          "descriptionHtml": "<p>A lightweight brightening serum for a fresh, even glow.</p><p><strong>Best for:</strong> dull, uneven skin</p><p>Skin type: oily, combination</p><p>Key ingredients: 10% vitamin C, ferulic acid &amp; vitamin E</p><p>Texture: water-light gel</p><p>When to use: mornings, before sunscreen</p>",
+          "productType": "Serum",
+          "status": "ACTIVE",
+          "tags": ["serum", "brightening"],
+          "featuredMedia": {
+            "preview": { "image": { "url": "https://cdn.shopify.com/s/files/1/demo/vitamin-c.png" } }
+          },
+          "variants": {
+            "pageInfo": { "hasNextPage": false, "endCursor": null },
+            "nodes": [
+              {
+                "id": "gid://shopify/ProductVariant/7001",
+                "sku": "DBC-VCSERUM-30",
+                "barcode": "8906123000014",
+                "title": "30 ml",
+                "price": "795.00"
+              },
+              {
+                "id": "gid://shopify/ProductVariant/7002",
+                "sku": "DBC-VCSERUM-50",
+                "barcode": "8906123000021",
+                "title": "50 ml",
+                "price": "1195.00"
+              }
+            ]
+          }
+        },
+        {
+          "id": "gid://shopify/Product/9011",
+          "title": "Micellar Cleansing Water",
+          "handle": "micellar-cleansing-water",
+          "descriptionHtml": "<p>Lifts make-up and sunscreen without rinsing.</p><ul><li>Skin type: all, sensitive</li><li>Fragrance: none</li></ul>",
+          "productType": "",
+          "status": "UNLISTED",
+          "tags": ["cleanser"],
+          "featuredMedia": null,
+          "variants": {
+            "pageInfo": { "hasNextPage": false, "endCursor": null },
+            "nodes": [
+              {
+                "id": "gid://shopify/ProductVariant/7011",
+                "sku": "DBC-MICWTR-200",
+                "barcode": null,
+                "title": "200 ml",
+                "price": "349.00"
+              },
+              {
+                "id": "gid://shopify/ProductVariant/7012",
+                "sku": "DBC-MICWTR-400",
+                "barcode": null,
+                "title": "400 ml",
+                "price": "599.00"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "extensions": {
+    "cost": {
+      "requestedQueryCost": 52,
+      "actualQueryCost": 12,
+      "throttleStatus": { "maximumAvailable": 2000, "currentlyAvailable": 1988, "restoreRate": 100 }
+    }
+  }
+}

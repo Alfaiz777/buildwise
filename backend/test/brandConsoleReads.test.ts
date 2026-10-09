@@ -160,6 +160,7 @@ describe('GET /api/brand/settings (read-only)', () => {
         'attribution_window_minutes',
         'brand_id',
         'channel',
+        'commerce',
         'follow_up',
         'fulfilment',
         'messaging',

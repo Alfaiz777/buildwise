@@ -28,6 +28,8 @@ export interface CommerceProduct {
   attributes: Record<string, string>;
   /** The product image (Shopify: the featured image; mock: a self-made illustration path). */
   imageUrl?: string | null;
+  /** The storefront handle (Shopify), for the "Buy online" link; null for the mock. */
+  handle?: string | null;
   variants: CommerceVariant[];
 }
 

@@ -190,11 +190,14 @@ export class RetailImportService {
     }
 
     // 2. SKU mapping, once per distinct retail SKU of the remaining rows.
-    const catalog = (await this.deps.products.listVariants(brandId)).map((v) => ({
-      variantId: v.variantId,
-      canonicalSku: v.canonicalSku,
-      barcode: v.barcode,
-    }));
+    // Archived variants (e.g. a catalogue replaced by a Shopify sync) are never matched.
+    const catalog = (await this.deps.products.listVariants(brandId))
+      .filter((v) => v.status !== 'ARCHIVED')
+      .map((v) => ({
+        variantId: v.variantId,
+        canonicalSku: v.canonicalSku,
+        barcode: v.barcode,
+      }));
     const stockRows = validated.stockRows.filter((row) => {
       const rejected = rejectedStores.get(row.storeId);
       if (rejected) rowError(row, rejected.code, rejected.message);

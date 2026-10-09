@@ -1,5 +1,12 @@
 import { MockAgentRuntime } from '../adapters/agent/mockAgentRuntime.js';
 import { MockCommerceProvider } from '../adapters/commerce/mockCommerceProvider.js';
+import { ShopifyHttpAdminApi } from '../adapters/commerce/shopifyAdminApi.js';
+import { ShopifyCommerceProvider } from '../adapters/commerce/shopifyCommerceProvider.js';
+import { FirestoreShopifyConnectionStore } from '../adapters/firestore/shopifyConnectionStore.js';
+import { ShopifyAuthService } from '../application/shopifyAuthService.js';
+import { CommerceProviderResolver, ShopifyConnections } from '../application/shopifyConnections.js';
+import { ShopifyWebhookService } from '../application/shopifyWebhookService.js';
+import { TokenCipher } from '../lib/tokenCipher.js';
 import { LocalEventSink } from '../adapters/events/localEventSink.js';
 import { FirebaseIdentityAdmin } from '../adapters/firebase/identityAdmin.js';
 import {
@@ -49,6 +56,7 @@ import { TenantAdminService } from '../application/tenantAdminService.js';
 import type { AppDeps } from '../app.js';
 import { FirebaseTokenVerifier } from '../auth/tokenVerifier.js';
 import type { Config } from '../config/env.js';
+import type { AdapterSelection } from '../config/profile.js';
 import type { Channel } from '../domain/channels.js';
 import { initFirebase } from '../firebase/admin.js';
 import type { Logger } from '../lib/logger.js';
@@ -95,7 +103,10 @@ export function createProviders(config: Pick<Config, 'adapters' | 'localDataDir'
   }
 
   return {
-    commerce: adapters.commerce === 'mock' ? new MockCommerceProvider() : notAvailable('ShopifyCommerceProvider'),
+    // The shared provider is the mock in both modes: it is the synthetic demo shoppers' source.
+    // With COMMERCE_PROVIDER=shopify each brand's catalogue comes from its own connected store
+    // (CommerceProviderResolver, built in buildContainer from the brand's stored connection).
+    commerce: new MockCommerceProvider(),
     messaging,
     agent: adapters.agentRuntime === 'mock' ? new MockAgentRuntime() : notAvailable('AdkGeminiAgentRuntime'),
     files:
@@ -162,8 +173,33 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
   const connections = new FirestoreConnectionRepository(db);
   const imports = new FirestoreRetailImportRepository(db);
   const customers = new FirestoreCustomerRepository(db);
+  // L2-Shopify: per-brand providers from each brand's stored, encrypted connection.
+  const shopifyApp = config.shopify;
+  let resolver: CommerceProviderResolver;
+  let shopifyAuth: ShopifyAuthService | undefined;
+  let shopifyStore: FirestoreShopifyConnectionStore | undefined;
+  if (shopifyApp) {
+    const api = new ShopifyHttpAdminApi(shopifyApp);
+    shopifyStore = new FirestoreShopifyConnectionStore(db, new TokenCipher(shopifyApp.encryptionKey));
+    const shopifyConnections = new ShopifyConnections({ store: shopifyStore, api, connections, now: options.now });
+    resolver = new CommerceProviderResolver({
+      mode: 'shopify',
+      connections: shopifyConnections,
+      create: (shop, accessToken) => new ShopifyCommerceProvider(api, shop, accessToken),
+    });
+    shopifyAuth = new ShopifyAuthService({
+      app: shopifyApp,
+      store: shopifyStore,
+      api,
+      connections,
+      audit,
+      now: options.now,
+    });
+  } else {
+    resolver = new CommerceProviderResolver({ mode: 'mock', mock: providers.commerce });
+  }
   const commerceSync = new CommerceSyncService({
-    commerce: providers.commerce,
+    resolver,
     products,
     mappings,
     connections,
@@ -198,6 +234,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
   const conversation = createConversationModule({
     brands,
     products,
+    connections,
     customers,
     visitors: new FirestoreVisitorLinkRepository(db),
     intents: new FirestoreIntentRepository(db),
@@ -224,6 +261,20 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
       : undefined,
     publicOrigin: config.publicWebOrigin,
   });
+
+  const shopifyWebhooks =
+    shopifyApp && shopifyStore && shopifyAuth
+      ? new ShopifyWebhookService({
+          apiSecret: shopifyApp.apiSecret,
+          store: shopifyStore,
+          receipts: new FirestoreWebhookReceiptRepository(db),
+          orders: conversation.orders,
+          products,
+          auth: shopifyAuth,
+          audit,
+          now: options.now,
+        })
+      : undefined;
 
   return {
     config,
@@ -262,7 +313,11 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         reservations: conversation.reservations,
         fulfilment: conversation.fulfilment,
         handoff: conversation.handoff,
-        brandSettings: new BrandSettingsQuery({ brands, channelMode: channelModeOf(config) }),
+        brandSettings: new BrandSettingsQuery({
+          brands,
+          channelMode: channelModeOf(config),
+          commerceMode: config.adapters.commerce === 'shopify' ? 'SHOPIFY' : 'MOCK',
+        }),
         insights: new InsightsService({
           reader: insightsReader,
           stores,
@@ -273,6 +328,8 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         demoStorefront: conversation.demoStorefront,
         shopper: conversation.shopper,
         demoReset,
+        shopifyAuth,
+        shopifyWebhooks,
       },
       localUploads:
         profileFeatures(config).localUploads && providers.files instanceof LocalFileStorageProvider
@@ -283,9 +340,9 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
 }
 
 /** Adapter names for startup logs and diagnostics. */
-export function describeProviders(providers: Providers) {
+export function describeProviders(providers: Providers, adapters?: Pick<AdapterSelection, 'commerce'>) {
   return {
-    commerce: providers.commerce.name,
+    commerce: adapters?.commerce === 'shopify' ? 'SHOPIFY' : providers.commerce.name,
     messaging_channels: [...providers.messaging.keys()],
     agent_runtime: providers.agent.runtime,
     file_storage: providers.files.name,
