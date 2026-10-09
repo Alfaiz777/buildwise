@@ -120,6 +120,11 @@ const CUSTOMER = /* GraphQL */ `
 const ORDER_FIELDS = /* GraphQL */ `
   id
   createdAt
+  cancelledAt
+  customAttributes {
+    key
+    value
+  }
   customer {
     id
   }
@@ -153,6 +158,10 @@ const ORDERS = `query QwikspotOrders($after: String, $query: String) {
   }
 }`;
 
+const ONLINE_AVAILABILITY = `query QwikspotOnlineAvailability($id: ID!) {
+  productVariant(id: $id) { id availableForSale }
+}`;
+
 const LOCATIONS = `query QwikspotLocations($after: String) {
   locations(first: 50, after: $after) { pageInfo { hasNextPage endCursor } nodes { id name } }
 }`;
@@ -171,6 +180,8 @@ const INVENTORY = `query QwikspotInventory($id: ID!) {
 interface OrderNode {
   id: string;
   createdAt: string;
+  cancelledAt: string | null;
+  customAttributes: { key: string; value: string | null }[] | null;
   customer: { id: string } | null;
   totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
   lineItems: {
@@ -306,6 +317,10 @@ export class ShopifyCommerceProvider implements CommerceProvider {
       totalPrice: money(o.totalPriceSet.shopMoney.amount),
       currency: o.totalPriceSet.shopMoney.currencyCode,
       createdAt: o.createdAt,
+      attributes: Object.fromEntries(
+        (o.customAttributes ?? []).filter((a) => typeof a.value === 'string').map((a) => [a.key, a.value!]),
+      ),
+      cancelledAt: o.cancelledAt ?? null,
     };
   }
 
@@ -317,7 +332,7 @@ export class ShopifyCommerceProvider implements CommerceProvider {
   async getOrders(query: OrderQuery): Promise<CommerceOrder[]> {
     const terms: string[] = [];
     if (query.externalCustomerId) terms.push(`customer_id:${query.externalCustomerId.split('/').pop()}`);
-    if (query.createdAfter) terms.push(`created_at:>${query.createdAfter}`);
+    if (query.createdAfter) terms.push(`created_at:>'${query.createdAfter}'`);
     const out: CommerceOrder[] = [];
     let after: string | null = null;
     for (let page = 0; page < 20; page++) {
@@ -342,6 +357,14 @@ export class ShopifyCommerceProvider implements CommerceProvider {
       after = data.locations.pageInfo.endCursor;
     }
     return out;
+  }
+
+  async getOnlineAvailability(externalVariantId: string): Promise<boolean | null> {
+    const data = await this.query<{ productVariant: { id: string; availableForSale: boolean } | null }>(
+      ONLINE_AVAILABILITY,
+      { id: externalVariantId },
+    );
+    return data.productVariant ? data.productVariant.availableForSale === true : null;
   }
 
   /** Online stock per location for the given variants (retail store stock comes from the retail file). */

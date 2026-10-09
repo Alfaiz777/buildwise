@@ -51,6 +51,7 @@ import type {
 } from '../../ports/repositories.js';
 import { SHOPIFY_CONNECTION_ID } from '../commerceSyncService.js';
 import type { EventRecorder } from '../eventRecorder.js';
+import type { OnlineStockService } from '../onlineStock.js';
 import type { ReservationService } from '../reservationService.js';
 import type { ToolHandlers, ToolOutcome, ToolScope } from './toolExecutor.js';
 
@@ -71,6 +72,8 @@ export interface ToolDeps {
   reservations: ReservationService;
   events: EventRecorder;
   now: () => Date;
+  /** L2-Shopify: live online stock, checked before the connected store's cart link is offered. */
+  onlineStock?: Pick<OnlineStockService, 'canBuyOnline'>;
 }
 
 const ok = (output: unknown): ToolOutcome => ({ status: 'EXECUTED', output });
@@ -136,20 +139,18 @@ export function shopifyVariantNumber(variant: any): string | null {
   const raw =
     typeof variant === 'string'
       ? variant
-      : variant.externalId ??
-        variant.attributes?.shopify_variant_id ??
-        variant.shopifyVariantId ??
-        null;
+      : (variant.externalId ?? variant.attributes?.shopify_variant_id ?? variant.shopifyVariantId ?? null);
   if (!raw || typeof raw !== 'string') return null;
   const tail = raw.split('/').pop();
   return tail && /^\d+$/.test(tail) ? tail : null;
 }
 
 export function createToolHandlers(deps: ToolDeps): ToolHandlers {
+  /** The connected store's cart link for the variant; SOLD_OUT when Shopify says it cannot be bought online. */
   const shopifyOnlineUrl = async (
     brandId: string,
-    variant: VariantRecord | any | null,
-  ): Promise<string | null> => {
+    variant: VariantRecord | null,
+  ): Promise<string | 'SOLD_OUT' | null> => {
     if (!variant) return null;
     const connection = await deps.connections.get(brandId, SHOPIFY_CONNECTION_ID);
     if (connection?.status !== 'CONNECTED' || !connection.shopDomain) return null;
@@ -157,6 +158,8 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
     const variantId = shopifyVariantNumber(variant);
     if (!variantId) return null;
 
+    const available = await deps.onlineStock?.canBuyOnline(brandId, `gid://shopify/ProductVariant/${variantId}`);
+    if (available === false) return 'SOLD_OUT';
     return `https://${connection.shopDomain}/cart/${variantId}:1`;
   };
 
@@ -164,9 +167,12 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
     brandId: string,
     settings: Record<string, unknown>,
     product: ProductRecord,
-    variant: VariantRecord | any | null,
+    variant: VariantRecord | null,
   ): Promise<string | null> => {
-    return (await shopifyOnlineUrl(brandId, variant)) ?? onlineProductUrl(settings, product.productId);
+    const shopify = await shopifyOnlineUrl(brandId, variant);
+    // Never invent stock: a variant the store cannot sell online gets no "Buy online" at all.
+    if (shopify === 'SOLD_OUT') return null;
+    return shopify ?? onlineProductUrl(settings, product.productId);
   };
 
   const catalog = async (brandId: string) => {

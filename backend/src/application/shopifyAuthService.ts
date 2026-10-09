@@ -30,8 +30,15 @@ export type CallbackFailure =
   | 'SHOP_ALREADY_CONNECTED'
   | 'WEBHOOKS_FAILED';
 
-/** The webhooks Qwikspot needs (docs/06 §8.1). */
-export const SHOPIFY_WEBHOOK_TOPICS = ['ORDERS_CREATE', 'APP_UNINSTALLED'] as const;
+/** The webhooks Qwikspot needs (docs/06 §8, §8.1). */
+export const SHOPIFY_WEBHOOK_TOPICS = [
+  'ORDERS_CREATE',
+  'ORDERS_CANCELLED',
+  'PRODUCTS_CREATE',
+  'PRODUCTS_UPDATE',
+  'PRODUCTS_DELETE',
+  'APP_UNINSTALLED',
+] as const;
 export const WEBHOOK_PATH = '/api/webhooks/shopify';
 export const CALLBACK_PATH = '/api/integrations/shopify/callback';
 
@@ -64,6 +71,8 @@ export class ShopifyAuthService {
       audit: AuditRepository;
       now?: () => Date;
       nonce?: () => string;
+      /** The brand's current access token, refreshed when about to expire (ShopifyConnections.accessToken). */
+      accessToken?: (brandId: string) => Promise<string>;
     },
   ) {}
 
@@ -213,6 +222,22 @@ export class ShopifyAuthService {
       const r = created.webhookSubscriptionCreate;
       if (!r.webhookSubscription || r.userErrors.length > 0)
         throw new ShopifyApiError('FAILED', 'Webhook not created.');
+    }
+  }
+
+  /**
+   * Registers any topic a store connected by an earlier version lacks — after a Sync, so a
+   * connected store gets new webhooks without reconnecting. Best effort: false on failure.
+   */
+  async ensureWebhooks(brandId: string): Promise<boolean> {
+    try {
+      const creds = await this.deps.store.get(brandId);
+      if (!creds) return false;
+      const token = this.deps.accessToken ? await this.deps.accessToken(brandId) : creds.accessToken;
+      await this.registerWebhooks(creds.shopDomain, token);
+      return true;
+    } catch {
+      return false;
     }
   }
 

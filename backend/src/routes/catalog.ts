@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { CatalogService } from '../application/catalogService.js';
-import type { CommerceSyncService } from '../application/commerceSyncService.js';
+import type { CommerceSyncService, SyncActor } from '../application/commerceSyncService.js';
 import { getBrandPrincipal } from '../auth/authorize.js';
 import type { ConnectionRecord } from '../ports/repositories.js';
 
@@ -23,12 +23,20 @@ export const connectionJson = (c: ConnectionRecord) => ({
   variant_count: c.variantCount,
 });
 
-/** POST /api/integrations/shopify/sync: runs the sync with the wired CommerceProvider. */
-export function integrationsRouter(sync: CommerceSyncService): Router {
+/**
+ * POST /api/integrations/shopify/sync: runs the sync with the wired CommerceProvider, then
+ * (Shopify mode) the best-effort follow-up — webhooks brought up to date, missed orders checked.
+ */
+export function integrationsRouter(
+  sync: CommerceSyncService,
+  afterSync?: (brandId: string, actor: SyncActor) => Promise<void>,
+): Router {
   const router = Router();
   router.post('/shopify/sync', async (_req, res) => {
     const principal = getBrandPrincipal(res);
-    const connection = await sync.sync(principal.brandId, { type: 'USER', id: principal.userId });
+    const actor: SyncActor = { type: 'USER', id: principal.userId };
+    const connection = await sync.sync(principal.brandId, actor);
+    await afterSync?.(principal.brandId, actor);
     res.json(connectionJson(connection));
   });
   return router;

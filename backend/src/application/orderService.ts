@@ -93,4 +93,40 @@ export class OrderService {
     }
     return { intentConverted: !!converted, attributed: !!link, journeyKey, outcomeRecorded };
   }
+
+  /**
+   * A cancelled order: ORDER_CANCELLED once per order, and the Outcome it produced (if any)
+   * no longer counts as a purchase. Replays are no-ops.
+   */
+  async cancelOrder(input: {
+    brandId: string;
+    externalOrderId: string;
+    source: 'WEBSITE' | 'SHOPIFY';
+    /** ISO-8601; when the order was cancelled (default now). */
+    at?: string | null;
+  }): Promise<{ newlyCancelled: boolean; outcomesCancelled: number }> {
+    const at = input.at ?? (this.deps.now ?? (() => new Date()))().toISOString();
+    const newlyCancelled = await this.deps.events.record({
+      brandId: input.brandId,
+      eventType: 'ORDER_CANCELLED',
+      source: input.source,
+      entityReference: input.externalOrderId,
+      payload: {},
+      idempotencyKey: `ORDER_CANCELLED:${input.externalOrderId}`,
+      at,
+    });
+    const outcomesCancelled = this.deps.outcomes
+      ? await this.deps.outcomes.cancelForOrder(input.brandId, input.externalOrderId, at)
+      : 0;
+    if (newlyCancelled) {
+      await this.deps.events.audit(input.brandId, {
+        action: 'ORDER_CANCELLED',
+        targetType: 'ORDER',
+        targetId: input.externalOrderId,
+        reasonCode: outcomesCancelled ? 'OUTCOME_CANCELLED' : 'NO_OUTCOME',
+        actor: { type: 'SYSTEM', id: input.source === 'SHOPIFY' ? 'shopify-webhook' : 'demo-storefront' },
+      });
+    }
+    return { newlyCancelled, outcomesCancelled };
+  }
 }

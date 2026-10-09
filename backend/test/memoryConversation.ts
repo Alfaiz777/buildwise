@@ -308,6 +308,15 @@ export class MemoryOutcomes implements OutcomeRepository {
     const o = this.outcomes.find((x) => x.brandId === brandId && x.outcomeId === id);
     return o ? clone(o) : null;
   }
+  async listByOrderReference(brandId: string, orderReference: string) {
+    return this.outcomes.filter((x) => x.brandId === brandId && x.orderReference === orderReference).map(clone);
+  }
+  async markCancelled(brandId: string, id: string, at: string) {
+    const o = this.outcomes.find((x) => x.brandId === brandId && x.outcomeId === id);
+    if (!o || o.cancelledAt) return false;
+    o.cancelledAt = at;
+    return true;
+  }
 }
 
 export class MemoryAttributionRefs implements AttributionRefRepository {

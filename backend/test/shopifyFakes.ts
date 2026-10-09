@@ -42,6 +42,10 @@ export class FakeShopify {
   tokenStatus = 200;
   /** Access tokens Shopify now rejects (401). */
   readonly revoked = new Set<string>();
+  /** The store's orders (GraphQL node shape) for QwikspotOrders. */
+  readonly orders: unknown[] = [];
+  /** Variant GID → availableForSale for QwikspotOnlineAvailability (unlisted → true). */
+  readonly availableForSale = new Map<string, boolean>();
 
   queue(operation: string, body: unknown, status = 200) {
     const list = this.queued.get(operation) ?? [];
@@ -86,6 +90,14 @@ export class FakeShopify {
         return json(200, { data: { shop: { name: 'AquaSkin', myshopifyDomain: TEST_SHOP, currencyCode: 'INR' } } });
       case 'QwikspotProducts':
         return json(200, fixture(parsed.variables?.after ? 'products-page-2.json' : 'products-page-1.json'));
+      case 'QwikspotOrders':
+        return json(200, {
+          data: { orders: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: this.orders } },
+        });
+      case 'QwikspotOnlineAvailability': {
+        const id = String(parsed.variables?.id);
+        return json(200, { data: { productVariant: { id, availableForSale: this.availableForSale.get(id) ?? true } } });
+      }
       case 'QwikspotWebhooks':
         return json(200, { data: { webhookSubscriptions: { nodes: this.webhooks } } });
       case 'QwikspotWebhook': {

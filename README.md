@@ -76,11 +76,11 @@ Optional — everything above works on the mock catalogue. This connects a brand
    ```
    `SHOPIFY_API_VERSION` defaults to `2026-10` and `SHOPIFY_SCOPES` to the four scopes above. The backend refuses to start with a missing or invalid value and names it (never its value).
 4. **Start** the emulators, the backend and the frontend as above. Seed first if you have not: `npm run seed:demo` syncs every brand's catalogue, so run it once **before** setting `COMMERCE_PROVIDER=shopify` (or with `COMMERCE_PROVIDER=mock npm run seed:demo`). The emulator data then persists.
-5. **Connect.** Brand login → **Settings** → **Shopify** → enter `m6ccxz-wk.myshopify.com` → **Connect Shopify** → approve in Shopify. You land back on Settings with "Shopify connected"; Qwikspot stored the store's token encrypted on the server and registered the `orders/create` and `app/uninstalled` webhooks.
-6. **Sync.** **Sync products**: the catalogue now comes from the store (its products replace the seeded mock catalogue, which is archived).
+5. **Connect.** Brand login → **Settings** → **Shopify** → enter `m6ccxz-wk.myshopify.com` → **Connect Shopify** → approve in Shopify. You land back on Settings with "Shopify connected"; Qwikspot stored the store's token encrypted on the server and registered its webhooks (`orders/create`, `orders/cancelled`, `products/create|update|delete`, `app/uninstalled`).
+6. **Sync.** **Sync products**: the catalogue now comes from the store (its products replace the seeded mock catalogue, which is archived). The same click registers any webhook a store connected by an earlier version lacks and checks the last 7 days of orders for any the webhooks missed. From then on, product changes in Shopify re-sync the catalogue by themselves.
 7. **Map the stock.** Brand → Overview → Demo guide → **Reset demo**. It keeps the Shopify connection, syncs from Shopify and re-imports the demo stores' stock, so every SKU — including the store's six new ones (micellar water, eye cream, lip balm, body lotion) — maps to the live products.
 
-An order placed on the Shopify store with a `qs_ref` cart attribute (from a chat's "Buy online" link) is attributed to that conversation; other orders are recorded unattributed. **Disconnect** (or uninstalling the app in Shopify) deletes the stored token.
+A chat's "Buy online" link opens the store's cart with the product in it and carries `qs_ref` as a cart attribute (`attributes[qs_ref]`), so the order Shopify creates is attributed to that conversation; other orders are recorded unattributed. "Buy online" is only offered while Shopify says the variant can be bought online. A cancelled order's sale is taken back out of the insights. `POST /api/integrations/shopify/orders/sync` runs the missed-order check on demand. **Disconnect** (or uninstalling the app in Shopify) deletes the stored token.
 
 ## How it is built
 
