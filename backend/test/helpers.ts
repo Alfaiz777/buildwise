@@ -681,6 +681,7 @@ export function buildTestWorld(
   const conversation = createConversationModule({
     brands,
     products,
+    connections,
     customers,
     visitors,
     intents,

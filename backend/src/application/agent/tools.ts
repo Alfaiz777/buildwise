@@ -79,6 +79,7 @@ export function sheetOf(
   product: ProductRecord,
   variants: VariantRecord[],
   settings: Record<string, unknown>,
+  onlineUrl: string | null = onlineProductUrl(settings, product.productId),
 ): ProductSheet {
   return {
     product_id: product.productId,
@@ -87,10 +88,11 @@ export function sheetOf(
     category: product.category,
     tags: product.tags,
     attributes: product.attributes,
+
     variants: variants
       .filter((v) => v.productId === product.productId && v.status !== 'ARCHIVED')
       .map((v) => ({ variant_id: v.variantId, title: v.title, sku: v.sku, price: v.price, currency: v.currency })),
-    online_url: onlineProductUrl(settings, product.productId),
+    online_url: onlineUrl,
     image_url: product.imageUrl ?? null,
   };
 }
@@ -129,36 +131,42 @@ export function matchCatalog(query: string, products: ProductRecord[], variants:
   return { matches: best, variantIn };
 }
 
-export function createToolHandlers(deps: ToolDeps): ToolHandlers {
-  const shopifyVariantNumber = (shopifyVariantId: string): string | null => {
-    const tail = shopifyVariantId.split('/').pop();
-    return tail && /^\d+$/.test(tail) ? tail : null;
-  };
+export function shopifyVariantNumber(variant: any): string | null {
+  if (!variant) return null;
+  const raw =
+    typeof variant === 'string'
+      ? variant
+      : variant.externalId ??
+        variant.attributes?.shopify_variant_id ??
+        variant.shopifyVariantId ??
+        null;
+  if (!raw || typeof raw !== 'string') return null;
+  const tail = raw.split('/').pop();
+  return tail && /^\d+$/.test(tail) ? tail : null;
+}
 
+export function createToolHandlers(deps: ToolDeps): ToolHandlers {
   const shopifyOnlineUrl = async (
     brandId: string,
-    product: ProductRecord,
-    variant: VariantRecord | null,
+    variant: VariantRecord | any | null,
   ): Promise<string | null> => {
+    if (!variant) return null;
     const connection = await deps.connections.get(brandId, SHOPIFY_CONNECTION_ID);
     if (connection?.status !== 'CONNECTED' || !connection.shopDomain) return null;
 
-    if (variant) {
-      const numericVariantId = shopifyVariantNumber(variant.shopifyVariantId);
-      if (numericVariantId) return `https://${connection.shopDomain}/cart/${numericVariantId}:1`;
-    }
+    const variantId = shopifyVariantNumber(variant);
+    if (!variantId) return null;
 
-    if (product.handle) return `https://${connection.shopDomain}/products/${encodeURIComponent(product.handle)}`;
-    return null;
+    return `https://${connection.shopDomain}/cart/${variantId}:1`;
   };
 
   const onlineUrlFor = async (
     brandId: string,
     settings: Record<string, unknown>,
     product: ProductRecord,
-    variant: VariantRecord | null,
+    variant: VariantRecord | any | null,
   ): Promise<string | null> => {
-    return (await shopifyOnlineUrl(brandId, product, variant)) ?? onlineProductUrl(settings, product.productId);
+    return (await shopifyOnlineUrl(brandId, variant)) ?? onlineProductUrl(settings, product.productId);
   };
 
   const catalog = async (brandId: string) => {
@@ -261,10 +269,20 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
           variantId = variantIn(product)?.variantId ?? null;
         } else candidates = matches;
       }
+
+      let productOnlineUrl: string | null = null;
+      if (product) {
+        const selectedVariant =
+          (variantId ? variants.find((v) => v.variantId === variantId) : null) ??
+          variants.find((v) => v.productId === product!.productId && v.status !== 'ARCHIVED') ??
+          null;
+        productOnlineUrl = await onlineUrlFor(scope.brandId, settings, product, selectedVariant);
+      }
+
       const output: ProductContextOutput = product
         ? {
             status: 'FOUND',
-            product: sheetOf(product, variants, settings),
+            product: sheetOf(product, variants, settings, productOnlineUrl),
             variant_id: variantId,
             alternatives: alternativesOf(product, products).map((p) => sheetOf(p, variants, settings)),
             candidates: [],

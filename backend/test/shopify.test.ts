@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { ShopifyHttpAdminApi } from '../src/adapters/commerce/shopifyAdminApi.js';
 import { ShopifyCommerceProvider } from '../src/adapters/commerce/shopifyCommerceProvider.js';
 import { MockCommerceProvider } from '../src/adapters/commerce/mockCommerceProvider.js';
-import { CommerceSyncService } from '../src/application/commerceSyncService.js';
+import { CommerceSyncService, SHOPIFY_CONNECTION_ID } from '../src/application/commerceSyncService.js';
 import { htmlToText, parseDescription } from '../src/domain/shopifyDescription.js';
 import {
   normalizeShopDomain,
@@ -22,6 +22,7 @@ import { TokenCipher } from '../src/lib/tokenCipher.js';
 import { ShopifyApiError } from '../src/ports/shopify.js';
 import { bearer, buildTestWorld } from './helpers.js';
 import { FakeShopify, SHOPIFY_TEST_APP, signedCallback, TEST_SHOP, webhookHmac } from './shopifyFakes.js';
+import { shopifyVariantNumber, createToolHandlers } from '../src/application/agent/tools.js';
 
 const NOW = new Date('2026-10-07T06:30:00.000Z');
 
@@ -206,6 +207,18 @@ function shopifyWorld(fake = new FakeShopify(), now = () => NOW) {
     return { authorize, query, callback, location: String(callback.headers.location) };
   };
   return { world, fake, as, connect };
+}
+
+async function connected() {
+  const w = shopifyWorld();
+  await w.connect();
+  await w.as('admin_a').post('/api/integrations/shopify/sync');
+  const brand = w.world.brands.brands.find((b) => b.brandId === 'brand_A')!;
+  brand.settings = {
+    ...brand.settings,
+    online_store: { product_url_template: 'https://aquaskin.example/products/{product_id}' },
+  };
+  return w;
 }
 
 describe('OAuth connect → callback → disconnect', () => {
@@ -473,18 +486,6 @@ describe('POST /api/webhooks/shopify', () => {
   const ordersOf = (world: ReturnType<typeof buildTestWorld>) =>
     world.events.events.filter((e) => e.eventType === 'ORDER_CREATED');
 
-  async function connected() {
-    const w = shopifyWorld();
-    await w.connect();
-    await w.as('admin_a').post('/api/integrations/shopify/sync');
-    const brand = w.world.brands.brands.find((b) => b.brandId === 'brand_A')!;
-    brand.settings = {
-      ...brand.settings,
-      online_store: { product_url_template: 'https://aquaskin.example/products/{product_id}' },
-    };
-    return w;
-  }
-
   it('a bad or missing signature → 401 and nothing is processed', async () => {
     const { world } = await connected();
     const bad = await send(world.app, 'orders/create', order(), { hmac: webhookHmac('{"other":true}') });
@@ -566,3 +567,91 @@ describe('POST /api/webhooks/shopify', () => {
     expect(sync.body.error.code).toBe('SHOPIFY_NOT_CONNECTED');
   });
 });
+
+describe('Shopify cart URL for BUY_ONLINE and get_product_context', () => {
+  it('shopifyVariantNumber extracts numeric ID from externalId, attributes or shopifyVariantId', () => {
+    expect(shopifyVariantNumber({ externalId: 'gid://shopify/ProductVariant/7001' })).toBe('7001');
+    expect(shopifyVariantNumber({ attributes: { shopify_variant_id: '7002' } })).toBe('7002');
+    expect(shopifyVariantNumber({ shopifyVariantId: 'gid://shopify/ProductVariant/7003' })).toBe('7003');
+    expect(shopifyVariantNumber({ shopifyVariantId: '7004' })).toBe('7004');
+    expect(shopifyVariantNumber('7005')).toBe('7005');
+    expect(shopifyVariantNumber(null)).toBeNull();
+    expect(shopifyVariantNumber({})).toBeNull();
+    expect(shopifyVariantNumber({ shopifyVariantId: 'invalid' })).toBeNull();
+  });
+
+  it('BUY_ONLINE with selected Shopify variant returns https://{shopDomain}/cart/{variantId}:1', async () => {
+    const { world } = await connected();
+    const product = (await world.products.listProducts('brand_A'))[0]!;
+    const variant = (await world.products.listVariants('brand_A')).find((v) => v.productId === product.productId)!;
+
+    const tools = createToolHandlers({
+      brands: world.brands,
+      products: world.products,
+      stores: world.stores,
+      inventory: world.inventory,
+      customers: world.customers,
+      connections: world.connections,
+      conversations: world.conversations,
+      intents: world.intents,
+      reservations: world.conversation.reservations,
+      events: world.conversation.recorder,
+      now: () => NOW,
+    });
+
+    const res = await (tools as any).get_product_context(
+      { variant_id: variant.variantId },
+      { brandId: 'brand_A', customerId: 'cust_1', conversationId: 'conv_1', intentId: null, recommendationId: 'rec_1' },
+    );
+
+    expect(res.status).toBe('EXECUTED');
+    const output = res.output as any;
+    expect(output.status).toBe('FOUND');
+    expect(output.product.online_url).toBe(`https://${TEST_SHOP}/cart/7001:1`);
+  });
+
+  it('If Shopify connection is missing/disconnected or variant id is missing, fallback remains existing onlineProductUrl behavior', async () => {
+    const { world } = await connected();
+
+    await world.connections.put({
+      connectionId: SHOPIFY_CONNECTION_ID,
+      brandId: 'brand_A',
+      provider: 'SHOPIFY',
+      source: 'SHOPIFY',
+      status: 'DISCONNECTED',
+      connectedAt: NOW.toISOString(),
+      lastSyncAt: NOW.toISOString(),
+      lastError: null,
+      productCount: 0,
+      variantCount: 0,
+    });
+
+    const product = (await world.products.listProducts('brand_A'))[0]!;
+    const variant = (await world.products.listVariants('brand_A')).find((v) => v.productId === product.productId)!;
+
+    const tools = createToolHandlers({
+      brands: world.brands,
+      products: world.products,
+      stores: world.stores,
+      inventory: world.inventory,
+      customers: world.customers,
+      connections: world.connections,
+      conversations: world.conversations,
+      intents: world.intents,
+      reservations: world.conversation.reservations,
+      events: world.conversation.recorder,
+      now: () => NOW,
+    });
+
+    const res = await (tools as any).get_product_context(
+      { variant_id: variant.variantId },
+      { brandId: 'brand_A', customerId: 'cust_1', conversationId: 'conv_1', intentId: null, recommendationId: 'rec_1' },
+    );
+
+    expect(res.status).toBe('EXECUTED');
+    const output = res.output as any;
+    expect(output.status).toBe('FOUND');
+    expect(output.product.online_url).toBe(`https://aquaskin.example/products/${product.productId}`);
+  });
+});
+
