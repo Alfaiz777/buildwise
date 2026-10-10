@@ -103,6 +103,7 @@ const outcomeJson = (o: ConversationDetail['outcomes'][number]) => ({
   value: o.value,
   currency: o.currency,
   timestamp: o.timestamp,
+  cancelled_at: o.cancelledAt ?? null,
 });
 
 export function simulatorRouter(simulator: SimulatorService, queries: ConversationQueryService): Router {

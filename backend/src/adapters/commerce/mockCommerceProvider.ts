@@ -286,6 +286,8 @@ export const DEFAULT_COMMERCE_FIXTURE: CommerceFixture = {
       totalPrice: 795,
       currency: 'INR',
       createdAt: '2026-09-01T10:00:00.000Z',
+      attributes: {},
+      cancelledAt: null,
     },
   ],
   locations: [{ externalLocationId: gid('Location', 5001), name: 'Online warehouse' }],
@@ -341,5 +343,12 @@ export class MockCommerceProvider implements CommerceProvider {
 
   async getLocations(): Promise<CommerceLocation[]> {
     return clone(this.fixture.locations);
+  }
+
+  /** Online stock from the fixture's inventory; a variant without inventory rows is not tracked (sellable). */
+  async getOnlineAvailability(externalVariantId: string): Promise<boolean | null> {
+    if (!(await this.getProductVariant(externalVariantId))) return null;
+    const levels = this.fixture.inventory.filter((level) => level.externalVariantId === externalVariantId);
+    return levels.length === 0 || levels.some((level) => level.available > 0);
   }
 }

@@ -179,6 +179,13 @@ export function outcomeText(o: NonNullable<ConversationDetail['outcomes']>[numbe
   tone: JourneyTone;
 } {
   const value = o.value > 0 ? ` · ${money(o.value, o.currency)} est.` : '';
+  if (o.cancelled_at) {
+    return {
+      title: o.purchase_type === 'OFFLINE' ? 'Purchase cancelled' : 'Ordered online — order cancelled',
+      detail: 'The order was cancelled, so it no longer counts as a sale.',
+      tone: 'neutral',
+    };
+  }
   switch (o.purchase_type) {
     case 'OFFLINE':
       return { title: `Picked up at ${o.store_name ?? 'the store'} — in-store purchase${value}`, tone: 'success' };

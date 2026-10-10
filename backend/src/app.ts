@@ -8,6 +8,7 @@ import type { ConversationQueryService } from './application/conversationQuerySe
 import type { DemoResetService } from './application/demoResetService.js';
 import type { ShopperChannelService } from './application/shopperChannel.js';
 import type { ShopifyAuthService } from './application/shopifyAuthService.js';
+import type { ShopifyOrderService } from './application/shopifyOrderService.js';
 import type { ShopifyWebhookService } from './application/shopifyWebhookService.js';
 import type { DemoStorefrontService } from './application/demoStorefrontService.js';
 import type { FollowUpService } from './application/followUpService.js';
@@ -39,7 +40,7 @@ import { brandConversationsRouter, simulatorRouter } from './routes/conversation
 import { demoStorefrontRouter } from './routes/demoStorefront.js';
 import { brandDemoRouter, demoRouter } from './routes/demo.js';
 import { shopperRouter } from './routes/shopper.js';
-import { shopifyBrandRouter, shopifyCallbackRouter, shopifyWebhookRouter } from './routes/shopify.js';
+import { afterShopifySync, shopifyBrandRouter, shopifyCallbackRouter, shopifyWebhookRouter } from './routes/shopify.js';
 import { healthRouter } from './routes/health.js';
 import { intentsRouter } from './routes/intents.js';
 import { localFilesRouter } from './routes/localFiles.js';
@@ -85,6 +86,7 @@ export interface AppDeps {
     /** L2-Shopify: wired only with COMMERCE_PROVIDER=shopify. */
     shopifyAuth?: ShopifyAuthService;
     shopifyWebhooks?: ShopifyWebhookService;
+    shopifyOrders?: ShopifyOrderService;
   };
   /** Local profile only: receives browser uploads for LocalFileStorageProvider. */
   localUploads?: LocalUploadReceiver;
@@ -174,8 +176,12 @@ export function createApp(deps: AppDeps): Express {
   tenant.use('/brand', requireScope('BRAND'), brandAdminRouter(services.tenantAdmin));
   tenant.use('/brand', requireScope('BRAND'), connectionsRouter(services.commerceSync));
   tenant.use('/brand/retail-imports', requireScope('BRAND'), retailImportsRouter(services.retailImports));
-  tenant.use('/integrations', requireScope('BRAND'), integrationsRouter(services.commerceSync));
-  tenant.use('/integrations', requireScope('BRAND'), shopifyBrandRouter(services.shopifyAuth));
+  tenant.use(
+    '/integrations',
+    requireScope('BRAND'),
+    integrationsRouter(services.commerceSync, afterShopifySync(services.shopifyAuth, services.shopifyOrders)),
+  );
+  tenant.use('/integrations', requireScope('BRAND'), shopifyBrandRouter(services.shopifyAuth, services.shopifyOrders));
   tenant.use('/products', requireScope('BRAND'), productsRouter(services.catalog));
   tenant.use(
     '/brand',

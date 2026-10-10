@@ -76,7 +76,8 @@ export class FirestoreInsightsReader implements InsightsReader {
         cancelledBy: d.get('cancelled_by') ?? null,
         cancelReason: d.get('cancel_reason') ?? null,
       })),
-      outcomes: keep(outcomes.docs).map((d) => ({
+      // A cancelled order's Outcome no longer counts as a purchase.
+      outcomes: keep(outcomes.docs.filter((d) => !d.get('cancelled_at'))).map((d) => ({
         outcomeId: d.id,
         purchaseType: d.get('purchase_type'),
         aiRecommendationId: d.get('ai_recommendation_id') ?? null,

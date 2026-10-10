@@ -1,5 +1,7 @@
 import express, { Router } from 'express';
+import type { SyncActor } from '../application/commerceSyncService.js';
 import { shopifyNotConfigured, type ShopifyAuthService } from '../application/shopifyAuthService.js';
+import type { ShopifyOrderService } from '../application/shopifyOrderService.js';
 import type { ShopifyWebhookService } from '../application/shopifyWebhookService.js';
 import { getBrandPrincipal } from '../auth/authorize.js';
 import { AppError } from '../lib/errors.js';
@@ -12,9 +14,13 @@ const rateLimited = () => new AppError(429, 'RATE_LIMITED', 'Too many requests. 
  * BRAND_ADMIN (mounted behind requireScope('BRAND') at /api/integrations):
  *   POST /shopify/connect { shop } → { authorize_url }
  *   POST /shopify/disconnect       → the connection status (never a token)
- * Without COMMERCE_PROVIDER=shopify both answer 409 SHOPIFY_NOT_CONFIGURED.
+ *   POST /shopify/orders/sync      → { checked, recorded, cancelled } (the order check)
+ * Without COMMERCE_PROVIDER=shopify they answer 409 SHOPIFY_NOT_CONFIGURED.
  */
-export function shopifyBrandRouter(auth: ShopifyAuthService | undefined): Router {
+export function shopifyBrandRouter(
+  auth: ShopifyAuthService | undefined,
+  orders: ShopifyOrderService | undefined,
+): Router {
   const router = Router();
   const perBrand = new RateLimiter(10, 60_000);
   router.post('/shopify/connect', async (req, res) => {
@@ -28,7 +34,29 @@ export function shopifyBrandRouter(auth: ShopifyAuthService | undefined): Router
     if (!auth) throw shopifyNotConfigured();
     res.json(connectionJson(await auth.disconnect(getBrandPrincipal(res))));
   });
+  router.post('/shopify/orders/sync', async (_req, res) => {
+    if (!orders) throw shopifyNotConfigured();
+    const principal = getBrandPrincipal(res);
+    if (!perBrand.hit(principal.brandId)) throw rateLimited();
+    res.json(await orders.check(principal.brandId, { type: 'USER', id: principal.userId }));
+  });
   return router;
+}
+
+/**
+ * After a Shopify "Sync products": bring the store's webhooks up to date (a store connected
+ * before a topic was added gets it without reconnecting) and check for missed orders. Best
+ * effort — the sync itself already succeeded, so a failure here never fails the request.
+ */
+export function afterShopifySync(
+  auth: ShopifyAuthService | undefined,
+  orders: ShopifyOrderService | undefined,
+): ((brandId: string, actor: SyncActor) => Promise<void>) | undefined {
+  if (!auth || !orders) return undefined;
+  return async (brandId, actor) => {
+    await auth.ensureWebhooks(brandId);
+    await orders.check(brandId, actor).catch(() => undefined);
+  };
 }
 
 /** PUBLIC: GET /api/integrations/shopify/callback — Shopify redirects the browser here. */

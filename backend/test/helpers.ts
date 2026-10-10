@@ -1,7 +1,10 @@
 import { ShopifyHttpAdminApi } from '../src/adapters/commerce/shopifyAdminApi.js';
 import { ShopifyCommerceProvider } from '../src/adapters/commerce/shopifyCommerceProvider.js';
+import { OnlineStockService } from '../src/application/onlineStock.js';
 import { ShopifyAuthService } from '../src/application/shopifyAuthService.js';
+import { ShopifyCatalogRefresh } from '../src/application/shopifyCatalogRefresh.js';
 import { CommerceProviderResolver, ShopifyConnections } from '../src/application/shopifyConnections.js';
+import { ShopifyOrderService } from '../src/application/shopifyOrderService.js';
 import { ShopifyWebhookService } from '../src/application/shopifyWebhookService.js';
 import { MemoryShopifyStore, SHOPIFY_TEST_APP, type FakeShopify } from './shopifyFakes.js';
 import { randomUUID } from 'node:crypto';
@@ -633,16 +636,18 @@ export function buildTestWorld(
           create: (shop, token) => new ShopifyCommerceProvider(shopifyApi, shop, token),
         })
       : new CommerceProviderResolver({ mode: 'mock', mock: options.commerce ?? new MockCommerceProvider() });
-  const shopifyAuth = shopifyApi
-    ? new ShopifyAuthService({
-        app: SHOPIFY_TEST_APP,
-        store: shopifyStore,
-        api: shopifyApi,
-        connections,
-        audit,
-        now: options.now,
-      })
-    : undefined;
+  const shopifyAuth =
+    shopifyApi && shopifyConnections
+      ? new ShopifyAuthService({
+          app: SHOPIFY_TEST_APP,
+          store: shopifyStore,
+          api: shopifyApi,
+          connections,
+          audit,
+          now: options.now,
+          accessToken: (brandId) => shopifyConnections.accessToken(brandId),
+        })
+      : undefined;
   const commerceSync = new CommerceSyncService({
     resolver,
     products,
@@ -704,6 +709,7 @@ export function buildTestWorld(
     sendRetryDelaysMs: options.sendRetryDelaysMs ?? [0, 0],
     logger: options.logger,
     now: options.now,
+    onlineStock: options.shopify ? new OnlineStockService({ resolver, now: options.now }) : undefined,
     demoStorefront:
       options.demoStorefront === false ? undefined : { commerce: options.commerce ?? new MockCommerceProvider() },
     shopperChannel:
@@ -718,18 +724,23 @@ export function buildTestWorld(
           },
   });
 
-  const shopifyWebhooks = shopifyAuth
-    ? new ShopifyWebhookService({
-        apiSecret: SHOPIFY_TEST_APP.apiSecret,
-        store: shopifyStore,
-        receipts,
-        orders: conversation.orders,
-        products,
-        auth: shopifyAuth,
-        audit,
-        now: options.now,
-      })
+  const shopifyOrders = shopifyAuth
+    ? new ShopifyOrderService({ receipts, orders: conversation.orders, products, resolver, audit, now: options.now })
     : undefined;
+  const catalogRefresh = new ShopifyCatalogRefresh({ sync: commerceSync });
+  const shopifyWebhooks =
+    shopifyAuth && shopifyOrders
+      ? new ShopifyWebhookService({
+          apiSecret: SHOPIFY_TEST_APP.apiSecret,
+          store: shopifyStore,
+          receipts,
+          orders: shopifyOrders,
+          catalogChanged: (brandId) => void catalogRefresh.request(brandId),
+          auth: shopifyAuth,
+          audit,
+          now: options.now,
+        })
+      : undefined;
 
   const demoData = new MemoryDemoData(brands);
   const demoReset = new DemoResetService({
@@ -800,6 +811,7 @@ export function buildTestWorld(
       demoReset,
       shopifyAuth,
       shopifyWebhooks,
+      shopifyOrders,
     },
     localUploads: options.localUploads === false ? undefined : files,
   });
@@ -838,6 +850,8 @@ export function buildTestWorld(
     demoReset,
     shopifyStore,
     shopifyAuth,
+    shopifyOrders,
+    catalogRefresh,
   };
 }
 

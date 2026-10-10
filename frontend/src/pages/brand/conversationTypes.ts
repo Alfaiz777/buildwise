@@ -91,6 +91,8 @@ export interface JourneyOutcome {
   value: number;
   currency: string | null;
   timestamp: string;
+  /** L2-Shopify: the order behind the outcome was cancelled; it no longer counts as a sale. */
+  cancelled_at?: string | null;
 }
 
 /** UI-3: one status change of a reservation, derived from its timestamps. */

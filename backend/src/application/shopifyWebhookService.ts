@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import { normalizeShopDomain, verifyWebhookHmac } from '../domain/shopifyOAuth.js';
 import type { WebhookReceiptRepository } from '../ports/conversationRepositories.js';
-import type { AuditRepository, ProductRepository } from '../ports/repositories.js';
+import type { AuditRepository } from '../ports/repositories.js';
 import type { ShopifyConnectionStore } from '../ports/shopify.js';
 import { SHOPIFY_CONNECTION_ID } from './commerceSyncService.js';
-import type { OrderService } from './orderService.js';
 import type { ShopifyAuthService } from './shopifyAuthService.js';
+import type { ShopifyOrderInput, ShopifyOrderService } from './shopifyOrderService.js';
 
 export interface WebhookHeaders {
   hmac?: string;
@@ -17,26 +17,52 @@ export interface WebhookHeaders {
 
 export type WebhookResult =
   | { status: 401; outcome: 'INVALID_HMAC' }
-  | { status: 200; outcome: 'UNKNOWN_SHOP' | 'DUPLICATE' | 'IGNORED' | 'ORDER_RECORDED' | 'UNINSTALLED' };
+  | {
+      status: 200;
+      outcome:
+        | 'UNKNOWN_SHOP'
+        | 'DUPLICATE'
+        | 'IGNORED'
+        | 'ORDER_RECORDED'
+        | 'ORDER_CANCELLED'
+        | 'CATALOG_SYNC_QUEUED'
+        | 'UNINSTALLED';
+    };
 
 interface OrderPayload {
   id?: number | string;
   admin_graphql_api_id?: string;
+  cancelled_at?: string | null;
   note_attributes?: { name?: string; value?: unknown }[];
   line_items?: { variant_id?: number | string | null; quantity?: number }[];
 }
 
-const attribute = (order: OrderPayload, name: string): string | null => {
-  const hit = (order.note_attributes ?? []).find((a) => a?.name === name);
-  return typeof hit?.value === 'string' && hit.value.trim() ? hit.value.trim().slice(0, 128) : null;
-};
+const PRODUCT_TOPICS = ['products/create', 'products/update', 'products/delete'];
+
+/** The webhook's order payload in the shape the order path takes; null without an order id. */
+function orderInput(order: OrderPayload): ShopifyOrderInput | null {
+  const orderId = order.admin_graphql_api_id ?? (order.id !== undefined ? `gid://shopify/Order/${order.id}` : null);
+  if (!orderId) return null;
+  const attributes: Record<string, string> = {};
+  for (const a of order.note_attributes ?? []) {
+    if (typeof a?.name === 'string' && typeof a.value === 'string' && !(a.name in attributes))
+      attributes[a.name] = a.value;
+  }
+  const variantIds = (order.line_items ?? [])
+    .map((l) => (l.variant_id === null || l.variant_id === undefined ? null : String(l.variant_id)))
+    .filter((id): id is string => !!id)
+    .map((id) => `gid://shopify/ProductVariant/${id}`);
+  return { orderId, attributes, variantIds };
+}
 
 /**
  * POST /api/webhooks/shopify (L2-Shopify; docs/06 §8, §8.1). The raw body's HMAC is checked
  * first (401, nothing processed); the brand comes from the shop domain; each event is
  * processed once (receipt per event id + topic + brand). orders/create goes through the
- * one order path, OrderService.recordOrder, with the qs_ref cart attribute — an invalid
- * ref is recorded unattributed. app/uninstalled deletes the stored token.
+ * one order path (ShopifyOrderService → OrderService.recordOrder) with the qs_ref cart
+ * attribute — an invalid ref is recorded unattributed. orders/cancelled records the
+ * cancellation (and the order, if its create was missed). products/* queue a catalogue
+ * sync in the background. app/uninstalled deletes the stored token.
  */
 export class ShopifyWebhookService {
   constructor(
@@ -44,8 +70,9 @@ export class ShopifyWebhookService {
       apiSecret: string;
       store: ShopifyConnectionStore;
       receipts: WebhookReceiptRepository;
-      orders: OrderService;
-      products: ProductRepository;
+      orders: Pick<ShopifyOrderService, 'record' | 'cancel'>;
+      /** products/* → a background catalogue sync (ShopifyCatalogRefresh.request). */
+      catalogChanged?: (brandId: string) => void;
       auth: Pick<ShopifyAuthService, 'removeConnection'>;
       audit: AuditRepository;
       now?: () => Date;
@@ -76,9 +103,17 @@ export class ShopifyWebhookService {
         payload = null;
       }
       let outcome: WebhookResult['outcome'] = 'IGNORED';
-      if (topic === 'orders/create' && payload && typeof payload === 'object') {
-        await this.orderCreated(brandId, payload as OrderPayload);
+      const order = payload && typeof payload === 'object' ? orderInput(payload as OrderPayload) : null;
+      if (topic === 'orders/create' && order) {
+        await this.deps.orders.record(brandId, order);
         outcome = 'ORDER_RECORDED';
+      } else if (topic === 'orders/cancelled' && order) {
+        await this.deps.orders.record(brandId, order); // in case its orders/create never arrived
+        await this.deps.orders.cancel(brandId, order.orderId, (payload as OrderPayload).cancelled_at ?? null);
+        outcome = 'ORDER_CANCELLED';
+      } else if (PRODUCT_TOPICS.includes(topic) && this.deps.catalogChanged) {
+        this.deps.catalogChanged(brandId);
+        outcome = 'CATALOG_SYNC_QUEUED';
       } else if (topic === 'app/uninstalled') {
         await this.deps.auth.removeConnection(brandId);
         await this.deps.audit.recordBrandEvent({
@@ -98,36 +133,6 @@ export class ShopifyWebhookService {
     } catch (err) {
       await this.deps.receipts.fail(key); // Shopify retries; the next delivery processes it
       throw err;
-    }
-  }
-
-  private async orderCreated(brandId: string, order: OrderPayload) {
-    const orderId = order.admin_graphql_api_id ?? (order.id !== undefined ? `gid://shopify/Order/${order.id}` : null);
-    if (!orderId) return;
-    const numeric = orderId.split('/').pop();
-    const attributionRef = attribute(order, 'qs_ref');
-    const webSessionId = attribute(order, 'qs_ws') ?? `shopify_order_${numeric}`;
-    const known = new Map(
-      (await this.deps.products.listVariants(brandId)).map((v) => [v.shopifyVariantId, v.variantId] as const),
-    );
-    const variantIds = [
-      ...new Set(
-        (order.line_items ?? [])
-          .map((l) => (l.variant_id === null || l.variant_id === undefined ? null : String(l.variant_id)))
-          .filter((id): id is string => !!id)
-          .map((id) => known.get(`gid://shopify/ProductVariant/${id}`) ?? null),
-      ),
-    ];
-    // One call per line-item variant; ORDER_CREATED is idempotent per order, outcomes first-purchase-wins.
-    for (const variantId of variantIds.length ? variantIds : [null]) {
-      await this.deps.orders.recordOrder({
-        brandId,
-        webSessionId,
-        externalOrderId: orderId,
-        variantId,
-        source: 'SHOPIFY',
-        attributionRef,
-      });
     }
   }
 }

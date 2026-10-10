@@ -73,7 +73,7 @@ export class MemoryInsightsReader implements InsightsReader {
           cancelReason: r.cancelReason,
         })),
       outcomes: this.src.outcomes.outcomes
-        .filter((o) => o.brandId === brandId && inRange(o.timestamp))
+        .filter((o) => o.brandId === brandId && inRange(o.timestamp) && !o.cancelledAt)
         .map((o) => ({
           outcomeId: o.outcomeId,
           purchaseType: o.purchaseType,

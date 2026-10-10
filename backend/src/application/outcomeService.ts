@@ -164,6 +164,25 @@ export class OutcomeService {
     });
   }
 
+  /**
+   * The order behind an Outcome was cancelled (Shopify orders/cancelled, or the order check):
+   * the Outcome stays — first purchase wins — but is marked cancelled and leaves the insights.
+   */
+  async cancelForOrder(brandId: string, orderReference: string, at: string): Promise<number> {
+    let cancelled = 0;
+    for (const o of await this.deps.outcomes.listByOrderReference(brandId, orderReference)) {
+      if (o.cancelledAt || !(await this.deps.outcomes.markCancelled(brandId, o.outcomeId, at))) continue;
+      cancelled++;
+      await this.deps.events.audit(brandId, {
+        action: 'OUTCOME_CANCELLED',
+        targetType: 'OUTCOME',
+        targetId: o.outcomeId,
+        reasonCode: 'ORDER_CANCELLED',
+      });
+    }
+    return cancelled;
+  }
+
   /** Pipeline step 11: re-checks stored evidence for this customer's journeys (idempotent; never from AI output). */
   async evaluateCustomer(brandId: string, customerId: string): Promise<void> {
     const completed = await this.deps.reservations.list(brandId, { customerId, status: 'COMPLETED', limit: 50 });

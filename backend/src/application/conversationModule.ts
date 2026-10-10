@@ -30,6 +30,7 @@ import { EventRecorder } from './eventRecorder.js';
 import { FollowUpService } from './followUpService.js';
 import { IntentService } from './intentService.js';
 import { OrderService } from './orderService.js';
+import type { OnlineStockService } from './onlineStock.js';
 import { ReservationService } from './reservationService.js';
 import { createToolHandlers } from './agent/tools.js';
 import { AttributionService } from './attributionService.js';
@@ -78,6 +79,8 @@ export interface ConversationModuleDeps {
   shopperChannel?: { sessionSecret: string | null; brandAllowed: (brandId: string) => boolean };
   /** Public web origin for media URLs (product images) in messages. */
   publicOrigin?: string;
+  /** L2-Shopify: live online stock for "Buy online" (Shopify mode only). */
+  onlineStock?: Pick<OnlineStockService, 'canBuyOnline'>;
 }
 
 /**
@@ -107,7 +110,12 @@ export function createConversationModule(deps: ConversationModuleDeps) {
     events: recorder,
     now,
   });
-  const attribution = new AttributionService({ refs: deps.attributionRefs, brands: deps.brands, now });
+  const attribution = new AttributionService({
+    refs: deps.attributionRefs,
+    brands: deps.brands,
+    connections: deps.connections,
+    now,
+  });
   const fulfilment = new FulfilmentService({
     ...deps,
     reservations,

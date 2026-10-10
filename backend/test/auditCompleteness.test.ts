@@ -205,6 +205,13 @@ const ROUTES: [string, Step][] = [
       ),
   ],
   [
+    'shopify.ts POST /shopify/orders/sync',
+    (_s, ctx) =>
+      inShopifyWorld(ctx, 'shopify.ts POST /shopify/orders/sync', (w) =>
+        request(w.app).post('/api/integrations/shopify/orders/sync').set('Authorization', bearer('admin_a')),
+      ),
+  ],
+  [
     'shopify.ts POST /webhooks/shopify',
     (_s, ctx) =>
       inShopifyWorld(ctx, 'shopify.ts POST /webhooks/shopify', (w) => {

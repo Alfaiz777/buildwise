@@ -52,6 +52,7 @@ import { composeReply, type GuardrailOutcome } from '../agent/replyComposer.js';
 import { AgentToolExecutor } from '../agent/toolExecutor.js';
 import { createToolHandlers, DEFAULT_RADIUS_KM } from '../agent/tools.js';
 import type { AttributionService } from '../attributionService.js';
+import type { OnlineStockService } from '../onlineStock.js';
 import type { OutcomeService } from '../outcomeService.js';
 import type { ReservationService } from '../reservationService.js';
 import { runAgentRuntime, AI_DECISION_BUDGET_MS } from './agentStage.js';
@@ -88,6 +89,8 @@ export interface ConversationDeps extends OutboundDeps {
   outcomes?: OutcomeService;
   /** OUTCOME hook for the follow-up engine (M4 part 2). */
   onReply?: (context: PipelineContext) => Promise<void>;
+  /** L2-Shopify: live online stock for "Buy online". */
+  onlineStock?: Pick<OnlineStockService, 'canBuyOnline'>;
 }
 
 export const WAIT_NOTICE = 'Thanks for your patience. We have received your messages and will get back to you shortly.';

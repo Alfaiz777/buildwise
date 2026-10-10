@@ -288,6 +288,10 @@ Every event must be idempotent.
 
 **L2-Shopify sync** (`POST /api/integrations/shopify/sync`) uses the brand's connected store (`409 SHOPIFY_NOT_CONNECTED` without one; `409 SHOPIFY_RECONNECT_REQUIRED` when Shopify rejects the token) and keeps the existing response shape, plus `shop_domain` / `shop_name`. Ids are deterministic from the GIDs, so a re-sync overwrites. **Catalogue switch:** a Shopify sync archives the brand's products and variants that the store does not have — e.g. the mock catalogue a demo brand was seeded with — and clears their `canonical_sku`, so SKUs never conflict; retail matching ignores archived variants. Retail stock is re-pointed by importing the stock file again (for the demo brand, **Reset demo** does it: it keeps the Shopify connection, syncs, then imports the judge stock).
 
+**Keeping it current (L2-Shopify follow-up).** The `products/create`, `products/update` and `products/delete` webhooks queue the same sync in the background (`ShopifyCatalogRefresh`; actor `SYSTEM shopify-webhook`): the webhook answers at once, a burst coalesces per brand into the running sync plus at most one more, and a failed run is logged — the next webhook or a manual Sync catches up. After a successful **Sync products** the route also brings the store's webhook subscriptions up to date (a store connected before a topic was added gets it without reconnecting) and runs the order check (§8.1); both are best effort and never change the sync's response.
+
+**Online stock for "Buy online".** Before the agent tools offer the connected store's cart link they ask Shopify whether the variant can be bought online now (`CommerceProvider.getOnlineAvailability` → `productVariant.availableForSale`, which counts inventory tracking and the oversell policy). A sold-out variant gets no online link at all (not even the storefront template's). When Shopify cannot be asked the answer is unknown and the link stays — Shopify's checkout still refuses what it cannot sell. Definite answers are cached for 60 seconds per brand and variant. Store stock still comes only from the retail file.
+
 Use:
 
 ```text
@@ -302,17 +306,22 @@ as part of idempotency handling.
 
 ## 8.1 Online-order attribution (M6 local, L2 Shopify)
 
-When a reply offers "Buy online", the backend creates an AttributionRef (`00` §11.8 Change 13, F6) and adds it to the product URL as `qs_ref`. The storefront keeps it for the browsing session and hands it to checkout.
+When a reply offers "Buy online", the backend creates an AttributionRef (`00` §11.8 Change 13, F6) and adds it to the link: a storefront link (the brand's `online_store.product_url_template`) gets `?qs_ref=`, which the storefront keeps for the browsing session and hands to checkout; a cart permalink of the brand's **connected** Shopify store (`https://{shop}/cart/{variant}:1`) gets the cart attribute `attributes[qs_ref]=` (URL-encoded), which Shopify copies onto the order's `note_attributes` — a plain query parameter would be dropped at the cart.
 
 ```text
 local (M6):  demo storefront → POST /api/demo-storefront/orders { ..., qs_ref } → OrderService.recordOrder
-L2:          qs_ref as a Shopify cart attribute → orders/create webhook (verified) → OrderService.recordOrder
+L2:          cart link ?attributes[qs_ref]=… → Shopify cart attribute → orders/create webhook (verified)
+             → ShopifyOrderService.record → OrderService.recordOrder
 ```
 
 **`POST /api/webhooks/shopify`** (L2-Shopify, public): the raw body's `X-Shopify-Hmac-Sha256` (base64 HMAC-SHA256 with the app's client secret) is checked timing-safe first — `401`, nothing processed. The brand comes from `X-Shopify-Shop-Domain` (`shopifyShops/{shop}`; an unknown shop → `200`, ignored). Each event is processed once: a `webhookReceipts` entry keyed `shopify:{brand_id}:{topic}:{X-Shopify-Event-Id}`. It answers `200` well inside Shopify's 5-second limit.
 
-- `orders/create`: `qs_ref` (and optionally `qs_ws`, the web session) from the order's `note_attributes`; `OrderService.recordOrder` for each line-item variant with `source: SHOPIFY`, `external_order_id` = the order GID. ORDER_CREATED stays idempotent per order; the journey's first purchase wins.
+- `orders/create`: `qs_ref` (and optionally `qs_ws`, the web session) from the order's `note_attributes`; `OrderService.recordOrder` for each line-item variant with `source: SHOPIFY`, `external_order_id` = the order GID. ORDER_CREATED stays idempotent per order; the journey's first purchase wins. Each order is recorded once per brand whichever path sees it first — a second receipt keyed `shopify:{brand_id}:order:{order_gid}` makes this webhook and the order check idempotent against each other.
+- `orders/cancelled`: records the order if its create was missed, then `OrderService.cancelOrder` — ORDER_CANCELLED once per order (timestamp = Shopify's `cancelled_at`), and the Outcome the order produced gets `cancelled_at`: it stays (first purchase wins) but no longer counts in the insights or as a sale in the journey. Audited `ORDER_CANCELLED` and `OUTCOME_CANCELLED`.
+- `products/create`, `products/update`, `products/delete`: a background catalogue sync (§8).
 - `app/uninstalled`: the stored token is deleted and the connection becomes `DISCONNECTED` (audited `SHOPIFY_UNINSTALLED`).
+
+**The order check** (`POST /api/integrations/shopify/orders/sync`, BRAND_ADMIN → `{ checked, recorded, cancelled }`; also run after **Sync products**): reads the connected store's orders from the last 7 days (`created_at:>'…'`, with `customAttributes` and `cancelledAt`) and records what the webhooks missed — the backend or the tunnel was down, a delivery was lost — plus every cancellation, through the same paths. Audited `SHOPIFY_ORDERS_CHECKED`. `409 SHOPIFY_NOT_CONFIGURED` in mock mode, `409 SHOPIFY_NOT_CONNECTED` / `SHOPIFY_RECONNECT_REQUIRED` as for sync, `502 SHOPIFY_ORDERS_FAILED` (retryable) when Shopify cannot be read.
 
 `OrderService.recordOrder({ brand_id, web_session_id, external_order_id, variant_id, source, attribution_ref })` validates the ref (exists by hash, same brand, not expired) and links the order to the ref's journey; the Outcome service then records ONLINE (or ALTERNATIVE for another variant). An invalid, expired or other-brand ref never fails the order: it is recorded unattributed. The ref only links; the purchase evidence is the order from the commerce source.
 
@@ -345,7 +354,8 @@ GET  /api/integrations/shopify/callback            (public; Shopify redirects th
    3 code → expiring offline token (expiring=1) + refresh token; shop name
    4 tokens sealed (AES-256-GCM, TOKEN_ENCRYPTION_KEY) in brands/{brand_id}/integrationSecrets/SHOPIFY;
      shopifyShops/{shop} → brand (one shop, one brand); connection CONNECTED; audited SHOPIFY_CONNECTED
-   5 webhooks orders/create + app/uninstalled → <PUBLIC_BACKEND_URL>/api/webhooks/shopify (idempotent)
+   5 webhooks orders/create, orders/cancelled, products/create|update|delete, app/uninstalled
+       → <PUBLIC_BACKEND_URL>/api/webhooks/shopify (idempotent; topics added later are registered by the next Sync)
    6 302 → <FRONTEND_URL>/brand/settings?shopify=connected
      or ?shopify=error&reason=INVALID_HMAC|INVALID_STATE|STATE_EXPIRED|SHOP_MISMATCH|
                               TOKEN_EXCHANGE_FAILED|SHOP_ALREADY_CONNECTED|WEBHOOKS_FAILED
@@ -597,6 +607,7 @@ PATCH /api/brand/stores/:storeId                   (associate store → retailer
 POST  /api/integrations/shopify/connect            (BRAND_ADMIN; L2-Shopify — §9)
 POST  /api/integrations/shopify/disconnect         (BRAND_ADMIN; L2-Shopify — §9)
 POST  /api/integrations/shopify/sync               (BRAND_ADMIN; the brand's connected store in Shopify mode — §8)
+POST  /api/integrations/shopify/orders/sync        (BRAND_ADMIN; L2-Shopify order check — §8.1)
 GET   /api/products
 GET   /api/customers/:id
 POST  /api/brand/retail-imports                    (create an import + upload target; 06 §6a)
@@ -631,7 +642,7 @@ POST  /api/reservations                            (page mutation token)
 
 # Storefront + commerce events
 POST  /api/intents
-POST  /api/webhooks/shopify                        (L2-Shopify: raw-body HMAC; orders/create, app/uninstalled — §8.1)
+POST  /api/webhooks/shopify                        (L2-Shopify: raw-body HMAC; orders/create, orders/cancelled, products/*, app/uninstalled — §8.1)
 GET   /api/integrations/shopify/callback           (L2-Shopify, public: OAuth callback — §9)
 
 # Internal / profile-specific

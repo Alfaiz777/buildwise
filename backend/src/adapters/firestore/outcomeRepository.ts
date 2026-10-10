@@ -1,4 +1,4 @@
-import type { Firestore } from 'firebase-admin/firestore';
+import type { DocumentData, Firestore } from 'firebase-admin/firestore';
 import type {
   AttributionRefRecord,
   AttributionRefRepository,
@@ -44,10 +44,27 @@ export class FirestoreOutcomeRepository implements OutcomeRepository {
 
   async get(brandId: string, outcomeId: string): Promise<OutcomeRecord | null> {
     const snap = await this.col(brandId).doc(outcomeId).get();
-    if (!snap.exists) return null;
-    const d = snap.data()!;
+    return snap.exists ? this.toRecord(brandId, snap.id, snap.data()!) : null;
+  }
+
+  async listByOrderReference(brandId: string, orderReference: string): Promise<OutcomeRecord[]> {
+    const snap = await this.col(brandId).where('order_reference', '==', orderReference).get();
+    return snap.docs.map((doc) => this.toRecord(brandId, doc.id, doc.data()));
+  }
+
+  async markCancelled(brandId: string, outcomeId: string, at: string): Promise<boolean> {
+    const ref = this.col(brandId).doc(outcomeId);
+    return this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists || snap.get('cancelled_at')) return false;
+      tx.update(ref, { cancelled_at: at });
+      return true;
+    });
+  }
+
+  private toRecord(brandId: string, outcomeId: string, d: DocumentData): OutcomeRecord {
     return {
-      outcomeId: snap.id,
+      outcomeId,
       brandId,
       customerId: d.customer_id ?? null,
       journeyKey: d.journey_key,
@@ -64,6 +81,7 @@ export class FirestoreOutcomeRepository implements OutcomeRepository {
       currency: d.currency ?? null,
       evidence: d.evidence,
       timestamp: d.timestamp,
+      cancelledAt: d.cancelled_at ?? null,
     };
   }
 }

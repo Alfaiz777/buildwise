@@ -22,12 +22,18 @@ export interface OutcomeRecord {
   currency: string | null;
   evidence: 'RESERVATION_COMPLETED' | 'ORDER' | 'WINDOW_CLOSED';
   timestamp: string;
+  /** ISO-8601: the order behind this Outcome was cancelled; it no longer counts as a purchase. */
+  cancelledAt?: string | null;
 }
 
 export interface OutcomeRepository {
   /** Create-if-absent by outcome ID: false when the journey already has its Outcome (first wins). */
   createIfAbsent(outcome: OutcomeRecord): Promise<boolean>;
   get(brandId: string, outcomeId: string): Promise<OutcomeRecord | null>;
+  /** The Outcomes an order produced (by `order_reference`). */
+  listByOrderReference(brandId: string, orderReference: string): Promise<OutcomeRecord[]>;
+  /** Sets `cancelled_at` once; false when the Outcome is unknown or already cancelled. */
+  markCancelled(brandId: string, outcomeId: string, at: string): Promise<boolean>;
 }
 
 /** brands/{b}/attributionRefs/{sha256(ref)} — links an order to a journey; no PII. */

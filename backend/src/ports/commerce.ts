@@ -58,6 +58,10 @@ export interface CommerceOrder {
   currency: string;
   /** ISO-8601 */
   createdAt: string;
+  /** Cart attributes copied onto the order (Shopify: customAttributes), e.g. { qs_ref: "…" }. */
+  attributes: Record<string, string>;
+  /** ISO-8601; null while the order stands. */
+  cancelledAt: string | null;
 }
 
 export interface CommerceLocation {
@@ -90,4 +94,9 @@ export interface CommerceProvider {
   getOrders(query: OrderQuery): Promise<CommerceOrder[]>;
   getInventory(query: InventoryQuery): Promise<CommerceInventoryLevel[]>;
   getLocations(): Promise<CommerceLocation[]>;
+  /**
+   * Whether the variant can be bought online right now (Shopify: `availableForSale`, which
+   * counts inventory tracking and the oversell policy); null when the variant is unknown.
+   */
+  getOnlineAvailability(externalVariantId: string): Promise<boolean | null>;
 }

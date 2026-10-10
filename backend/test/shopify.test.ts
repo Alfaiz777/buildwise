@@ -4,6 +4,7 @@
  * webhooks — through the real routes and the real ShopifyHttpAdminApi against FakeShopify
  * (recorded fixtures; no network).
  */
+import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { ShopifyHttpAdminApi } from '../src/adapters/commerce/shopifyAdminApi.js';
@@ -21,8 +22,12 @@ import {
 import { TokenCipher } from '../src/lib/tokenCipher.js';
 import { ShopifyApiError } from '../src/ports/shopify.js';
 import { bearer, buildTestWorld } from './helpers.js';
+import { MemoryInsightsReader } from './memoryInsights.js';
 import { FakeShopify, SHOPIFY_TEST_APP, signedCallback, TEST_SHOP, webhookHmac } from './shopifyFakes.js';
 import { shopifyVariantNumber, createToolHandlers } from '../src/application/agent/tools.js';
+import { OnlineStockService } from '../src/application/onlineStock.js';
+import { ShopifyCatalogRefresh } from '../src/application/shopifyCatalogRefresh.js';
+import { decorateOnlineLinks, linksToOnlineStore, withShopifyCartAttribute } from '../src/domain/attributionRef.js';
 
 const NOW = new Date('2026-10-07T06:30:00.000Z');
 
@@ -267,10 +272,16 @@ describe('OAuth connect → callback → disconnect', () => {
       accessTokenExpiresAt: '2026-10-07T07:30:00.000Z',
     });
     expect(await world.shopifyStore.brandForShop(TEST_SHOP)).toBe('brand_A');
-    expect(fake.webhooks.map((w) => [w.topic, w.uri])).toEqual([
-      ['ORDERS_CREATE', 'https://tunnel.example.test/api/webhooks/shopify'],
-      ['APP_UNINSTALLED', 'https://tunnel.example.test/api/webhooks/shopify'],
-    ]);
+    expect(fake.webhooks.map((w) => [w.topic, w.uri])).toEqual(
+      [
+        'ORDERS_CREATE',
+        'ORDERS_CANCELLED',
+        'PRODUCTS_CREATE',
+        'PRODUCTS_UPDATE',
+        'PRODUCTS_DELETE',
+        'APP_UNINSTALLED',
+      ].map((topic) => [topic, 'https://tunnel.example.test/api/webhooks/shopify']),
+    );
     expect(world.audit.brandEvents.map((e) => e.action)).toContain('SHOPIFY_CONNECTED');
 
     // The connection says CONNECTED with the shop — and never a credential.
@@ -294,7 +305,7 @@ describe('OAuth connect → callback → disconnect', () => {
 
     // Connecting again (a new state) never duplicates the webhooks.
     await connect();
-    expect(fake.webhooks).toHaveLength(2);
+    expect(fake.webhooks).toHaveLength(6);
   });
 
   /** Changes the callback's parameters; `resign` = sign them again (as a real Shopify would have). */
@@ -655,3 +666,354 @@ describe('Shopify cart URL for BUY_ONLINE and get_product_context', () => {
   });
 });
 
+// ------------------------------------------------------------------------------------ L2-Shopify follow-ups
+
+const SCOPE = {
+  brandId: 'brand_A',
+  customerId: 'cust_1',
+  conversationId: 'conv_1',
+  intentId: null,
+  recommendationId: 'rec_1',
+};
+const V7001 = 'gid://shopify/ProductVariant/7001';
+
+type World = ReturnType<typeof buildTestWorld>;
+
+function toolsFor(world: World, onlineStock?: { canBuyOnline: (b: string, v: string) => Promise<boolean | null> }) {
+  return createToolHandlers({
+    brands: world.brands,
+    products: world.products,
+    stores: world.stores,
+    inventory: world.inventory,
+    customers: world.customers,
+    connections: world.connections,
+    conversations: world.conversations,
+    intents: world.intents,
+    reservations: world.conversation.reservations,
+    events: world.conversation.recorder,
+    now: () => NOW,
+    onlineStock,
+  }) as any;
+}
+
+/** The real provider and HTTP adapter against the fake store, with the brand's stored token. */
+const liveStock = (world: World, fake: FakeShopify) => {
+  const provider = new ShopifyCommerceProvider(
+    new ShopifyHttpAdminApi(SHOPIFY_TEST_APP, { fetch: fake.fetch, sleep: async () => {} }),
+    TEST_SHOP,
+    async () => (await world.shopifyStore.get('brand_A'))!.accessToken,
+  );
+  return new OnlineStockService({ resolver: { forBrand: async () => provider }, now: () => NOW });
+};
+
+const sendWebhook = (world: World, topic: string, body: object, id: string) => {
+  const raw = JSON.stringify(body);
+  return request(world.app)
+    .post('/api/webhooks/shopify')
+    .set('Content-Type', 'application/json')
+    .set('X-Shopify-Topic', topic)
+    .set('X-Shopify-Shop-Domain', TEST_SHOP)
+    .set('X-Shopify-Event-Id', id)
+    .set('X-Shopify-Hmac-Sha256', webhookHmac(raw))
+    .send(raw);
+};
+
+const webhookOrder = (id: number, attrs: { name: string; value: string }[] = [], cancelledAt?: string) => ({
+  id,
+  admin_graphql_api_id: `gid://shopify/Order/${id}`,
+  note_attributes: attrs,
+  ...(cancelledAt ? { cancelled_at: cancelledAt } : {}),
+  line_items: [{ variant_id: 7001, sku: 'DBC-VCSERUM-30', quantity: 1, price: '795.00' }],
+});
+
+/** An order as the GraphQL Admin API returns it (QwikspotOrders). */
+const orderNode = (id: number, opts: { qsRef?: string; cancelledAt?: string } = {}) => ({
+  id: `gid://shopify/Order/${id}`,
+  createdAt: '2026-10-06T10:00:00Z',
+  cancelledAt: opts.cancelledAt ?? null,
+  customAttributes: opts.qsRef ? [{ key: 'qs_ref', value: opts.qsRef }] : [],
+  customer: null,
+  totalPriceSet: { shopMoney: { amount: '795.00', currencyCode: 'INR' } },
+  lineItems: {
+    nodes: [
+      {
+        sku: 'DBC-VCSERUM-30',
+        quantity: 1,
+        variant: { id: V7001, sku: 'DBC-VCSERUM-30' },
+        originalUnitPriceSet: { shopMoney: { amount: '795.00' } },
+      },
+    ],
+  },
+});
+
+const eventsOf = (world: World, type: string) => world.events.events.filter((e) => e.eventType === type);
+
+/** A fresh qs_ref in a chat message's Shopify cart link, as a customer would receive it. */
+async function cartRef(world: World, conversationId = 'conv_cart_1') {
+  const url = (await toolsFor(world).get_product_context({ variant_id: 'var_7001' }, SCOPE)).output.product.online_url;
+  const text = await world.conversation.attribution.decorate('brand_A', `You can order it online here: ${url}`, {
+    intentId: null,
+    conversationId,
+    recommendationId: null,
+  });
+  return { url, text, ref: /attributes%5Bqs_ref%5D=([0-9A-Z]{26})/.exec(text)?.[1] ?? null };
+}
+
+describe('qs_ref on the connected store’s cart links', () => {
+  const REF = '0123456789ABCDEFGHJKMNPQRS';
+
+  it('is added as the cart attribute attributes[qs_ref], replacing an old one and keeping other parameters', () => {
+    const shop = 'https://s.myshopify.com/cart/7001:1';
+    expect(withShopifyCartAttribute(shop, REF)).toBe(`${shop}?attributes%5Bqs_ref%5D=${REF}`);
+    const again = withShopifyCartAttribute(`${shop}?attributes[qs_ref]=OLD&discount=X#top`, REF);
+    expect(again).toBe(`${shop}?discount=X&attributes%5Bqs_ref%5D=${REF}#top`);
+    expect(new URL(again).searchParams.get('attributes[qs_ref]')).toBe(REF);
+  });
+
+  it('decorates cart links with the attribute and storefront links with the query parameter, nothing else', () => {
+    const targets = { storefrontPrefix: 'https://aquaskin.example/products/', shopifyShop: TEST_SHOP };
+    const text = [
+      `cart https://${TEST_SHOP}/cart/7001:1`,
+      'page https://aquaskin.example/products/prd_9001',
+      'other https://other-shop.myshopify.com/cart/7001:1',
+      `admin https://${TEST_SHOP}/admin`,
+    ].join('\n');
+    expect(decorateOnlineLinks(text, targets, REF).split('\n')).toEqual([
+      `cart https://${TEST_SHOP}/cart/7001:1?attributes%5Bqs_ref%5D=${REF}`,
+      `page https://aquaskin.example/products/prd_9001?qs_ref=${REF}`,
+      'other https://other-shop.myshopify.com/cart/7001:1',
+      `admin https://${TEST_SHOP}/admin`,
+    ]);
+    expect(linksToOnlineStore('see https://other-shop.myshopify.com/cart/1:1', targets)).toBe(false);
+    expect(linksToOnlineStore(text, { storefrontPrefix: null, shopifyShop: null })).toBe(false);
+  });
+
+  it('chat cart link → Shopify order with that cart attribute → attributed ONLINE outcome', async () => {
+    const { world } = await connected();
+    const { url, text, ref } = await cartRef(world);
+    expect(url).toBe(`https://${TEST_SHOP}/cart/7001:1`);
+    expect(ref).not.toBeNull();
+    expect(text).not.toContain('?qs_ref=');
+    expect(world.attributionRefs.refs).toHaveLength(1);
+
+    const res = await sendWebhook(world, 'orders/create', webhookOrder(61, [{ name: 'qs_ref', value: ref! }]), 'c1');
+    expect(res.status).toBe(200);
+    expect(eventsOf(world, 'ORDER_CREATED')).toEqual([
+      expect.objectContaining({
+        payload: expect.objectContaining({ attributed_by: 'QS_REF', journey_key: 'conv:conv_cart_1' }),
+      }),
+    ]);
+    expect(world.outcomes.outcomes).toEqual([
+      expect.objectContaining({ purchaseType: 'ONLINE', orderReference: 'gid://shopify/Order/61' }),
+    ]);
+  });
+
+  it('a disconnected store’s cart links are left alone (no ref is created)', async () => {
+    const { world, as } = await connected();
+    await as('admin_a').post('/api/integrations/shopify/disconnect');
+    const text = `Order: https://${TEST_SHOP}/cart/7001:1`;
+    expect(await world.conversation.attribution.decorate('brand_A', text, SCOPE)).toBe(text);
+    expect(world.attributionRefs.refs).toHaveLength(0);
+  });
+});
+
+describe('live online stock before "Buy online"', () => {
+  it('a variant Shopify cannot sell online gets no online link at all — not even the storefront page', async () => {
+    const { world, fake } = await connected();
+    fake.availableForSale.set(V7001, false);
+    const out = (await toolsFor(world, liveStock(world, fake)).get_product_context({ variant_id: 'var_7001' }, SCOPE))
+      .output;
+    expect(out.status).toBe('FOUND');
+    expect(out.product.online_url).toBeNull();
+  });
+
+  it('an available variant gets the cart link; one answer serves the turn (cached), the token stays server-side', async () => {
+    const { world, fake } = await connected();
+    const tools = toolsFor(world, liveStock(world, fake));
+    for (let i = 0; i < 2; i++) {
+      const out = (await tools.get_product_context({ variant_id: 'var_7001' }, SCOPE)).output;
+      expect(out.product.online_url).toBe(`https://${TEST_SHOP}/cart/7001:1`);
+    }
+    const asked = fake.seen.filter((s) => s.operation === 'QwikspotOnlineAvailability');
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.variables).toEqual({ id: V7001 });
+  });
+
+  it('when Shopify cannot be asked the link stays (checkout still refuses), and nothing is cached', async () => {
+    const { world, fake } = await connected();
+    fake.queue('QwikspotOnlineAvailability', { errors: [{ message: 'boom' }] }, 500);
+    const stock = liveStock(world, fake);
+    expect(await stock.canBuyOnline('brand_A', V7001)).toBeNull();
+    expect(await stock.canBuyOnline('brand_A', V7001)).toBe(true);
+    expect(fake.seen.filter((s) => s.operation === 'QwikspotOnlineAvailability')).toHaveLength(2);
+  });
+
+  it('the mock catalogue answers from its fixture inventory', async () => {
+    const mock = new MockCommerceProvider();
+    expect(await mock.getOnlineAvailability('gid://shopify/ProductVariant/2001')).toBe(true);
+    expect(await mock.getOnlineAvailability('gid://shopify/ProductVariant/unknown')).toBeNull();
+  });
+});
+
+describe('orders/cancelled', () => {
+  it('cancels the attributed order’s Outcome once: it stays, marked, and leaves the insights', async () => {
+    const { world } = await connected();
+    const { ref } = await cartRef(world);
+    await sendWebhook(world, 'orders/create', webhookOrder(62, [{ name: 'qs_ref', value: ref! }]), 'c2');
+    const cancelledAt = '2026-10-07T07:00:00Z';
+    const res = await sendWebhook(world, 'orders/cancelled', webhookOrder(62, [], cancelledAt), 'x2');
+    expect(res.status).toBe(200);
+    expect(world.outcomes.outcomes).toEqual([
+      expect.objectContaining({ purchaseType: 'ONLINE', orderReference: 'gid://shopify/Order/62', cancelledAt }),
+    ]);
+    expect(eventsOf(world, 'ORDER_CANCELLED')).toEqual([
+      expect.objectContaining({ source: 'SHOPIFY', entityReference: 'gid://shopify/Order/62', timestamp: cancelledAt }),
+    ]);
+    expect(world.audit.brandEvents.map((e) => e.action)).toEqual(
+      expect.arrayContaining(['ORDER_CANCELLED', 'OUTCOME_CANCELLED']),
+    );
+
+    // Another delivery of the same cancellation changes nothing.
+    await sendWebhook(world, 'orders/cancelled', webhookOrder(62, [], cancelledAt), 'x2-again');
+    expect(eventsOf(world, 'ORDER_CANCELLED')).toHaveLength(1);
+    expect(world.audit.brandEvents.filter((e) => e.action === 'OUTCOME_CANCELLED')).toHaveLength(1);
+
+    const reader = new MemoryInsightsReader({
+      intents: world.intents,
+      conversations: world.conversations,
+      recommendations: world.recommendations,
+      events: world.events,
+      reservations: world.reservations,
+      outcomes: world.outcomes,
+    });
+    const { rows } = await reader.read('brand_A', {
+      fromIso: '2026-10-01T00:00:00Z',
+      toIso: '2026-10-31T00:00:00Z',
+      includeHistory: true,
+    });
+    expect(rows.outcomes).toHaveLength(0);
+  });
+
+  it('a cancellation whose orders/create never arrived records the order too (unattributed, no Outcome)', async () => {
+    const { world } = await connected();
+    await sendWebhook(world, 'orders/cancelled', webhookOrder(63, [], '2026-10-07T07:00:00Z'), 'x3');
+    expect(eventsOf(world, 'ORDER_CREATED').map((e) => e.entityReference)).toEqual(['gid://shopify/Order/63']);
+    expect(eventsOf(world, 'ORDER_CANCELLED')).toHaveLength(1);
+    expect(world.outcomes.outcomes).toHaveLength(0);
+  });
+});
+
+describe('the order check (missed webhooks)', () => {
+  it('records the last 7 days of orders the webhooks missed, once — the webhook arriving later is a duplicate', async () => {
+    const { world, fake, as } = await connected();
+    const { ref } = await cartRef(world);
+    fake.orders.push(orderNode(71, { qsRef: ref! }), orderNode(72));
+
+    const first = await as('admin_a').post('/api/integrations/shopify/orders/sync');
+    expect([first.status, first.body]).toEqual([200, { checked: 2, recorded: 2, cancelled: 0 }]);
+    const query = fake.seen.filter((s) => s.operation === 'QwikspotOrders').at(-1)!;
+    expect(query.variables.query).toBe("created_at:>'2026-09-30T06:30:00.000Z'");
+    expect(eventsOf(world, 'ORDER_CREATED').map((e) => [e.entityReference, e.payload.attributed_by])).toEqual([
+      ['gid://shopify/Order/71', 'QS_REF'],
+      ['gid://shopify/Order/72', null],
+    ]);
+    expect(world.outcomes.outcomes).toEqual([expect.objectContaining({ orderReference: 'gid://shopify/Order/71' })]);
+    expect(world.audit.brandEvents.at(-1)).toMatchObject({ action: 'SHOPIFY_ORDERS_CHECKED', actorId: 'admin_a' });
+
+    const recorded = () => world.audit.brandEvents.filter((e) => e.action === 'ORDER_RECORDED').length;
+    const before = recorded();
+    const again = await as('admin_a').post('/api/integrations/shopify/orders/sync');
+    expect(again.body).toEqual({ checked: 2, recorded: 0, cancelled: 0 });
+    await sendWebhook(world, 'orders/create', webhookOrder(71, [{ name: 'qs_ref', value: ref! }]), 'late-71');
+    expect(recorded()).toBe(before);
+  });
+
+  it('records cancellations it finds, once', async () => {
+    const { world, fake, as } = await connected();
+    fake.orders.push(orderNode(73, { cancelledAt: '2026-10-06T12:00:00Z' }));
+    const first = await as('admin_a').post('/api/integrations/shopify/orders/sync');
+    expect(first.body).toEqual({ checked: 1, recorded: 1, cancelled: 1 });
+    const again = await as('admin_a').post('/api/integrations/shopify/orders/sync');
+    expect(again.body).toEqual({ checked: 1, recorded: 0, cancelled: 0 });
+    expect(eventsOf(world, 'ORDER_CANCELLED')).toHaveLength(1);
+  });
+
+  it('"Sync products" also runs it and brings an older connection’s webhooks up to date — same response shape', async () => {
+    const { world, fake, connect, as } = shopifyWorld();
+    await connect();
+    fake.webhooks.splice(
+      0,
+      fake.webhooks.length,
+      ...fake.webhooks.filter((w) => /ORDERS_CREATE|APP_UNINSTALLED/.test(w.topic)),
+    );
+    fake.orders.push(orderNode(74));
+    const res = await as('admin_a').post('/api/integrations/shopify/sync');
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty('checked');
+    expect(fake.webhooks.map((w) => w.topic).sort()).toEqual([
+      'APP_UNINSTALLED',
+      'ORDERS_CANCELLED',
+      'ORDERS_CREATE',
+      'PRODUCTS_CREATE',
+      'PRODUCTS_DELETE',
+      'PRODUCTS_UPDATE',
+    ]);
+    expect(eventsOf(world, 'ORDER_CREATED').map((e) => e.entityReference)).toEqual(['gid://shopify/Order/74']);
+  });
+
+  it('only the Brand Admin, only in Shopify mode, only with a connected store', async () => {
+    const { as } = shopifyWorld();
+    const none = await as('admin_a').post('/api/integrations/shopify/orders/sync');
+    expect([none.status, none.body.error.code]).toEqual([409, 'SHOPIFY_NOT_CONNECTED']);
+    expect((await as('radmin_A').post('/api/integrations/shopify/orders/sync')).status).toBe(403);
+    const mock = buildTestWorld();
+    const off = await request(mock.app)
+      .post('/api/integrations/shopify/orders/sync')
+      .set('Authorization', bearer('admin_a'))
+      .send({});
+    expect([off.status, off.body.error.code]).toEqual([409, 'SHOPIFY_NOT_CONFIGURED']);
+  });
+});
+
+describe('products/* webhooks keep the catalogue current', () => {
+  it('a product change queues a background sync that picks it up', async () => {
+    const { world, fake } = await connected();
+    const page = JSON.parse(
+      readFileSync(new URL('./fixtures/shopify/products-page-1.json', import.meta.url), 'utf8'),
+    ) as { data: { products: { nodes: { title: string }[] } } };
+    page.data.products.nodes[0]!.title = 'Vitamin C Glow Serum (new formula)';
+    fake.queue('QwikspotProducts', page);
+
+    const res = await sendWebhook(world, 'products/update', { id: 9001 }, 'p1');
+    expect(res.status).toBe(200);
+    await world.catalogRefresh.idle('brand_A');
+    const product = (await world.products.listProducts('brand_A')).find((p) => p.productId === 'prd_9001')!;
+    expect(product.title).toBe('Vitamin C Glow Serum (new formula)');
+    expect(world.audit.brandEvents.at(-1)).toMatchObject({ action: 'CATALOG_SYNCED', actorId: 'shopify-webhook' });
+  });
+
+  it('a burst coalesces into the running sync plus one; a failed sync is logged, never thrown', async () => {
+    let release!: () => void;
+    const runs: string[] = [];
+    const warnings: string[] = [];
+    const refresh = new ShopifyCatalogRefresh({
+      sync: {
+        sync: async (brandId) => {
+          runs.push(brandId);
+          if (runs.length === 1) await new Promise<void>((r) => (release = r));
+          if (runs.length === 2) throw new Error('shopify down');
+          return {} as never;
+        },
+      },
+      logger: { warn: (m: string) => void warnings.push(m) } as never,
+    });
+    const first = refresh.request('brand_A');
+    const others = [refresh.request('brand_A'), refresh.request('brand_A'), refresh.request('brand_A')];
+    release();
+    await Promise.all([first, ...others]);
+    expect(runs).toEqual(['brand_A', 'brand_A']);
+    expect(warnings).toEqual(['shopify.catalog_refresh_failed']);
+    await refresh.request('brand_A');
+    expect(runs).toHaveLength(3);
+  });
+});

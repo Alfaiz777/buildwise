@@ -3,8 +3,11 @@ import { MockCommerceProvider } from '../adapters/commerce/mockCommerceProvider.
 import { ShopifyHttpAdminApi } from '../adapters/commerce/shopifyAdminApi.js';
 import { ShopifyCommerceProvider } from '../adapters/commerce/shopifyCommerceProvider.js';
 import { FirestoreShopifyConnectionStore } from '../adapters/firestore/shopifyConnectionStore.js';
+import { OnlineStockService } from '../application/onlineStock.js';
 import { ShopifyAuthService } from '../application/shopifyAuthService.js';
+import { ShopifyCatalogRefresh } from '../application/shopifyCatalogRefresh.js';
 import { CommerceProviderResolver, ShopifyConnections } from '../application/shopifyConnections.js';
+import { ShopifyOrderService } from '../application/shopifyOrderService.js';
 import { ShopifyWebhookService } from '../application/shopifyWebhookService.js';
 import { TokenCipher } from '../lib/tokenCipher.js';
 import { LocalEventSink } from '../adapters/events/localEventSink.js';
@@ -194,6 +197,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
       connections,
       audit,
       now: options.now,
+      accessToken: (brandId) => shopifyConnections.accessToken(brandId),
     });
   } else {
     resolver = new CommerceProviderResolver({ mode: 'mock', mock: providers.commerce });
@@ -260,16 +264,29 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
       ? { sessionSecret: config.shopper.sessionSecret, brandAllowed: shopperBrandAllowed(config) }
       : undefined,
     publicOrigin: config.publicWebOrigin,
+    onlineStock: shopifyApp ? new OnlineStockService({ resolver, logger, now: options.now }) : undefined,
   });
 
+  // L2-Shopify: one order path for the webhooks and the order check; products/* re-sync in the background.
+  const shopifyOrders = shopifyApp
+    ? new ShopifyOrderService({
+        receipts: new FirestoreWebhookReceiptRepository(db),
+        orders: conversation.orders,
+        products,
+        resolver,
+        audit,
+        now: options.now,
+      })
+    : undefined;
+  const catalogRefresh = shopifyApp ? new ShopifyCatalogRefresh({ sync: commerceSync, logger }) : undefined;
   const shopifyWebhooks =
-    shopifyApp && shopifyStore && shopifyAuth
+    shopifyApp && shopifyStore && shopifyAuth && shopifyOrders && catalogRefresh
       ? new ShopifyWebhookService({
           apiSecret: shopifyApp.apiSecret,
           store: shopifyStore,
           receipts: new FirestoreWebhookReceiptRepository(db),
-          orders: conversation.orders,
-          products,
+          orders: shopifyOrders,
+          catalogChanged: (brandId) => void catalogRefresh.request(brandId),
           auth: shopifyAuth,
           audit,
           now: options.now,
@@ -330,6 +347,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         demoReset,
         shopifyAuth,
         shopifyWebhooks,
+        shopifyOrders,
       },
       localUploads:
         profileFeatures(config).localUploads && providers.files instanceof LocalFileStorageProvider
