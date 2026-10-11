@@ -47,15 +47,36 @@ export const DEFAULT_EMULATOR_HOSTS = {
 /**
  * Startup guard: the gcp profile refuses every mock/local infrastructure adapter
  * and the Firebase emulators. Returns the list of violations (empty = allowed).
+ *
+ * `stagedRollout` (L1, GCP_STAGED_ROLLOUT=true — temporary): while the Gemini and
+ * WhatsApp adapters are still being built, the gcp profile may run the mock agent. That is
+ * the only exception; the simulator channel is allowed in gcp anyway (approved fallback).
  */
-export function profileViolations(profile: Profile, adapters: AdapterSelection, usingEmulators: boolean): string[] {
+export function profileViolations(
+  profile: Profile,
+  adapters: AdapterSelection,
+  usingEmulators: boolean,
+  stagedRollout = false,
+): string[] {
   if (profile !== 'gcp') return [];
   const violations: string[] = [];
   if (adapters.commerce === 'mock') violations.push('COMMERCE_PROVIDER=mock');
-  if (adapters.agentRuntime === 'mock') violations.push('AGENT_RUNTIME=mock');
+  if (adapters.agentRuntime === 'mock' && !stagedRollout) violations.push('AGENT_RUNTIME=mock');
   if (adapters.fileStorage === 'local') violations.push('FILE_STORAGE=local');
   if (adapters.eventSink === 'local') violations.push('EVENT_SINK=local');
   if (usingEmulators) violations.push('Firebase emulator hosts');
   // SimulatorMessagingProvider is explicitly allowed (approved fallback channel).
   return violations;
+}
+
+/**
+ * What a staged gcp rollout runs instead of the target adapters (shown at startup and in
+ * /api/health). Empty outside a staged gcp rollout.
+ */
+export function stagedAdapters(profile: Profile, adapters: AdapterSelection, stagedRollout: boolean): string[] {
+  if (profile !== 'gcp' || !stagedRollout) return [];
+  const staged: string[] = [];
+  if (adapters.agentRuntime === 'mock') staged.push('AGENT_RUNTIME=mock');
+  if (!adapters.messagingChannels.includes('whatsapp')) staged.push('MESSAGING_CHANNELS=simulator');
+  return staged;
 }

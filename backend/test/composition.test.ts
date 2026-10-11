@@ -37,8 +37,6 @@ describe('composition root — adapter selection', () => {
 
   it.each([
     [{ agentRuntime: 'adk_gemini' }, /AdkGeminiAgentRuntime/],
-    [{ fileStorage: 'gcs' }, /GCSFileStorageProvider/],
-    [{ eventSink: 'bigquery' }, /BigQueryEventSink/],
     [{ messagingChannels: ['whatsapp'] }, /WhatsAppMessagingProvider/],
   ] as const)(
     'a real adapter that does not exist yet fails loudly (%o), never silently falls back',

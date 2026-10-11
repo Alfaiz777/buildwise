@@ -4,6 +4,8 @@ import { useApi } from '../../api/apiContext';
 import { errorMessage, useLoad } from '../../components/ConsoleShell';
 
 interface ResetResult {
+  /** L1: the brand's Shopify store is not connected yet — the catalogue waits for it. */
+  pending?: 'SHOPIFY_NOT_CONNECTED' | null;
   catalog: { products: number; variants: number };
   stock: { status: string; rows_valid: number };
   history: Record<string, number>;
@@ -32,8 +34,10 @@ export function DemoGuide({ brandId }: { brandId: string }) {
     try {
       const r = await api.post<ResetResult>('/api/brand/demo/reset', {});
       setResult(
-        `Demo reset: ${r.catalog.products} products synced, store stock restored, ` +
-          `${r.history.outcomes ?? 0} synthetic outcomes rebuilt. Reload other tabs to see it.`,
+        r.pending === 'SHOPIFY_NOT_CONNECTED'
+          ? 'Demo reset: stores restored. Connect your Shopify store (Settings → Shopify), then press Reset demo again to load the catalogue and history.'
+          : `Demo reset: ${r.catalog.products} products synced, store stock restored, ` +
+              `${r.history.outcomes ?? 0} synthetic outcomes rebuilt. Reload other tabs to see it.`,
       );
       setConfirming(false);
     } catch (err) {

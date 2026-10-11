@@ -14,7 +14,14 @@ export interface HealthAdapters {
 }
 
 export function healthRouter(
-  info: { version?: string; commit?: string | null; profile?: string; adapters?: HealthAdapters } = {},
+  info: {
+    version?: string;
+    commit?: string | null;
+    profile?: string;
+    adapters?: HealthAdapters;
+    /** L1 staged rollout: the stand-in adapters a gcp deployment runs, e.g. ["AGENT_RUNTIME=mock"]. */
+    staged?: string[];
+  } = {},
 ): Router {
   const router = Router();
   router.get('/health', (_req, res) => {
@@ -25,6 +32,7 @@ export function healthRouter(
       profile: info.profile ?? 'local',
       // UI-5 System card: which adapters run (names only — never hosts, keys or ids).
       adapters: info.adapters ?? { agent_runtime: 'MOCK', channels: ['SIMULATOR'], commerce: 'MOCK' },
+      staged: info.staged ?? [],
     });
   });
   return router;

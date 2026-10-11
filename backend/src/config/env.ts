@@ -4,6 +4,7 @@ import {
   PROFILE_DEFAULTS,
   PROFILES,
   profileViolations,
+  stagedAdapters,
   type AdapterSelection,
   type Profile,
 } from './profile.js';
@@ -47,6 +48,10 @@ const EnvSchema = z.object({
   PUBLIC_BACKEND_URL: z.string().optional(),
   FRONTEND_URL: z.string().optional(),
   TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  // L1: a temporary, labelled staged rollout (gcp only): the mock agent while Gemini is being built.
+  GCP_STAGED_ROLLOUT: z.enum(['true', 'false', '']).optional(),
+  // L1: the Cloud Scheduler service account allowed to call POST /api/internal/process-due.
+  SCHEDULER_SERVICE_ACCOUNT: z.string().optional(),
   // Build identity for /api/health (set by Cloud Build).
   BUILD_VERSION: z.string().trim().max(40).optional(),
   BUILD_COMMIT: z.string().trim().max(64).optional(),
@@ -61,12 +66,8 @@ const EnvSchema = z.object({
 export const GCP_REQUIRED_SETTINGS = [
   'GOOGLE_CLOUD_PROJECT',
   'GCP_REGION',
-  'VERTEX_MODEL',
-  'VERTEX_LOCATION',
-  'WHATSAPP_ACCESS_TOKEN',
-  'WHATSAPP_PHONE_NUMBER_ID',
-  'WHATSAPP_APP_SECRET',
-  'WHATSAPP_VERIFY_TOKEN',
+  // L1: VERTEX_* only with AGENT_RUNTIME=adk_gemini, WHATSAPP_* only with the whatsapp channel
+  // (GCP_AGENT_SETTINGS / GCP_WHATSAPP_SETTINGS below).
   // L2-Shopify: one Shopify app (OAuth); each brand's store token is stored encrypted.
   'SHOPIFY_API_KEY',
   'SHOPIFY_API_SECRET',
@@ -76,13 +77,36 @@ export const GCP_REQUIRED_SETTINGS = [
   'GCS_BUCKET',
   'DEMO_MODE',
   'CORS_ALLOWED_ORIGINS',
+  'SCHEDULER_SERVICE_ACCOUNT',
 ] as const;
+
+/** Required in gcp only when AGENT_RUNTIME=adk_gemini. */
+export const GCP_AGENT_SETTINGS = ['VERTEX_MODEL', 'VERTEX_LOCATION'] as const;
+/** Required in gcp only when the whatsapp channel is selected. */
+export const GCP_WHATSAPP_SETTINGS = [
+  'WHATSAPP_ACCESS_TOKEN',
+  'WHATSAPP_PHONE_NUMBER_ID',
+  'WHATSAPP_APP_SECRET',
+  'WHATSAPP_VERIFY_TOKEN',
+] as const;
+
+/** Every setting this gcp configuration needs, in one list (the order of the one error message). */
+export function gcpRequiredSettings(adapters: AdapterSelection): string[] {
+  return [
+    ...GCP_REQUIRED_SETTINGS.slice(0, 2),
+    ...(adapters.agentRuntime === 'adk_gemini' ? GCP_AGENT_SETTINGS : []),
+    ...(adapters.messagingChannels.includes('whatsapp') ? GCP_WHATSAPP_SETTINGS : []),
+    ...GCP_REQUIRED_SETTINGS.slice(2),
+  ];
+}
 
 export interface GcpSettings {
   region: string;
   firestoreDatabase: string;
-  vertex: { model: string; location: string };
-  whatsapp: { accessToken: string; phoneNumberId: string; appSecret: string; verifyToken: string };
+  /** Only with AGENT_RUNTIME=adk_gemini. */
+  vertex: { model: string; location: string } | null;
+  /** Only with the whatsapp channel. */
+  whatsapp: { accessToken: string; phoneNumberId: string; appSecret: string; verifyToken: string } | null;
   bigQueryDataset: string;
   gcsBucket: string;
 }
@@ -233,6 +257,10 @@ export interface Config {
   publicWebOrigin: string;
   /** Present only in the gcp profile (validated as a whole). */
   gcp: GcpSettings | null;
+  /** L1 staged rollout: the stand-in adapters this gcp deployment runs (empty when none). */
+  staged: string[];
+  /** L1: who may call POST /api/internal/process-due (Cloud Scheduler OIDC); null when not configured. */
+  scheduler: { serviceAccount: string; audience: string } | null;
   /** L2-Shopify: present only when COMMERCE_PROVIDER=shopify. */
   shopify: ShopifyAppConfig | null;
 }
@@ -283,14 +311,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error('Emulator hosts must not be used when NODE_ENV=production');
   }
 
-  const violations = profileViolations(profile, adapters, emulators !== null);
+  const stagedRollout = profile === 'gcp' && e.GCP_STAGED_ROLLOUT === 'true';
+  const violations = profileViolations(profile, adapters, emulators !== null, stagedRollout);
   if (violations.length > 0) {
     throw new Error(`The gcp profile refuses local/mock infrastructure: ${violations.join(', ')}`);
   }
 
   let gcp: GcpSettings | null = null;
   if (profile === 'gcp') {
-    const missing = GCP_REQUIRED_SETTINGS.filter((name) => !String(env[name] ?? '').trim());
+    const missing = gcpRequiredSettings(adapters).filter((name) => !String(env[name] ?? '').trim());
     if (missing.length > 0) {
       throw new Error(`The gcp profile is missing required settings: ${missing.join(', ')}`);
     }
@@ -298,13 +327,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     gcp = {
       region: v('GCP_REGION'),
       firestoreDatabase: String(env.FIRESTORE_DATABASE ?? '').trim() || '(default)',
-      vertex: { model: v('VERTEX_MODEL'), location: v('VERTEX_LOCATION') },
-      whatsapp: {
-        accessToken: v('WHATSAPP_ACCESS_TOKEN'),
-        phoneNumberId: v('WHATSAPP_PHONE_NUMBER_ID'),
-        appSecret: v('WHATSAPP_APP_SECRET'),
-        verifyToken: v('WHATSAPP_VERIFY_TOKEN'),
-      },
+      vertex:
+        adapters.agentRuntime === 'adk_gemini' ? { model: v('VERTEX_MODEL'), location: v('VERTEX_LOCATION') } : null,
+      whatsapp: adapters.messagingChannels.includes('whatsapp')
+        ? {
+            accessToken: v('WHATSAPP_ACCESS_TOKEN'),
+            phoneNumberId: v('WHATSAPP_PHONE_NUMBER_ID'),
+            appSecret: v('WHATSAPP_APP_SECRET'),
+            verifyToken: v('WHATSAPP_VERIFY_TOKEN'),
+          }
+        : null,
       bigQueryDataset: v('BIGQUERY_DATASET'),
       gcsBucket: v('GCS_BUCKET'),
     };
@@ -339,6 +371,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     // The shopper demo runs on several Cloud Run instances: one shared secret, ≥ 32 characters.
     throw new Error('The gcp profile is missing required settings: SHOPPER_SESSION_SECRET');
   }
+  // L1: Cloud Scheduler's OIDC token must name exactly this endpoint and service account.
+  let scheduler: Config['scheduler'] = null;
+  const schedulerAccount = e.SCHEDULER_SERVICE_ACCOUNT?.trim();
+  const backendUrl = e.PUBLIC_BACKEND_URL?.trim().replace(/\/$/, '');
+  if (schedulerAccount) {
+    if (!/^[^@\s]+@[^@\s]+\.iam\.gserviceaccount\.com$/.test(schedulerAccount) || !backendUrl?.startsWith('https://')) {
+      throw new Error('Invalid environment configuration: SCHEDULER_SERVICE_ACCOUNT, PUBLIC_BACKEND_URL');
+    }
+    scheduler = { serviceAccount: schedulerAccount, audience: `${backendUrl}/api/internal/process-due` };
+  }
+
   const corsOrigins = e.CORS_ALLOWED_ORIGINS.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
@@ -370,5 +413,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ).replace(/\/$/, ''),
     gcp,
     shopify,
+    staged: stagedAdapters(profile, adapters, stagedRollout),
+    scheduler,
   };
 }

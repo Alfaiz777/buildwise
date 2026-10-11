@@ -110,6 +110,12 @@ console.log(
   `✔ Demo data: ${rebuilt.catalog.products} products, stock ${rebuilt.stock.status} (${rebuilt.stock.rowsValid} rows), ` +
     `${rebuilt.history.outcomes ?? 0} synthetic outcomes`,
 );
+if (rebuilt.pending === 'SHOPIFY_NOT_CONNECTED') {
+  console.log(
+    '  ! The Shopify store is not connected yet: the brand, settings and stores are ready, the catalogue is not.\n' +
+      '    After deploying: sign in as the Brand Admin → Settings → Shopify → Connect, then Overview → Reset demo.',
+  );
+}
 
 // 4. Admins through the provisioning services (audited), then the shared demo password.
 let brand = (await brands.getById(plan.brandId))!;

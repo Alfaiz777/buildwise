@@ -1,4 +1,6 @@
 import { ShopifyHttpAdminApi } from '../src/adapters/commerce/shopifyAdminApi.js';
+import { ScheduledWorkService } from '../src/application/scheduledWork.js';
+import type { OidcTokenVerifier } from '../src/ports/oidc.js';
 import { ShopifyCommerceProvider } from '../src/adapters/commerce/shopifyCommerceProvider.js';
 import { OnlineStockService } from '../src/application/onlineStock.js';
 import { ShopifyAuthService } from '../src/application/shopifyAuthService.js';
@@ -599,6 +601,8 @@ export function buildTestWorld(
     /** M7: DEMO_MODE configuration (default off) and the execution profile reported by the app. */
     demo?: DemoConfig;
     profile?: 'local' | 'gcp';
+    /** L1: wire POST /api/internal/process-due with this OIDC verifier (Cloud Scheduler). */
+    schedulerVerifier?: OidcTokenVerifier;
     /** L2-Shopify: COMMERCE_PROVIDER=shopify against a FakeShopify (no network). */
     shopify?: FakeShopify;
   } = {},
@@ -814,6 +818,13 @@ export function buildTestWorld(
       shopifyOrders,
     },
     localUploads: options.localUploads === false ? undefined : files,
+    internal: options.schedulerVerifier
+      ? {
+          work: new ScheduledWorkService({ brands, followUps: conversation.followUps }),
+          verifier: options.schedulerVerifier,
+          scheduler: SCHEDULER_TEST,
+        }
+      : undefined,
   });
   return {
     app,
@@ -877,3 +888,42 @@ export class MemoryDemoData implements DemoDataStore {
 export const bearer = (userId: string) => `Bearer token-${userId}`;
 
 export { AppError };
+
+/** L1: the scheduler identity the test world's /api/internal/process-due accepts. */
+export const SCHEDULER_TEST = {
+  serviceAccount: 'qwikspot-scheduler@qwikspot-test.iam.gserviceaccount.com',
+  audience: 'https://api.example.test/api/internal/process-due',
+};
+
+/** Fake Google OIDC verification: known tokens → claims; the audience must match, like the real check. */
+export class FakeOidcVerifier implements OidcTokenVerifier {
+  readonly tokens = new Map<string, { email: string; emailVerified: boolean; audience: string }>([
+    [
+      'valid-scheduler-token',
+      { email: SCHEDULER_TEST.serviceAccount, emailVerified: true, audience: SCHEDULER_TEST.audience },
+    ],
+    [
+      'wrong-audience-token',
+      { email: SCHEDULER_TEST.serviceAccount, emailVerified: true, audience: 'https://elsewhere.example/x' },
+    ],
+    [
+      'other-account-token',
+      {
+        email: 'someone@qwikspot-test.iam.gserviceaccount.com',
+        emailVerified: true,
+        audience: SCHEDULER_TEST.audience,
+      },
+    ],
+    [
+      'unverified-email-token',
+      { email: SCHEDULER_TEST.serviceAccount, emailVerified: false, audience: SCHEDULER_TEST.audience },
+    ],
+  ]);
+
+  async verify(idToken: string, audience: string) {
+    const claims = this.tokens.get(idToken);
+    if (!claims) throw new Error('invalid signature');
+    if (claims.audience !== audience) throw new Error('wrong audience');
+    return claims;
+  }
+}

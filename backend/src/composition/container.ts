@@ -1,4 +1,10 @@
 import { MockAgentRuntime } from '../adapters/agent/mockAgentRuntime.js';
+import { GoogleOidcVerifier } from '../adapters/auth/googleOidcVerifier.js';
+import { ScheduledWorkService } from '../application/scheduledWork.js';
+import { BigQuery } from '@google-cloud/bigquery';
+import { Storage } from '@google-cloud/storage';
+import { BigQueryEventSink, type BigQueryTableLike } from '../adapters/events/bigQueryEventSink.js';
+import { GCSFileStorageProvider, type GcsBucketLike } from '../adapters/storage/gcsFileStorageProvider.js';
 import { MockCommerceProvider } from '../adapters/commerce/mockCommerceProvider.js';
 import { ShopifyHttpAdminApi } from '../adapters/commerce/shopifyAdminApi.js';
 import { ShopifyCommerceProvider } from '../adapters/commerce/shopifyCommerceProvider.js';
@@ -58,11 +64,11 @@ import { StoreService } from '../application/storeService.js';
 import { TenantAdminService } from '../application/tenantAdminService.js';
 import type { AppDeps } from '../app.js';
 import { FirebaseTokenVerifier } from '../auth/tokenVerifier.js';
-import type { Config } from '../config/env.js';
+import type { Config, GcpSettings } from '../config/env.js';
 import type { AdapterSelection } from '../config/profile.js';
 import type { Channel } from '../domain/channels.js';
 import { initFirebase } from '../firebase/admin.js';
-import type { Logger } from '../lib/logger.js';
+import { silentLogger, type Logger } from '../lib/logger.js';
 import type { AgentRuntime } from '../ports/agent.js';
 import type { CommerceProvider } from '../ports/commerce.js';
 import type { EventSink } from '../ports/events.js';
@@ -96,7 +102,26 @@ const notAvailable = (adapter: string, phase = 'phase L2'): never => {
   throw new AdapterNotAvailableError(adapter, phase);
 };
 
-export function createProviders(config: Pick<Config, 'adapters' | 'localDataDir'>): Providers {
+/**
+ * L1: the real Cloud Storage bucket and BigQuery table, from the gcp settings (ADC
+ * credentials — the Cloud Run service account; no key files).
+ */
+function gcsBucket(config: GcpProviderConfig): GcsBucketLike {
+  const bucket = config.gcp?.gcsBucket;
+  if (!bucket) throw new Error('FILE_STORAGE=gcs needs GCS_BUCKET (the gcp profile settings)');
+  return new Storage({ projectId: config.projectId }).bucket(bucket) as unknown as GcsBucketLike;
+}
+
+function bigQueryTable(config: GcpProviderConfig): BigQueryTableLike {
+  const dataset = config.gcp?.bigQueryDataset;
+  if (!dataset) throw new Error('EVENT_SINK=bigquery needs BIGQUERY_DATASET (the gcp profile settings)');
+  return new BigQuery({ projectId: config.projectId }).dataset(dataset).table('events') as unknown as BigQueryTableLike;
+}
+
+type GcpProviderConfig = Pick<Config, 'adapters' | 'localDataDir'> &
+  Partial<Pick<Config, 'projectId'>> & { gcp?: Pick<GcpSettings, 'gcsBucket' | 'bigQueryDataset'> | null };
+
+export function createProviders(config: GcpProviderConfig, logger: Logger = silentLogger): Providers {
   const { adapters, localDataDir } = config;
 
   const messaging = new Map<Channel, MessagingProvider>();
@@ -115,8 +140,11 @@ export function createProviders(config: Pick<Config, 'adapters' | 'localDataDir'
     files:
       adapters.fileStorage === 'local'
         ? new LocalFileStorageProvider(localDataDir)
-        : notAvailable('GCSFileStorageProvider'),
-    events: adapters.eventSink === 'local' ? new LocalEventSink(localDataDir) : notAvailable('BigQueryEventSink'),
+        : new GCSFileStorageProvider(gcsBucket(config)),
+    events:
+      adapters.eventSink === 'local'
+        ? new LocalEventSink(localDataDir)
+        : new BigQueryEventSink(bigQueryTable(config), logger),
   };
 }
 
@@ -159,7 +187,7 @@ export interface Container {
 
 /** `now` is injectable for end-to-end tests (real due_at values without real waiting). */
 export function buildContainer(config: Config, logger: Logger, options: { now?: () => Date } = {}): Container {
-  const providers = createProviders(config);
+  const providers = createProviders(config, logger);
   const { auth, db } = initFirebase(config.projectId, config.emulators);
 
   const users = new FirestoreUserRepository(db);
@@ -349,6 +377,13 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         shopifyWebhooks,
         shopifyOrders,
       },
+      internal: config.scheduler
+        ? {
+            work: new ScheduledWorkService({ brands, followUps: conversation.followUps }),
+            verifier: new GoogleOidcVerifier(),
+            scheduler: config.scheduler,
+          }
+        : undefined,
       localUploads:
         profileFeatures(config).localUploads && providers.files instanceof LocalFileStorageProvider
           ? providers.files

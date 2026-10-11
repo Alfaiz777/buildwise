@@ -160,6 +160,8 @@ BigQueryEventSink    BigQuery streaming insert into the events table
 
 The earlier `AnalyticsProvider.queryMetrics()` is **not** part of the sink. Brand Console metrics are computed by application services from Firestore, so the console works without BigQuery or Looker. Emission failures are logged and retried, and they never fail the user-facing request.
 
+**`BigQueryEventSink` (L1):** streaming inserts into `BIGQUERY_DATASET.events` (`infrastructure/bigquery/events.schema.json`, partitioned by day on `event_timestamp`) with `insertId` = the event id, so a retried insert is not counted twice. `emit` queues the insert and returns at once — the request never waits for BigQuery — and a failure logs `events.bigquery_insert_failed` with the event ids and an error code only. Queued inserts are flushed on SIGTERM. Firestore `commerceEvents` stays the operational record.
+
 ---
 
 # 6. AgentRuntime
@@ -206,6 +208,8 @@ GCSFileStorageProvider     Cloud Storage; upload URL is a V4 signed URL
 ```
 
 The 10 MB retail file limit is enforced by `maxBytes` in both adapters and re-checked when the file is read.
+
+**`GCSFileStorageProvider` (L1):** one bucket (`GCS_BUCKET`), the same keys and key validation as the local adapter. Upload targets are V4 signed PUT URLs valid for 15 minutes, signed for `Content-Type` and `x-goog-content-length-range: 0,<maxBytes>` — the browser sends the target's headers exactly, and Cloud Storage refuses a larger body. Signing uses the service account's IAM signBlob (`roles/iam.serviceAccountTokenCreator` on itself; no key file); the bucket's CORS allows PUT from the Hosting origins. `openRead` rejects a missing object; `delete` ignores one.
 
 ---
 
@@ -646,7 +650,9 @@ POST  /api/webhooks/shopify                        (L2-Shopify: raw-body HMAC; o
 GET   /api/integrations/shopify/callback           (L2-Shopify, public: OAuth callback — §9)
 
 # Internal / profile-specific
-POST  /api/internal/reservations/expire            (expiry sweep, 03 §15; not callable by browsers)
+POST  /api/internal/process-due                    (L1: Cloud Scheduler only — Google OIDC token, audience = PUBLIC_BACKEND_URL + this path,
+                                                    email = SCHEDULER_SERVICE_ACCOUNT; every ACTIVE brand's due work: follow-ups,
+                                                    hold expiry, NONE outcomes; audited per brand, SYSTEM actor `cloud-scheduler`)
 PUT   /api/local-files/uploads/:uploadId           (LocalFileStorageProvider upload target; local profile only, 06 §6a)
 GET   /api/demo-storefront/products                (shopper demo only — same gating as §14.11: demo storefront catalogue incl. image_url)
 POST  /api/demo-storefront/shopper-sign-in         (shopper demo only: link the visitor to a synthetic shopper)

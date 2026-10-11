@@ -1,0 +1,27 @@
+[
+  {
+    "name": "event_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "CommerceEvent id (also the streaming insertId)"
+  },
+  { "name": "brand_id", "type": "STRING", "mode": "REQUIRED", "description": "Tenant" },
+  {
+    "name": "customer_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Qwikspot customer id (never a phone or email)"
+  },
+  { "name": "web_session_id", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "event_type", "type": "STRING", "mode": "REQUIRED", "description": "docs/04 §17 COMMERCE_EVENT_TYPES" },
+  { "name": "source", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "entity_reference", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "event_payload_reference", "type": "STRING", "mode": "NULLABLE" },
+  {
+    "name": "event_timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "When the event happened; the table is partitioned by day on it"
+  },
+  { "name": "idempotency_key", "type": "STRING", "mode": "REQUIRED" }
+]

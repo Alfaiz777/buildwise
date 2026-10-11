@@ -23,6 +23,7 @@ export const GCP_REQUIRED_FAKE = {
   GCS_BUCKET: 'qwikspot-uploads-test',
   DEMO_MODE: 'false',
   CORS_ALLOWED_ORIGINS: 'https://qwikspot.example.web.app',
+  SCHEDULER_SERVICE_ACCOUNT: 'qwikspot-scheduler@qwikspot-prod.iam.gserviceaccount.com',
 };
 
 const GCP_REAL = {
@@ -253,5 +254,95 @@ describe('Shopify app settings (L2-Shopify)', () => {
       'COMMERCE_PROVIDER=shopify needs valid settings: SHOPIFY_API_KEY, SHOPIFY_API_VERSION, PUBLIC_BACKEND_URL, TOKEN_ENCRYPTION_KEY',
     );
     expect(message).not.toMatch(/super-secret|not-https|a2tr/);
+  });
+});
+
+describe('L1 staged rollout (GCP_STAGED_ROLLOUT) and conditional gcp settings', () => {
+  /** A staged L1 deployment: no WhatsApp, no Vertex settings at all. */
+  const { VERTEX_MODEL: _vm, VERTEX_LOCATION: _vl, ...withoutVertex } = GCP_REAL;
+  const {
+    WHATSAPP_ACCESS_TOKEN: _a,
+    WHATSAPP_PHONE_NUMBER_ID: _b,
+    WHATSAPP_APP_SECRET: _c,
+    WHATSAPP_VERIFY_TOKEN: _d,
+    ...STAGED_BASE
+  } = withoutVertex;
+  const STAGED = {
+    ...STAGED_BASE,
+    GCP_STAGED_ROLLOUT: 'true',
+    AGENT_RUNTIME: 'mock',
+    MESSAGING_CHANNELS: 'simulator',
+  };
+
+  it('staged off: the mock agent is refused as before', () => {
+    expect(() => loadConfig({ ...STAGED, GCP_STAGED_ROLLOUT: 'false' })).toThrow(
+      /gcp profile refuses.*AGENT_RUNTIME=mock/,
+    );
+    expect(() => loadConfig({ ...STAGED, GCP_STAGED_ROLLOUT: '' })).toThrow(/AGENT_RUNTIME=mock/);
+  });
+
+  it('staged on: boots with the mock agent and the simulator only — no WhatsApp or Vertex settings needed — and says so', () => {
+    const config = loadConfig(STAGED);
+    expect(config.adapters).toMatchObject({
+      agentRuntime: 'mock',
+      messagingChannels: ['simulator'],
+      commerce: 'shopify',
+      fileStorage: 'gcs',
+      eventSink: 'bigquery',
+    });
+    expect(config.staged).toEqual(['AGENT_RUNTIME=mock', 'MESSAGING_CHANNELS=simulator']);
+    expect(config.gcp).toMatchObject({ vertex: null, whatsapp: null, gcsBucket: 'qwikspot-uploads-test' });
+  });
+
+  it.each([
+    ['COMMERCE_PROVIDER', 'mock'],
+    ['FILE_STORAGE', 'local'],
+    ['EVENT_SINK', 'local'],
+  ])('staged on still refuses %s=%s', (key, value) => {
+    expect(() => loadConfig({ ...STAGED, [key]: value })).toThrow(new RegExp(`gcp profile refuses.*${key}=${value}`));
+  });
+
+  it('staged on still refuses the Firebase emulators', () => {
+    expect(() => loadConfig({ ...STAGED, NODE_ENV: 'development', FIRESTORE_EMULATOR_HOST: 'localhost:8085' })).toThrow(
+      /gcp profile refuses.*emulator/,
+    );
+  });
+
+  it('staged only applies to gcp: the local profile ignores it and reports nothing staged', () => {
+    expect(loadConfig({ GCP_STAGED_ROLLOUT: 'true' }).staged).toEqual([]);
+    expect(loadConfig(GCP_REAL).staged).toEqual([]);
+  });
+
+  it('settings follow the selected adapters: WhatsApp only with the whatsapp channel, Vertex only with Gemini', () => {
+    const message = (env: Record<string, string>) => {
+      try {
+        loadConfig(env);
+        return '';
+      } catch (err) {
+        return (err as Error).message;
+      }
+    };
+    expect(message({ ...STAGED, MESSAGING_CHANNELS: 'whatsapp,simulator' })).toBe(
+      'The gcp profile is missing required settings: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN',
+    );
+    expect(message({ ...STAGED, AGENT_RUNTIME: 'adk_gemini' })).toBe(
+      'The gcp profile is missing required settings: VERTEX_MODEL, VERTEX_LOCATION',
+    );
+    // With both missing and something else too: still one message, in contract order.
+    const { GCS_BUCKET: _g, ...noBucket } = STAGED_BASE;
+    expect(message({ ...noBucket, GCP_STAGED_ROLLOUT: 'true', AGENT_RUNTIME: 'adk_gemini' })).toBe(
+      'The gcp profile is missing required settings: VERTEX_MODEL, VERTEX_LOCATION, WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN, GCS_BUCKET',
+    );
+  });
+
+  it('the scheduler identity: a service account and an https backend URL make the endpoint audience', () => {
+    expect(loadConfig(STAGED).scheduler).toEqual({
+      serviceAccount: 'qwikspot-scheduler@qwikspot-prod.iam.gserviceaccount.com',
+      audience: 'https://api.example.test/api/internal/process-due',
+    });
+    expect(() => loadConfig({ ...STAGED, SCHEDULER_SERVICE_ACCOUNT: 'someone@gmail.com' })).toThrow(
+      /SCHEDULER_SERVICE_ACCOUNT/,
+    );
+    expect(loadConfig({}).scheduler).toBeNull();
   });
 });

@@ -519,7 +519,7 @@ describe('Brand Console — M3 catalog & store truth', () => {
     expect(api.upload).toHaveBeenCalledWith(
       '/api/local-files/uploads/0f8fad5b-d9cb-469f-a165-70867728950e',
       file,
-      'text/csv',
+      expect.objectContaining({ 'Content-Type': 'text/csv' }),
     );
     expect(api.post).toHaveBeenCalledWith('/api/brand/retail-imports/imp_0123456789abcdef/process', {});
     expect(within(report).getByText(/33 of 36 rows imported · 3 rows rejected/)).toBeInTheDocument();

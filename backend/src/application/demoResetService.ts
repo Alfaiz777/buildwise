@@ -50,6 +50,12 @@ export interface DemoResetResult {
   catalog: { products: number; variants: number };
   stock: { status: string; rowsValid: number; rowsInvalid: number };
   history: Record<string, number>;
+  /**
+   * L1: SHOPIFY_NOT_CONNECTED when the brand's Shopify store is not connected yet — the brand,
+   * its settings and stores are rebuilt, the catalogue and synthetic history are not. Connect
+   * the store (Settings → Shopify), then Reset demo again.
+   */
+  pending: 'SHOPIFY_NOT_CONNECTED' | null;
 }
 
 export class DemoResetService {
@@ -85,19 +91,27 @@ export class DemoResetService {
       demoBrandSettings({ current: brand.settings, brandName: brand.name, holdMinutes: this.deps.demo.holdMinutes }),
     );
 
-    const connection = await this.deps.commerceSync.sync(brandId, actor);
+    // L1: a fresh gcp project has no Shopify connection yet (it needs this brand's Brand Admin).
+    // Still rebuild the stores from the stock file, so the store admins can be provisioned.
+    let connection: Awaited<ReturnType<CommerceSyncService['sync']>> | null = null;
+    try {
+      connection = await this.deps.commerceSync.sync(brandId, actor);
+    } catch (err) {
+      if (!(err instanceof AppError && err.code === 'SHOPIFY_NOT_CONNECTED')) throw err;
+    }
 
     const { record } = await this.deps.retailImports.create(brandId, actor, 'demo-judge-retail.csv');
     await this.deps.files.write(record.fileKey, await this.deps.fixtures.read(DEMO_RETAIL_FIXTURE), 'text/csv');
     const report = await this.deps.retailImports.process(brandId, actor, record.importId);
 
-    const history = await this.writeHistory(brandId);
+    const history = connection ? await this.writeHistory(brandId) : {};
     const total = Object.values(deleted).reduce((a, b) => a + b, 0);
-    await this.audit(brandId, actor, 'SUCCESS', `DELETED_${total}`);
+    await this.audit(brandId, actor, 'SUCCESS', connection ? `DELETED_${total}` : `DELETED_${total}_NO_CATALOG`);
     return {
       brandId,
       deleted,
-      catalog: { products: connection.productCount, variants: connection.variantCount },
+      pending: connection ? null : 'SHOPIFY_NOT_CONNECTED',
+      catalog: { products: connection?.productCount ?? 0, variants: connection?.variantCount ?? 0 },
       stock: {
         status: report.record.status,
         rowsValid: report.record.rowsValid,
