@@ -108,8 +108,8 @@ else
     "${PROJECT_ID}:${DATASET}.events" "$SCHEMA"
   ok "table events created (partitioned by day on event_timestamp)"
 fi
-bq --project_id "$PROJECT_ID" add-iam-policy-binding --member "serviceAccount:${API_SA}" \
-  --role roles/bigquery.dataEditor "${PROJECT_ID}:${DATASET}" >/dev/null
+bq --project_id "$PROJECT_ID" --location "$REGION" query --nouse_legacy_sql \
+  "GRANT \`roles/bigquery.dataEditor\` ON SCHEMA \`${PROJECT_ID}.${DATASET}\` TO \"serviceAccount:${API_SA}\"" >/dev/null
 ok "roles/bigquery.dataEditor for ${API_SA} on this dataset only"
 
 say "8. Cloud Build can build and push the image"
