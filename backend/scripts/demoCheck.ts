@@ -102,11 +102,21 @@ await step('Platform Admin sees the brand list', async () => {
   );
 });
 
-await step('Brand console: signed in as the Brand Admin, catalogue synced', async () => {
+// The variant the shopper asks about: the mock catalogue's serum locally, otherwise (a real
+// Shopify catalogue has its own ids) the variant stocked in the most stores.
+const LOCAL_VARIANT = 'gid://shopify/ProductVariant/2001';
+const variantId = await step('Brand console: signed in as the Brand Admin, catalogue synced', async () => {
   const me = await api('GET', '/api/me', tokens.brand);
   must(me.role === 'BRAND_ADMIN' && me.brand_id === BRAND, 'not the demo brand admin');
   const products = await api('GET', '/api/products', tokens.brand);
   must((products.products as Json[]).length > 0, 'no products — run the catalogue sync or Reset demo');
+  const variants = (products.products as Json[]).flatMap((p) => (p.variants ?? []) as Json[]);
+  if (variants.some((v) => v.shopify_variant_id === LOCAL_VARIANT)) return LOCAL_VARIANT;
+  const stocked = variants
+    .filter((v) => (v.stores_stocked ?? 0) > 0)
+    .sort((a, b) => b.stores_stocked - a.stores_stocked);
+  must(stocked.length > 0, 'no product is stocked in any store — press Reset demo');
+  return stocked[0]!.shopify_variant_id as string;
 });
 
 const retailers = await step('Retailer consoles show their store stock', async () => {
@@ -139,7 +149,7 @@ const offer = await step('Customer: storefront "Need it today?" → simulator ch
       client_event_id: `ce_${ref}`,
       event_type: 'WHATSAPP_CLICK',
       entry: 'STORE_NEED',
-      shopify_variant_id: 'gid://shopify/ProductVariant/2001',
+      shopify_variant_id: variantId,
     },
     { Origin: ORIGIN },
   );
