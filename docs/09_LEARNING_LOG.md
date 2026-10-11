@@ -647,3 +647,27 @@ Design systems: decide the states (loading, empty, error, success) and the words
 4. What is completion %? (Pickups ÷ finished holds; active holds are left out.)
 5. How do we know the judge script works from a fresh reset? (`scripts/judge-script.mjs` presses Reset demo and performs every step through the UI at both widths; any missing step fails it.)
 
+## L1 — the gcp profile goes live, staged
+
+### What changed
+
+```text
+config/env.ts, profile.ts        GCP_STAGED_ROLLOUT: gcp may run the mock agent (and simulator only) — labelled in /api/health
+                                 required settings follow the selected adapters (WHATSAPP_* / VERTEX_* only when selected)
+adapters/storage/gcs…            Cloud Storage: V4 signed PUT URLs capped by x-goog-content-length-range
+adapters/events/bigQuery…        streaming inserts, insertId = event id, never on the request path
+routes/internal.ts               POST /api/internal/process-due: Cloud Scheduler with a Google OIDC token
+infrastructure/scripts/          setup-project.sh (idempotent one-time setup); deploy-backend.sh (always-on CPU, min 1)
+```
+
+### What can fail?
+
+- `gcloud run deploy --set-env-vars` replaces every variable: the configuration attached once would vanish on the next deploy. The script now uses `--update-env-vars`.
+- A signed URL is signed for its headers: the browser must send exactly the target's headers, or Cloud Storage answers `SignatureDoesNotMatch`.
+- A brand-new organisation enforces domain restricted sharing, so `--allow-unauthenticated` fails until the project overrides it.
+- `seed:live` on a fresh project cannot sync a Shopify catalogue that is not connected yet: the rebuild now finishes the brand and stores and reports `pending: SHOPIFY_NOT_CONNECTED`; Reset demo after connecting does the rest.
+
+### Teach-back
+
+A staged rollout is only safe when it is explicit and narrow: one flag, an allow-list of exactly what may be stood in, and the stand-ins visible to anyone who looks (`/api/health`, a startup warning, "Mock AI" in the UI). Machine-to-machine calls (Cloud Scheduler) need their own identity check — signature, audience and the exact service account — not a shared secret.
+

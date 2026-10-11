@@ -68,6 +68,8 @@ export function brandDemoRouter(demoReset: DemoResetService): Router {
       catalog: r.catalog,
       stock: { status: r.stock.status, rows_valid: r.stock.rowsValid, rows_invalid: r.stock.rowsInvalid },
       history: r.history,
+      // L1: SHOPIFY_NOT_CONNECTED → the catalogue waits for Settings → Shopify → Connect.
+      pending: r.pending,
     });
   });
 

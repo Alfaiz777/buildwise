@@ -20,9 +20,10 @@ Browser ──► Firebase Hosting ──(/api/** rewrite)──► Cloud Run: q
 | Database | Firestore emulator `:8085` | Firestore (Native mode) |
 | Credentials | none (emulators) or `gcloud auth application-default login` | Cloud Run service account (ADC). No key files. |
 | Profile | `QWIKSPOT_PROFILE=local` (default) | `QWIKSPOT_PROFILE=gcp`, `VITE_QWIKSPOT_PROFILE=gcp` |
-| Adapters | mock commerce, simulator channel, mock agent, local files (`backend/.data`), local event sink | Shopify, WhatsApp (+ simulator fallback), ADK + Gemini, Cloud Storage, BigQuery (phases L1–L2) |
+| Adapters | mock commerce, simulator channel, mock agent, local files (`backend/.data`), local event sink | Shopify, Cloud Storage, BigQuery; **staged** until they ship: mock agent and simulator only (`GCP_STAGED_ROLLOUT=true`) → later ADK + Gemini and WhatsApp (+ simulator fallback) |
 | Config | none required (optional `backend/.env`) | Cloud Run env vars, `frontend/.env.production.local` at build time |
-| Secrets | none | Secret Manager (phases L1–L2) |
+| Secrets | none | Secret Manager (`SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `TOKEN_ENCRYPTION_KEY`, `SHOPPER_SESSION_SECRET`, `DEMO_LOGINS`) |
+| Due work | "Process due work now" (Brand Console) | Cloud Scheduler every 5 min → `POST /api/internal/process-due` (OIDC) |
 
 The gcp profile refuses to start with any mock/local adapter or the emulators.
 
@@ -73,6 +74,11 @@ Windows note: after an emulator run, the Firestore emulator's `java.exe` sometim
 ---
 
 ## One-time Google Cloud / Firebase setup
+
+**L1: run `PROJECT_ID=qwikspot REGION=asia-south1 infrastructure/scripts/setup-project.sh`** — it does the
+APIs, Firestore, Artifact Registry, both service accounts and their scoped roles, the upload bucket
+(with CORS), the BigQuery dataset and table, and prints the secret commands and any org-policy
+override (docs/12_DEPLOYMENT_RUNBOOK.md §1–§3). The manual steps below remain as reference.
 
 Replace `PROJECT_ID`. Region `asia-south1` is used throughout. If you change it,
 also change it in `firebase.json` (hosting rewrite) and `deploy-backend.sh`.

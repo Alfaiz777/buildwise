@@ -6,6 +6,7 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { bearer, buildTestWorld } from './helpers.js';
+import { FakeShopify } from './shopifyFakes.js';
 
 const DEMO = { enabled: true, brandIds: ['brand_A'], holdMinutes: 20, logins: [] };
 const reset = (app: Parameters<typeof request>[0], user: string) =>
@@ -63,5 +64,23 @@ describe('POST /api/brand/demo/reset', () => {
     // Judge-test plan: the exact words the demo guide shows.
     expect(again.body.error.message).toBe('The demo was just reset. Try again in a minute.');
     expect(w.demoData.calls).toHaveLength(3);
+  });
+});
+
+describe('Reset demo before the Shopify store is connected (L1, fresh gcp project)', () => {
+  it('rebuilds the brand and its stores, skips catalogue and history, and says the store must be connected', async () => {
+    const w = buildTestWorld({ demo: DEMO, shopify: new FakeShopify() });
+    const res = await reset(w.app, 'admin_a');
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ pending: 'SHOPIFY_NOT_CONNECTED', catalog: { products: 0 }, history: {} });
+    // The judge stock file still ran (it creates the stores seed:live provisions admins for).
+    expect(res.body.stock.status).toBe('COMPLETED');
+    expect(w.demoData.calls).toEqual(['wipe:brand_A', 'settings:brand_A']);
+    expect(w.audit.brandEvents.at(-1)).toMatchObject({ action: 'DEMO_RESET', result: 'SUCCESS' });
+  });
+
+  it('with the mock catalogue nothing is pending', async () => {
+    const res = await reset(buildTestWorld({ demo: DEMO }).app, 'admin_a');
+    expect(res.body.pending).toBeNull();
   });
 });

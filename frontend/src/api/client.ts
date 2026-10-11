@@ -23,8 +23,10 @@ export interface ApiClient {
    * PUTs a file to an upload target returned by the backend. A same-origin API path
    * (the local profile's /api/local-files/uploads/...) gets the Bearer token; an absolute
    * signed URL (Cloud Storage in gcp) is used as-is, without Qwikspot credentials.
+   * `headers` are the target's own headers, sent exactly (a signed URL is signed for them:
+   * Content-Type and, on Cloud Storage, x-goog-content-length-range — the size cap).
    */
-  upload<T>(url: string, file: Blob, contentType: string): Promise<T>;
+  upload<T>(url: string, file: Blob, headers: Record<string, string>): Promise<T>;
 }
 
 type Method = 'GET' | 'POST' | 'PATCH';
@@ -86,10 +88,11 @@ export function createApiClient(options: {
     get: <T>(path: string) => request<T>('GET', path),
     post: <T>(path: string, body: unknown) => request<T>('POST', path, body),
     patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
-    upload: async <T>(url: string, file: Blob, contentType: string) => {
+    upload: async <T>(url: string, file: Blob, targetHeaders: Record<string, string>) => {
       const sameOrigin = url.startsWith('/');
       const put = async (forceRefresh: boolean) => {
-        const headers: Record<string, string> = { 'Content-Type': contentType, Accept: 'application/json' };
+        const headers: Record<string, string> = { 'Content-Type': 'application/octet-stream', ...targetHeaders };
+        if (sameOrigin) headers.Accept = 'application/json';
         if (sameOrigin) {
           const token = await getIdToken(forceRefresh);
           if (!token) throw new ApiError(401, 'AUTH_REQUIRED', 'Sign in to continue.', false, null);

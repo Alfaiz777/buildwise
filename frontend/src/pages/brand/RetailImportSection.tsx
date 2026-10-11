@@ -34,7 +34,7 @@ export function RetailImportSection(props: {
     setFailure(null);
     try {
       const created = await api.post<CreatedImport>('/api/brand/retail-imports', { file_name: file.name });
-      await api.upload(created.upload.url, file, created.upload.headers['Content-Type'] ?? 'text/csv');
+      await api.upload(created.upload.url, file, { 'Content-Type': 'text/csv', ...created.upload.headers });
       setReport(
         await api.post<RetailImportReport>(`/api/brand/retail-imports/${created.import.import_id}/process`, {}),
       );

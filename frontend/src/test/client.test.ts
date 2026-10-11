@@ -26,7 +26,9 @@ describe('createApiClient', () => {
     const api = createApiClient({ baseUrl: '', getIdToken: async () => 't', fetchImpl: fetchImpl as typeof fetch });
     const file = new Blob(['store_id\n'], { type: 'text/csv' });
 
-    await expect(api.upload('/api/local-files/uploads/u', file, 'text/csv')).resolves.toEqual({ upload_id: 'u' });
+    await expect(api.upload('/api/local-files/uploads/u', file, { 'Content-Type': 'text/csv' })).resolves.toEqual({
+      upload_id: 'u',
+    });
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/local-files/uploads/u');
     expect(init.method).toBe('PUT');
@@ -34,10 +36,14 @@ describe('createApiClient', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer t');
     expect((init.headers as Record<string, string>)['Content-Type']).toBe('text/csv');
 
-    await api.upload('https://storage.example/signed?sig=1', file, 'text/csv');
+    // L1: a Cloud Storage signed URL gets exactly the target's headers (it is signed for them).
+    await api.upload('https://storage.example/signed?sig=1', file, {
+      'Content-Type': 'text/csv',
+      'x-goog-content-length-range': '0,1024',
+    });
     const [signedUrl, signedInit] = fetchImpl.mock.calls[1] as [string, RequestInit];
     expect(signedUrl).toBe('https://storage.example/signed?sig=1');
-    expect((signedInit.headers as Record<string, string>).Authorization).toBeUndefined();
+    expect(signedInit.headers).toEqual({ 'Content-Type': 'text/csv', 'x-goog-content-length-range': '0,1024' });
   });
 
   it('sends JSON bodies for POST and PATCH with the same auth header', async () => {

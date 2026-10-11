@@ -16,6 +16,7 @@ describe('app foundation', () => {
       profile: 'local',
       // UI-5: adapter names for the Platform System card — never hosts, keys or ids.
       adapters: { agent_runtime: 'MOCK', channels: ['SIMULATOR'], commerce: 'MOCK' },
+      staged: [], // L1: the stand-in adapters of a staged gcp rollout
     });
   });
 
@@ -92,5 +93,18 @@ describe('app foundation', () => {
     expect(ok.headers['access-control-allow-origin']).toBe('https://app.qwikspot.test');
     const bad = await request(corsApp).get('/api/health').set('Origin', 'https://evil.example');
     expect(bad.headers['access-control-allow-origin']).toBeUndefined();
+  });
+});
+
+describe('/api/health during a staged gcp rollout (L1)', () => {
+  it('lists the stand-in adapters, names only', async () => {
+    const express = (await import('express')).default;
+    const { healthRouter } = await import('../src/routes/health.js');
+    const app = express().use(
+      '/api',
+      healthRouter({ profile: 'gcp', staged: ['AGENT_RUNTIME=mock', 'MESSAGING_CHANNELS=simulator'] }),
+    );
+    const res = await request(app).get('/api/health');
+    expect(res.body).toMatchObject({ profile: 'gcp', staged: ['AGENT_RUNTIME=mock', 'MESSAGING_CHANNELS=simulator'] });
   });
 });

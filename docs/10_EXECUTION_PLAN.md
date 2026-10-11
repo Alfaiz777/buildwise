@@ -57,6 +57,8 @@ Each milestone is implemented, tested and reviewed before the next one starts. T
 | L2 | Live integrations | WhatsApp Cloud API (`WhatsAppMessagingProvider`), Shopify development store (`ShopifyCommerceProvider`), BigQuery (`BigQueryEventSink`); provider contract tests against the real adapters |
 | L3 | Live E2E | Live E2E journey (`08` §12); final AI evaluation on `AdkGeminiAgentRuntime` (`08` §7); reservation race on real Firestore; production smoke test (`08` §14) |
 
+**L1 progress (staged rollout).** The `gcp` profile boots on Cloud Run against Firestore, Firebase Auth, Cloud Storage (`GCSFileStorageProvider`), BigQuery (`BigQueryEventSink`), Secret Manager and the real Shopify store (`ShopifyCommerceProvider`, L2-Shopify), with Cloud Scheduler calling `POST /api/internal/process-due`. Until `AdkGeminiAgentRuntime` and `WhatsAppMessagingProvider` ship, it runs with `GCP_STAGED_ROLLOUT=true`: the mock agent and the simulator channel, shown in `/api/health` (`staged`) and logged at start; nothing else may be mocked. `infrastructure/scripts/setup-project.sh` does the one-time project setup; the deploy steps are `12_DEPLOYMENT_RUNBOOK.md` (UNVERIFIED until run against the real project).
+
 The judged prototype runs the `gcp` profile with a real Shopify development store, real Meta WhatsApp and Gemini. The simulator remains available in `gcp` as the judge-testable channel.
 
 ---

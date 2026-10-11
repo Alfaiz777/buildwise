@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { bearer, buildTestWorld, TEST_ORIGIN } from './helpers.js';
+import { bearer, buildTestWorld, FakeOidcVerifier, TEST_ORIGIN } from './helpers.js';
 import { buildScenarioWorld, type ScenarioWorld } from './scenarioWorld.js';
 import { FakeShopify, signedCallback, TEST_SHOP, webhookHmac } from './shopifyFakes.js';
 
@@ -225,6 +225,18 @@ const ROUTES: [string, Step][] = [
           .set('X-Shopify-Hmac-Sha256', webhookHmac(raw))
           .send(raw);
       }),
+  ],
+  [
+    'internal.ts POST /process-due',
+    async (_s, ctx) => {
+      // Cloud Scheduler's endpoint lives in its own world (it needs the scheduler identity).
+      const w = buildTestWorld({ schedulerVerifier: new FakeOidcVerifier() });
+      const res = await request(w.app)
+        .post('/api/internal/process-due')
+        .set('Authorization', 'Bearer valid-scheduler-token');
+      ctx['own:internal.ts POST /process-due'] = JSON.stringify(w.audit.brandEvents);
+      return res;
+    },
   ],
   [
     'demo.ts POST /demo/reset',

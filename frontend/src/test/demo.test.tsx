@@ -162,6 +162,21 @@ describe('Brand Console — demo guide and Reset demo', () => {
     ).toBeInTheDocument();
   });
 
+  it('before the Shopify store is connected, Reset says what to do next (L1)', async () => {
+    const post = vi.fn(async () => ({
+      pending: 'SHOPIFY_NOT_CONNECTED',
+      catalog: { products: 0, variants: 0 },
+      stock: { status: 'COMPLETED', rows_valid: 0 },
+      history: {},
+    }));
+    renderAt('/brand', apiWith({ '/api/brand/demo': { reset_available: true } }, post));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset demo' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Yes, reset the demo' }));
+    expect(
+      await screen.findByText(/Connect your Shopify store \(Settings → Shopify\), then press Reset demo again/),
+    ).toBeInTheDocument();
+  });
+
   it('Cancel closes the dialog without resetting; a brand that is not the demo brand sees no guide', async () => {
     const post = vi.fn(async () => ({}));
     const view = renderAt('/brand', apiWith({ '/api/brand/demo': { reset_available: true } }, post));

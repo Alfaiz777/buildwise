@@ -40,6 +40,9 @@ import { brandConversationsRouter, simulatorRouter } from './routes/conversation
 import { demoStorefrontRouter } from './routes/demoStorefront.js';
 import { brandDemoRouter, demoRouter } from './routes/demo.js';
 import { shopperRouter } from './routes/shopper.js';
+import { internalRouter } from './routes/internal.js';
+import type { ScheduledWorkService } from './application/scheduledWork.js';
+import type { OidcTokenVerifier } from './ports/oidc.js';
 import { afterShopifySync, shopifyBrandRouter, shopifyCallbackRouter, shopifyWebhookRouter } from './routes/shopify.js';
 import { healthRouter } from './routes/health.js';
 import { intentsRouter } from './routes/intents.js';
@@ -51,7 +54,8 @@ import { retailImportsRouter } from './routes/retailImports.js';
 import { reservationsRouter } from './routes/reservations.js';
 
 export interface AppDeps {
-  config: Pick<Config, 'corsAllowedOrigins'> & Partial<Pick<Config, 'profile' | 'demo' | 'build' | 'adapters'>>;
+  config: Pick<Config, 'corsAllowedOrigins'> &
+    Partial<Pick<Config, 'profile' | 'demo' | 'build' | 'adapters' | 'staged'>>;
   logger: Logger;
   verifier: TokenVerifier;
   repositories: {
@@ -90,11 +94,17 @@ export interface AppDeps {
   };
   /** Local profile only: receives browser uploads for LocalFileStorageProvider. */
   localUploads?: LocalUploadReceiver;
+  /** L1: Cloud Scheduler's due-work endpoint (wired when SCHEDULER_SERVICE_ACCOUNT is set). */
+  internal?: {
+    work: Pick<ScheduledWorkService, 'processDue'>;
+    verifier: OidcTokenVerifier;
+    scheduler: { serviceAccount: string; audience: string };
+  };
 }
 
 /** Builds the Express app. All I/O is injected (see composition/container.ts). */
 export function createApp(deps: AppDeps): Express {
-  const { config, logger, verifier, repositories, services, localUploads } = deps;
+  const { config, logger, verifier, repositories, services, localUploads, internal } = deps;
   const app = express();
 
   app.disable('x-powered-by');
@@ -133,6 +143,7 @@ export function createApp(deps: AppDeps): Express {
             commerce: config.adapters.commerce === 'shopify' ? 'SHOPIFY' : 'MOCK',
           }
         : undefined,
+      staged: config.staged,
     }),
   );
   // PUBLIC: the judged demo's login panel (DEMO_MODE only returns logins).
@@ -158,6 +169,8 @@ export function createApp(deps: AppDeps): Express {
   }
   // PUBLIC Shopify OAuth callback: HMAC + signed single-use state; redirects to the Brand Console.
   if (services.shopifyAuth) app.use('/api', shopifyCallbackRouter(services.shopifyAuth));
+  // PUBLIC (machine): Cloud Scheduler's due work, authenticated by a Google OIDC token (L1).
+  if (internal) app.use('/api/internal', internalRouter(internal.work, internal.verifier, internal.scheduler));
   // PUBLIC shopper demo channel (Change 16): signed session tokens, origin allowlist, rate limits.
   if (services.shopper) app.use('/api/shopper', shopperRouter(services.shopper));
 
