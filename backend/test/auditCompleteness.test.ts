@@ -12,6 +12,14 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { bearer, buildTestWorld, FakeOidcVerifier, TEST_ORIGIN } from './helpers.js';
 import { buildScenarioWorld, type ScenarioWorld } from './scenarioWorld.js';
 import { FakeShopify, signedCallback, TEST_SHOP, webhookHmac } from './shopifyFakes.js';
+import { FakeMeta, metaSignature, waText, waWebhook } from './whatsappFakes.js';
+
+const WA_AUDIT = {
+  wabaId: '100000000000777',
+  code: 'signup-code-audit-0777',
+  token: 'wa-business-token-audit',
+  numbers: [{ id: '200000000000777', display: '+91 90000 00777', name: 'Audit Brand', quality: 'GREEN' }],
+};
 
 /** L2-Shopify routes run in their own COMMERCE_PROVIDER=shopify world; their new events land in ctx. */
 async function inShopifyWorld(
@@ -226,6 +234,42 @@ const ROUTES: [string, Step][] = [
           .send(raw);
       }),
   ],
+  ...(
+    [
+      ['whatsapp.ts POST /whatsapp/connect', null],
+      ['whatsapp.ts POST /whatsapp/disconnect', '/api/integrations/whatsapp/disconnect'],
+      ['whatsapp.ts POST /webhooks/whatsapp', 'webhook'],
+    ] as const
+  ).map(([name, then]): [string, Step] => [
+    name,
+    async (_s, ctx) => {
+      // L2-WhatsApp routes live in their own world (the whatsapp channel against FakeMeta).
+      const w = buildTestWorld({ whatsapp: new FakeMeta([WA_AUDIT]) });
+      const connect = await request(w.app)
+        .post('/api/integrations/whatsapp/connect')
+        .set('Authorization', bearer('admin_a'))
+        .send({ code: WA_AUDIT.code, waba_id: WA_AUDIT.wabaId, phone_number_id: WA_AUDIT.numbers[0]!.id });
+      const before = then ? w.audit.brandEvents.length : 0;
+      let res = connect;
+      if (then === 'webhook') {
+        const raw = JSON.stringify(
+          waWebhook(WA_AUDIT.numbers[0]!.id, {
+            messages: [waText('919800000001', 'wamid.AUDIT', 'I want to talk to a person')],
+          }),
+        );
+        res = await request(w.app)
+          .post('/api/webhooks/whatsapp')
+          .set('Content-Type', 'application/json')
+          .set('X-Hub-Signature-256', metaSignature(raw))
+          .send(raw);
+        await w.whatsappWebhooks!.flush();
+      } else if (then) {
+        res = await request(w.app).post(then).set('Authorization', bearer('admin_a'));
+      }
+      ctx[`own:${name}`] = JSON.stringify(w.audit.brandEvents.slice(before));
+      return res;
+    },
+  ]),
   [
     'internal.ts POST /process-due',
     async (_s, ctx) => {

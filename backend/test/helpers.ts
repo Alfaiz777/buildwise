@@ -1,4 +1,9 @@
 import { ShopifyHttpAdminApi } from '../src/adapters/commerce/shopifyAdminApi.js';
+import { HttpWhatsAppGraphApi } from '../src/adapters/messaging/whatsappGraphApi.js';
+import { WhatsAppMessagingProvider } from '../src/adapters/messaging/whatsappMessagingProvider.js';
+import { WhatsAppConnections } from '../src/application/whatsappConnections.js';
+import { WhatsAppWebhookService } from '../src/application/whatsappWebhookService.js';
+import { META_TEST_APP, MemoryWhatsAppStore, type FakeMeta } from './whatsappFakes.js';
 import { ScheduledWorkService } from '../src/application/scheduledWork.js';
 import type { OidcTokenVerifier } from '../src/ports/oidc.js';
 import { ShopifyCommerceProvider } from '../src/adapters/commerce/shopifyCommerceProvider.js';
@@ -605,6 +610,9 @@ export function buildTestWorld(
     schedulerVerifier?: OidcTokenVerifier;
     /** L2-Shopify: COMMERCE_PROVIDER=shopify against a FakeShopify (no network). */
     shopify?: FakeShopify;
+    /** L2-WhatsApp: the whatsapp channel against a FakeMeta (no network); devNumber = the local single-number fallback. */
+    whatsapp?: FakeMeta;
+    whatsappDevNumber?: { accessToken: string; phoneNumberId: string };
   } = {},
 ) {
   const world = seedWorld();
@@ -687,7 +695,33 @@ export function buildTestWorld(
   const messaging = new Map<Channel, MessagingProvider>();
   if ((options.channels ?? ['SIMULATOR']).includes('SIMULATOR'))
     messaging.set('SIMULATOR', options.simulatorProvider ?? new SimulatorMessagingProvider());
+  // L2-WhatsApp: the per-brand WhatsApp channel, next to (never instead of) the simulator.
+  const whatsappStore = new MemoryWhatsAppStore();
+  const whatsappGraph = options.whatsapp
+    ? new HttpWhatsAppGraphApi(META_TEST_APP, { fetch: options.whatsapp.fetch })
+    : null;
+  const whatsapp = whatsappGraph
+    ? new WhatsAppConnections({
+        store: whatsappStore,
+        api: whatsappGraph,
+        audit,
+        devNumber: options.whatsappDevNumber ?? null,
+        now: options.now,
+        pin: () => '246813',
+      })
+    : undefined;
+  const whatsappProvider =
+    whatsapp && whatsappGraph
+      ? new WhatsAppMessagingProvider({
+          appSecret: META_TEST_APP.appSecret,
+          api: whatsappGraph,
+          senderFor: (brandId) => whatsapp.senderFor(brandId),
+          now: options.now,
+        })
+      : undefined;
+  if (whatsappProvider) messaging.set('WHATSAPP', whatsappProvider);
   const conversation = createConversationModule({
+    whatsappNumberFor: whatsapp ? (brandId) => whatsapp.publicNumber(brandId) : undefined,
     brands,
     products,
     connections,
@@ -746,6 +780,20 @@ export function buildTestWorld(
         })
       : undefined;
 
+  const whatsappWebhooks =
+    whatsapp && whatsappProvider
+      ? new WhatsAppWebhookService({
+          provider: whatsappProvider,
+          verifyToken: META_TEST_APP.verifyToken,
+          connections: whatsapp,
+          store: whatsappStore,
+          pipeline: conversation.pipeline,
+          receipts,
+          devBrandId: 'brand_A',
+          logger: options.logger,
+        })
+      : undefined;
+
   const demoData = new MemoryDemoData(brands);
   const demoReset = new DemoResetService({
     demo: options.demo ?? { enabled: false, brandIds: [], holdMinutes: 20 },
@@ -799,8 +847,9 @@ export function buildTestWorld(
       fulfilment: conversation.fulfilment,
       handoff: conversation.handoff,
       brandSettings: new BrandSettingsQuery({
+        whatsappStatus: whatsapp ? (brandId) => whatsapp.status(brandId) : undefined,
         brands,
-        channelMode: 'SIMULATOR',
+        channelMode: options.whatsapp ? 'WHATSAPP' : 'SIMULATOR',
         commerceMode: options.shopify ? 'SHOPIFY' : 'MOCK',
       }),
       insights: new InsightsService({
@@ -815,6 +864,9 @@ export function buildTestWorld(
       demoReset,
       shopifyAuth,
       shopifyWebhooks,
+      whatsapp,
+      whatsappWebhooks,
+      metaConfig: whatsapp ? META_TEST_APP : null,
       shopifyOrders,
     },
     localUploads: options.localUploads === false ? undefined : files,
@@ -860,6 +912,9 @@ export function buildTestWorld(
     demoData,
     demoReset,
     shopifyStore,
+    whatsappStore,
+    whatsapp,
+    whatsappWebhooks,
     shopifyAuth,
     shopifyOrders,
     catalogRefresh,

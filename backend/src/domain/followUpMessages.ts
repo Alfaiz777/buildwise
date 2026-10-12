@@ -63,6 +63,8 @@ export interface FollowUpMessage {
   templateName: string | null;
   /** Template parameters (TEMPLATE only): brand name and verified product data. */
   parameters: Record<string, string>;
+  /** The same parameters in the template body's placeholder order ({{1}}, {{2}} in the approved template). */
+  orderedParameters: string[];
   text: string;
   /** Quick replies (Change 16): Find a store near me · Buy online · Talk to a person. */
   options: ReplyOption[];
@@ -96,6 +98,10 @@ export function composeFollowUp(input: FollowUpMessageInput): FollowUpMessage {
     kind: input.kind,
     templateName: input.kind === 'TEMPLATE' ? template.name : null,
     parameters: input.kind === 'TEMPLATE' ? parameters : {},
+    orderedParameters:
+      input.kind === 'TEMPLATE'
+        ? [...template.body.matchAll(/\{\{(\w+)\}\}/g)].map((m) => parameters[m[1]!] ?? '')
+        : [],
     text: `${body}\n\n${OPT_OUT_LINE}`,
     options,
     ...(input.imageUrl && input.productTitle

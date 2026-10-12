@@ -8,7 +8,9 @@ Audience: the person deploying Qwikspot to Google Cloud for the first time (L1) 
 
 Conventions: project id `qwikspot` (written `PROJECT_ID` below), region `asia-south1` everywhere (it must match `firebase.json` and `infrastructure/scripts/deploy-backend.sh`). Run commands from the repository root.
 
-**Staged rollout (until the Gemini and WhatsApp adapters ship).** Deploy with `GCP_STAGED_ROLLOUT=true`, `AGENT_RUNTIME=mock` and `MESSAGING_CHANNELS=simulator`. The gcp profile then allows exactly the mock agent and a simulator-only channel; it still refuses mock commerce, local files, local events and the emulators. `/api/health` shows `"staged": ["AGENT_RUNTIME=mock", "MESSAGING_CHANNELS=simulator"]`, the server logs one `server.staged_rollout` warning at start, and the console labels the agent "Mock AI". No `WHATSAPP_*` or `VERTEX_*` setting is needed in this mode. ✅ (`config.test.ts`)
+**Staged rollout (until the Gemini and WhatsApp adapters ship).** Deploy with `GCP_STAGED_ROLLOUT=true`, `AGENT_RUNTIME=mock` and `MESSAGING_CHANNELS=simulator`. The gcp profile then allows exactly the mock agent and a simulator-only channel; it still refuses mock commerce, local files, local events and the emulators. `/api/health` shows `"staged": ["AGENT_RUNTIME=mock", "MESSAGING_CHANNELS=simulator"]`, the server logs one `server.staged_rollout` warning at start, and the console labels the agent "Mock AI". No `META_*`, `WHATSAPP_*` or `VERTEX_*` setting is needed in this mode. ✅ (`config.test.ts`)
+
+**L2-WhatsApp under the staged rollout.** `MESSAGING_CHANNELS=simulator,whatsapp` is also allowed with `GCP_STAGED_ROLLOUT=true` and `AGENT_RUNTIME=mock`: brands that connect their own WhatsApp Business number (Settings → Channels: WhatsApp) are answered on WhatsApp by the mock agent; every other brand, the shopper demo (`/chat`) and `demo:check` stay on the simulator. `/api/health` then shows `"staged": ["AGENT_RUNTIME=mock"]`. ✅ (`config.test.ts`)
 
 ---
 
@@ -50,7 +52,7 @@ No key files: Cloud Run uses the attached service account (ADC).
 
 ## 3. Secrets and configuration — UNVERIFIED (contract ✅)
 
-The `gcp` profile checks every required setting at startup and stops with one message listing the **names** of the missing ones (`backend/src/config/env.ts`, `gcpRequiredSettings`; tested in `config.test.ts`). Required settings follow the selected adapters: `WHATSAPP_*` only when the `whatsapp` channel is selected, `VERTEX_*` only with `AGENT_RUNTIME=adk_gemini`. ✅
+The `gcp` profile checks every required setting at startup and stops with one message listing the **names** of the missing ones (`backend/src/config/env.ts`, `gcpRequiredSettings`; tested in `config.test.ts`). Required settings follow the selected adapters: `META_APP_ID`, `META_APP_SECRET`, `META_ES_CONFIG_ID` and `WHATSAPP_VERIFY_TOKEN` only when the `whatsapp` channel is selected (no global WhatsApp access token or number: each brand connects its own), `VERTEX_*` only with `AGENT_RUNTIME=adk_gemini`. ✅
 
 **Secrets (Secret Manager → Cloud Run `--update-secrets`):**
 
@@ -61,7 +63,8 @@ The `gcp` profile checks every required setting at startup and stops with one me
 | `TOKEN_ENCRYPTION_KEY` | AES-256-GCM key (32 bytes, base64) for the stored Shopify tokens — keep it stable |
 | `SHOPPER_SESSION_SECRET` | Signs shopper demo sessions (≥ 32 characters; required with `DEMO_MODE=true`) |
 | `DEMO_LOGINS` | The judged demo's login panel (JSON printed by `seed:live`, with the real `DEMO_PASSWORD`) |
-| `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | Later (WhatsApp channel, L2) — not needed with `MESSAGING_CHANNELS=simulator` |
+| `META_APP_SECRET` | The Meta app's secret (L2-WhatsApp): webhook `X-Hub-Signature-256` check and the Embedded Signup code exchange. Only with the `whatsapp` channel |
+| `WHATSAPP_VERIFY_TOKEN` | A random string you choose; Meta sends it back once when the webhook is verified. Only with the `whatsapp` channel |
 
 **Plain environment variables:**
 
@@ -73,7 +76,7 @@ The `gcp` profile checks every required setting at startup and stops with one me
 | `GCP_REGION` | `asia-south1` |
 | `GCP_STAGED_ROLLOUT` | `true` until Gemini and WhatsApp ship (then remove it) |
 | `AGENT_RUNTIME` | `mock` during the staged rollout (later `adk_gemini`) |
-| `MESSAGING_CHANNELS` | `simulator` during the staged rollout (later `whatsapp,simulator`) |
+| `MESSAGING_CHANNELS` | `simulator`, or `simulator,whatsapp` once the Meta app is set up (§7b) |
 | `COMMERCE_PROVIDER` | `shopify` (the gcp default; set it explicitly) |
 | `PUBLIC_BACKEND_URL` | The API's public https origin, e.g. `https://PROJECT_ID.web.app` (Hosting rewrites `/api/**`) — the Shopify callback and the Scheduler audience are built from it |
 | `FRONTEND_URL` | `https://PROJECT_ID.web.app` (where Shopify OAuth lands) |
@@ -87,7 +90,9 @@ The `gcp` profile checks every required setting at startup and stops with one me
 | `DEMO_HOLD_MINUTES` | `20` |
 | `SHOPIFY_SCOPES`, `SHOPIFY_API_VERSION` | optional; default the four read scopes and `2026-10` |
 | `VERTEX_MODEL`, `VERTEX_LOCATION` | later, with `AGENT_RUNTIME=adk_gemini` (§6) |
-| `WHATSAPP_PHONE_NUMBER_ID` | later, with the `whatsapp` channel |
+| `META_APP_ID` | The Meta app id (public; the Facebook SDK uses it) — with the `whatsapp` channel |
+| `META_ES_CONFIG_ID` | The Facebook Login for Business configuration id for WhatsApp Embedded Signup (public) — with the `whatsapp` channel |
+| `META_GRAPH_VERSION` | optional; default `v26.0` (format `vNN.0`) |
 | `FIRESTORE_DATABASE` | `(default)` (optional) |
 | `BUILD_VERSION`, `BUILD_COMMIT` | set by `deploy-backend.sh` |
 | `LOG_LEVEL` | `info` (set by `deploy-backend.sh`) |
@@ -132,7 +137,7 @@ curl http://localhost:8080/api/health   # {"status":"ok","version":"…","commit
 ```
 The image runs as the unprivileged `node` user, so in the local profile `LOCAL_DATA_DIR` must point at a writable path (`/tmp/…`); in `gcp` files go to Cloud Storage.
 
-The gcp profile never falls back to a mock or local adapter. The adapters that do not exist yet (`AdkGeminiAgentRuntime`, `WhatsAppMessagingProvider`) are only reachable without `GCP_STAGED_ROLLOUT`, where they fail at start with `AdapterNotAvailableError` — by design.
+The gcp profile never falls back to a mock or local adapter. The adapter that does not exist yet (`AdkGeminiAgentRuntime`) is only reachable without `GCP_STAGED_ROLLOUT`, where they fail at start with `AdapterNotAvailableError` — by design.
 
 ## 6. Vertex AI model access — UNVERIFIED (after the staged rollout)
 
@@ -156,6 +161,19 @@ The gcp profile never falls back to a mock or local adapter. The adapters that d
 1. Dev Dashboard → the Qwikspot app → configuration: change the redirect URL to `https://PROJECT_ID.web.app/api/integrations/shopify/callback` (the `PUBLIC_BACKEND_URL` host), then release the version.
 2. Brand Console (the demo brand's Brand Admin) → **Settings → Shopify** → reconnect the store (`m6ccxz-wk.myshopify.com`) → approve. The webhooks are registered against the deployed URL.
 3. **Sync products**, then **Reset demo** so the stock maps to the live catalogue.
+
+## 7b. Meta app and WhatsApp — UNVERIFIED (contract ✅)
+
+One Meta app (Qwikspot, Tech Provider) serves every brand; each brand connects its **own** WhatsApp Business number with Embedded Signup in Settings → Channels: WhatsApp. The simulator stays for every brand that has not connected one.
+
+1. Secrets: `META_APP_SECRET` (App settings → Basic → App secret) and `WHATSAPP_VERIFY_TOKEN` (any random string, e.g. `openssl rand -hex 24`) into Secret Manager, readable by `qwikspot-api` (§3).
+2. Cloud Run: `MESSAGING_CHANNELS=simulator,whatsapp`, `META_APP_ID`, `META_ES_CONFIG_ID`, `META_GRAPH_VERSION=v26.0` and the two secrets (`gcloud run services update … --update-env-vars … --update-secrets …`).
+3. Meta app dashboard:
+   - **WhatsApp → Configuration → Webhook:** callback URL `https://PROJECT_ID.web.app/api/webhooks/whatsapp` (Hosting forwards `/api/**` with the body unchanged), verify token = `WHATSAPP_VERIFY_TOKEN`; subscribe to `messages`, `account_update` and `phone_number_quality_update`.
+   - **Facebook Login for Business → Configurations:** a WhatsApp Embedded Signup configuration (its id is `META_ES_CONFIG_ID`) with `whatsapp_business_management` and `whatsapp_business_messaging`.
+   - **Facebook Login for Business → Settings:** Login with the JavaScript SDK on; Allowed domains for the JavaScript SDK and Valid OAuth redirect URIs = `https://PROJECT_ID.web.app` (and any custom domain).
+   - **App settings → Basic:** App domains `PROJECT_ID.web.app`; Privacy policy `https://qwikspot.urbanlyfe.in/privacy-policy/`, Terms `https://qwikspot.urbanlyfe.in/terms/`, User data deletion `https://qwikspot.urbanlyfe.in/data-deletion/`.
+4. Brand Console → Settings → **Connect WhatsApp** → finish Meta's signup → the card shows the masked number and its name. Message that number: the reply comes from it, and the conversation appears in Conversations as channel WhatsApp.
 
 ## 8. Seed the judged demo — rehearsed on the emulators ✅
 
@@ -207,7 +225,10 @@ Data: Firestore is not rolled back with code. For the demo brand, **Reset demo**
 |---|---|
 | Service exits at start: "The gcp profile is missing required settings: …" | A variable or secret from §3 is not attached |
 | Service exits: "The gcp profile refuses local/mock infrastructure" | A selector (`COMMERCE_PROVIDER`, …) or an emulator host is set — or `AGENT_RUNTIME=mock` without `GCP_STAGED_ROLLOUT=true` |
-| Service exits: `AdapterNotAvailableError` | `AGENT_RUNTIME=adk_gemini` or the `whatsapp` channel before those adapters exist — use the staged rollout |
+| Service exits: `AdapterNotAvailableError` | `AGENT_RUNTIME=adk_gemini` before that adapter exists — use the staged rollout |
+| Service exits: "MESSAGING_CHANNELS=whatsapp needs valid settings: …" | A `META_*` variable or `WHATSAPP_VERIFY_TOKEN` is missing, or `META_GRAPH_VERSION` is not `vNN.0` |
+| Meta: "The callback URL or verify token couldn't be validated" | `WHATSAPP_VERIFY_TOKEN` differs from the dashboard, or the service is not running with the `whatsapp` channel yet |
+| WhatsApp messages arrive but nobody answers | Webhook `401` (wrong `META_APP_SECRET`), or `whatsapp.webhook_unknown_number` in the log: that number is not connected to any brand |
 | `deploy-backend.sh` fails on `--allow-unauthenticated` | The org policy `iam.allowedPolicyMemberDomains` (§1 step 4) |
 | `503 SERVICE_UNAVAILABLE` from every route | Firestore not reachable / service account lacks `datastore.user` |
 | Retail upload fails in the browser (CORS) | The bucket's CORS does not list the Hosting origin — re-run `setup-project.sh` |

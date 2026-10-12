@@ -56,6 +56,8 @@ export interface IntentServiceDeps {
   now?: () => Date;
   /** Hook for the follow-up engine (called after every intent update). */
   onIntentUpdated?: (intent: IntentRecord) => Promise<void>;
+  /** L2-WhatsApp: the brand's connected WhatsApp number (display form), or null. */
+  whatsappNumberFor?: (brandId: string) => Promise<string | null>;
 }
 
 const MAX_PROCESSED_IDS = 100;
@@ -219,7 +221,9 @@ export class IntentService {
       consumedByCustomerId: null,
     });
     const text = prefilledText(token);
-    const number = resolveMessagingSettings(brand.settings, brand.name).whatsappNumber;
+    // L2-WhatsApp: the brand's own connected number; otherwise the configured (simulator) number.
+    const connected = (await this.deps.whatsappNumberFor?.(brand.brandId))?.replace(/\D/g, '') || null;
+    const number = connected ?? resolveMessagingSettings(brand.settings, brand.name).whatsappNumber;
     return { prefilledText: text, waLink: number ? `https://wa.me/${number}?text=${text}` : null, expiresAt };
   }
 }

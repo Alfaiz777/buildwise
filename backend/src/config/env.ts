@@ -48,6 +48,15 @@ const EnvSchema = z.object({
   PUBLIC_BACKEND_URL: z.string().optional(),
   FRONTEND_URL: z.string().optional(),
   TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  // L2-WhatsApp: one Meta app (Tech Provider), each brand's number connected by Embedded Signup.
+  META_APP_ID: z.string().optional(),
+  META_APP_SECRET: z.string().optional(),
+  META_ES_CONFIG_ID: z.string().optional(),
+  META_GRAPH_VERSION: z.string().optional(),
+  WHATSAPP_VERIFY_TOKEN: z.string().optional(),
+  // Local profile only: one dev number for every brand without its own connection.
+  WHATSAPP_ACCESS_TOKEN: z.string().optional(),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
   // L1: a temporary, labelled staged rollout (gcp only): the mock agent while Gemini is being built.
   GCP_STAGED_ROLLOUT: z.enum(['true', 'false', '']).optional(),
   // L1: the Cloud Scheduler service account allowed to call POST /api/internal/process-due.
@@ -82,13 +91,67 @@ export const GCP_REQUIRED_SETTINGS = [
 
 /** Required in gcp only when AGENT_RUNTIME=adk_gemini. */
 export const GCP_AGENT_SETTINGS = ['VERTEX_MODEL', 'VERTEX_LOCATION'] as const;
-/** Required in gcp only when the whatsapp channel is selected. */
+/**
+ * Required in gcp only when the whatsapp channel is selected (L2-WhatsApp): the Meta app.
+ * Each brand's own token and number come from Embedded Signup, never from the environment.
+ */
 export const GCP_WHATSAPP_SETTINGS = [
-  'WHATSAPP_ACCESS_TOKEN',
-  'WHATSAPP_PHONE_NUMBER_ID',
-  'WHATSAPP_APP_SECRET',
+  'META_APP_ID',
+  'META_APP_SECRET',
+  'META_ES_CONFIG_ID',
   'WHATSAPP_VERIFY_TOKEN',
 ] as const;
+
+/** The pinned Graph API version (latest released when L2-WhatsApp was built; docs/06 §17.1 S2). */
+export const DEFAULT_META_GRAPH_VERSION = 'v26.0';
+
+/** The Meta app behind the WhatsApp channel (L2-WhatsApp). Secrets: never logged or returned. */
+export interface WhatsAppAppConfig {
+  /** Public: the browser's Facebook SDK needs it. */
+  appId: string | null;
+  /** Signs webhooks (X-Hub-Signature-256) and the code exchange. */
+  appSecret: string;
+  /** Public: the Embedded Signup configuration (Facebook Login for Business). */
+  esConfigId: string | null;
+  graphVersion: string;
+  verifyToken: string;
+  /** Local profile only: a single dev number used by brands without their own connection. */
+  devNumber: { accessToken: string; phoneNumberId: string } | null;
+}
+
+/**
+ * The WhatsApp channel's settings (L2-WhatsApp). gcp: the whole Meta app (checked with the
+ * gcp contract). local: the app secret and verify token (webhooks), plus either the Meta app
+ * (Embedded Signup) or the single dev number — or both.
+ */
+export function parseWhatsAppConfig(env: NodeJS.ProcessEnv, profile: Profile): WhatsAppAppConfig {
+  const v = (name: string) => String(env[name] ?? '').trim();
+  const bad: string[] = [];
+  const graphVersion = v('META_GRAPH_VERSION') || DEFAULT_META_GRAPH_VERSION;
+  if (!/^v\d{2}\.0$/.test(graphVersion)) bad.push('META_GRAPH_VERSION');
+  for (const name of ['META_APP_SECRET', 'WHATSAPP_VERIFY_TOKEN']) if (!v(name)) bad.push(name);
+  const devToken = v('WHATSAPP_ACCESS_TOKEN');
+  const devNumber = v('WHATSAPP_PHONE_NUMBER_ID');
+  const dev = profile === 'local' && devToken && devNumber ? { accessToken: devToken, phoneNumberId: devNumber } : null;
+  if (profile === 'local' && (devToken || devNumber) && !dev)
+    bad.push(devToken ? 'WHATSAPP_PHONE_NUMBER_ID' : 'WHATSAPP_ACCESS_TOKEN');
+  if (devNumber && !/^\d{5,20}$/.test(devNumber)) bad.push('WHATSAPP_PHONE_NUMBER_ID');
+  const appId = v('META_APP_ID') || null;
+  const esConfigId = v('META_ES_CONFIG_ID') || null;
+  if (appId && !/^\d{5,25}$/.test(appId)) bad.push('META_APP_ID');
+  if (esConfigId && !/^\d{5,25}$/.test(esConfigId)) bad.push('META_ES_CONFIG_ID');
+  if (profile === 'local' && !dev && !(appId && esConfigId)) bad.push('META_APP_ID', 'META_ES_CONFIG_ID');
+  if (bad.length > 0)
+    throw new Error(`MESSAGING_CHANNELS=whatsapp needs valid settings: ${[...new Set(bad)].join(', ')}`);
+  return {
+    appId,
+    appSecret: v('META_APP_SECRET'),
+    esConfigId,
+    graphVersion,
+    verifyToken: v('WHATSAPP_VERIFY_TOKEN'),
+    devNumber: dev,
+  };
+}
 
 /** Every setting this gcp configuration needs, in one list (the order of the one error message). */
 export function gcpRequiredSettings(adapters: AdapterSelection): string[] {
@@ -105,8 +168,6 @@ export interface GcpSettings {
   firestoreDatabase: string;
   /** Only with AGENT_RUNTIME=adk_gemini. */
   vertex: { model: string; location: string } | null;
-  /** Only with the whatsapp channel. */
-  whatsapp: { accessToken: string; phoneNumberId: string; appSecret: string; verifyToken: string } | null;
   bigQueryDataset: string;
   gcsBucket: string;
 }
@@ -263,6 +324,10 @@ export interface Config {
   scheduler: { serviceAccount: string; audience: string } | null;
   /** L2-Shopify: present only when COMMERCE_PROVIDER=shopify. */
   shopify: ShopifyAppConfig | null;
+  /** L2-WhatsApp: present only when the whatsapp channel is selected. */
+  whatsapp: WhatsAppAppConfig | null;
+  /** AES-256-GCM key for stored third-party tokens; set when Shopify or WhatsApp needs it. */
+  tokenEncryptionKey: Buffer | null;
 }
 
 const LOCAL_PROJECT_ID = 'demo-qwikspot';
@@ -329,14 +394,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       firestoreDatabase: String(env.FIRESTORE_DATABASE ?? '').trim() || '(default)',
       vertex:
         adapters.agentRuntime === 'adk_gemini' ? { model: v('VERTEX_MODEL'), location: v('VERTEX_LOCATION') } : null,
-      whatsapp: adapters.messagingChannels.includes('whatsapp')
-        ? {
-            accessToken: v('WHATSAPP_ACCESS_TOKEN'),
-            phoneNumberId: v('WHATSAPP_PHONE_NUMBER_ID'),
-            appSecret: v('WHATSAPP_APP_SECRET'),
-            verifyToken: v('WHATSAPP_VERIFY_TOKEN'),
-          }
-        : null,
       bigQueryDataset: v('BIGQUERY_DATASET'),
       gcsBucket: v('GCS_BUCKET'),
     };
@@ -344,6 +401,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   // After the gcp contract check, so a deploy names every missing setting in one message.
   const shopify = adapters.commerce === 'shopify' ? parseShopifyConfig(env) : null;
+  const whatsapp = adapters.messagingChannels.includes('whatsapp') ? parseWhatsAppConfig(env, profile) : null;
+  // Stored third-party tokens (Shopify, WhatsApp) are sealed with one key (lib/tokenCipher.ts).
+  let tokenEncryptionKey: Buffer | null = shopify?.encryptionKey ?? null;
+  if (whatsapp && !tokenEncryptionKey) {
+    const key = Buffer.from(String(env.TOKEN_ENCRYPTION_KEY ?? '').trim(), 'base64');
+    if (key.length !== 32) throw new Error('MESSAGING_CHANNELS=whatsapp needs valid settings: TOKEN_ENCRYPTION_KEY');
+    tokenEncryptionKey = key;
+  }
 
   const projectId = e.GOOGLE_CLOUD_PROJECT || (profile === 'local' ? LOCAL_PROJECT_ID : '');
   if (!projectId) throw new Error('Invalid environment configuration: GOOGLE_CLOUD_PROJECT');
@@ -413,6 +478,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ).replace(/\/$/, ''),
     gcp,
     shopify,
+    whatsapp,
+    tokenEncryptionKey,
     staged: stagedAdapters(profile, adapters, stagedRollout),
     scheduler,
   };

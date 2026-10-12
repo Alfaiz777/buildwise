@@ -552,7 +552,7 @@ describe('Settings (read-only)', () => {
     expect(screen.getByText('http://localhost:5173')).toBeInTheDocument();
     expect(screen.getByText('In 4–5 days')).toBeInTheDocument();
     expect(screen.getByText(/nearest one within 25 km is still offered/)).toBeInTheDocument();
-    expect(screen.getByText(/Simulator now; WhatsApp when the live channel is connected/)).toBeInTheDocument();
+    expect(screen.getByText(/Simulator — WhatsApp once your number is connected/)).toBeInTheDocument();
     expect(screen.getByText('Settings are read-only in this prototype.')).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /save|edit/i })).not.toBeInTheDocument();

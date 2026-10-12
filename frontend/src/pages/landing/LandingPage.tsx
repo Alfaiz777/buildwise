@@ -17,6 +17,7 @@ import {
   Truck,
   UserRound,
 } from 'lucide-react';
+import { LEGAL_LINKS } from '../../lib/legal';
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/authContext';
@@ -428,6 +429,11 @@ export function LandingPage({ profile = 'local' }: { profile?: FrontendProfile }
           <Wordmark />
           <Link to="/login?as=platform">Qwikspot team sign-in</Link>
           {demo.demoMode && <span>Demo data is synthetic.</span>}
+          {LEGAL_LINKS.map((l) => (
+            <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer">
+              {l.label}
+            </a>
+          ))}
           <span>© 2026 Qwikspot</span>
         </div>
       </footer>

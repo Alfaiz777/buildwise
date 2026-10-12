@@ -44,6 +44,9 @@ import { internalRouter } from './routes/internal.js';
 import type { ScheduledWorkService } from './application/scheduledWork.js';
 import type { OidcTokenVerifier } from './ports/oidc.js';
 import { afterShopifySync, shopifyBrandRouter, shopifyCallbackRouter, shopifyWebhookRouter } from './routes/shopify.js';
+import { metaConfigRouter, whatsappBrandRouter, whatsappWebhookRouter } from './routes/whatsapp.js';
+import type { WhatsAppConnections } from './application/whatsappConnections.js';
+import type { WhatsAppWebhookService } from './application/whatsappWebhookService.js';
 import { healthRouter } from './routes/health.js';
 import { intentsRouter } from './routes/intents.js';
 import { localFilesRouter } from './routes/localFiles.js';
@@ -90,6 +93,11 @@ export interface AppDeps {
     /** L2-Shopify: wired only with COMMERCE_PROVIDER=shopify. */
     shopifyAuth?: ShopifyAuthService;
     shopifyWebhooks?: ShopifyWebhookService;
+    /** L2-WhatsApp: wired only when the whatsapp channel is selected. */
+    whatsapp?: WhatsAppConnections;
+    whatsappWebhooks?: WhatsAppWebhookService;
+    /** The public Meta ids for the browser's Facebook SDK (Embedded Signup). */
+    metaConfig?: { appId: string | null; esConfigId: string | null; graphVersion: string } | null;
     shopifyOrders?: ShopifyOrderService;
   };
   /** Local profile only: receives browser uploads for LocalFileStorageProvider. */
@@ -127,6 +135,8 @@ export function createApp(deps: AppDeps): Express {
   }
   // PUBLIC Shopify webhooks: before express.json, so the HMAC is checked on the raw body (L2-Shopify).
   if (services.shopifyWebhooks) app.use('/api', shopifyWebhookRouter(services.shopifyWebhooks));
+  // PUBLIC WhatsApp webhooks: before express.json too (X-Hub-Signature-256 over the raw body; L2-WhatsApp).
+  if (services.whatsappWebhooks) app.use('/api', whatsappWebhookRouter(services.whatsappWebhooks));
   app.use(express.json({ limit: '100kb' }));
 
   // Public routes.
@@ -169,6 +179,8 @@ export function createApp(deps: AppDeps): Express {
   }
   // PUBLIC Shopify OAuth callback: HMAC + signed single-use state; redirects to the Brand Console.
   if (services.shopifyAuth) app.use('/api', shopifyCallbackRouter(services.shopifyAuth));
+  // PUBLIC: the Facebook SDK's public ids (Embedded Signup) — app id, configuration id, Graph version.
+  app.use('/api', metaConfigRouter(services.metaConfig ?? null));
   // PUBLIC (machine): Cloud Scheduler's due work, authenticated by a Google OIDC token (L1).
   if (internal) app.use('/api/internal', internalRouter(internal.work, internal.verifier, internal.scheduler));
   // PUBLIC shopper demo channel (Change 16): signed session tokens, origin allowlist, rate limits.
@@ -195,6 +207,7 @@ export function createApp(deps: AppDeps): Express {
     integrationsRouter(services.commerceSync, afterShopifySync(services.shopifyAuth, services.shopifyOrders)),
   );
   tenant.use('/integrations', requireScope('BRAND'), shopifyBrandRouter(services.shopifyAuth, services.shopifyOrders));
+  tenant.use('/integrations', requireScope('BRAND'), whatsappBrandRouter(services.whatsapp));
   tenant.use('/products', requireScope('BRAND'), productsRouter(services.catalog));
   tenant.use(
     '/brand',

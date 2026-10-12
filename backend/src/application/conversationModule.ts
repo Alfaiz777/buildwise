@@ -42,6 +42,8 @@ import { ShopperChannelService } from './shopperChannel.js';
 import { SimulatorService } from './simulatorService.js';
 
 export interface ConversationModuleDeps {
+  /** L2-WhatsApp: the brand's connected WhatsApp number for the storefront's wa.me link. */
+  whatsappNumberFor?: (brandId: string) => Promise<string | null>;
   brands: BrandRepository;
   products: ProductRepository;
   connections: ConnectionRepository;
@@ -152,6 +154,7 @@ export function createConversationModule(deps: ConversationModuleDeps) {
     events: recorder,
     now,
     onIntentUpdated: async (intent) => void (await followUps.evaluate(intent.brandId, intent.intentId)),
+    whatsappNumberFor: deps.whatsappNumberFor,
   });
   const simulator = new SimulatorService({
     messaging: deps.messaging,
