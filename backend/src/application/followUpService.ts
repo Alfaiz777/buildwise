@@ -288,6 +288,7 @@ export class FollowUpService {
         origin: 'PROACTIVE_FOLLOW_UP',
         messageKind: kind,
         templateName: message.templateName,
+        templateParameters: message.orderedParameters,
         actionReference: intent.intentId,
       },
     );

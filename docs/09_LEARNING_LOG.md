@@ -671,3 +671,27 @@ infrastructure/scripts/          setup-project.sh (idempotent one-time setup); d
 
 A staged rollout is only safe when it is explicit and narrow: one flag, an allow-list of exactly what may be stood in, and the stand-ins visible to anyone who looks (`/api/health`, a startup warning, "Mock AI" in the UI). Machine-to-machine calls (Cloud Scheduler) need their own identity check — signature, audience and the exact service account — not a shared secret.
 
+## L2-WhatsApp — each brand on its own WhatsApp number
+
+### What changed
+
+```text
+config/env.ts                  META_APP_ID / META_APP_SECRET / META_ES_CONFIG_ID / META_GRAPH_VERSION / WHATSAPP_VERIFY_TOKEN;
+                               staged gcp may run simulator,whatsapp with the mock agent
+adapters/messaging/whatsapp…   Graph API client (one Meta app) + WhatsAppMessagingProvider (per-brand token, 30 s cache)
+adapters/firestore/whatsapp…   whatsapp_connections/{brand} (token + PIN sealed) and whatsapp_numbers/{phone_number_id}
+application/whatsapp…          connect (code → token → number → subscribe → register), disconnect, webhook service
+frontend Settings              Channels: WhatsApp card (Facebook SDK, Embedded Signup v4); legal links on the landing page
+```
+
+### What can fail?
+
+- The signup code expires after 30 seconds: exchange it before anything slow, and say so plainly when Meta refuses it.
+- Two brands claiming one number: checked before subscribing, and again inside the save transaction.
+- A webhook signature computed over re-serialized JSON never matches: the route reads the raw bytes before any JSON parser.
+- Meta retries slow webhooks, so the handler answers 200 first and dedupes by `wamid` through the pipeline's receipts.
+- Embedded Signup v2 stops on 2026-10-15: we use v4 (configuration-driven, empty `extras`).
+
+### Teach-back
+
+One app, many tenants: the app secret proves Meta sent a webhook, but the `phone_number_id` inside it decides which brand it belongs to, and that brand's own token sends the reply. A brand that never connects keeps working on the simulator, so adding a channel never takes one away.

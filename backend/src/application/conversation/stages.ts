@@ -5,6 +5,7 @@
  * 8 TOOLS (guardrail-approved writes, then the reply from verified results). The fixed
  * order is enforced by ConversationPipeline.
  */
+import { whatsappDisplayRef } from '../../domain/whatsappNumbers.js';
 import { isWriteTool, type NearbyStoresOutput } from '../../domain/agentTools.js';
 import { parseOption, toOutboundOptions, type Reply } from '../../domain/agentReplies.js';
 import type { AgentRuntimeName } from '../../domain/ai.js';
@@ -141,7 +142,15 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
       const { customer, created } = await deps.customers.findOrCreateByIdentity(
         brand.brandId,
         { channel: context.inbound.channel, externalRef: context.inbound.externalCustomerRef },
-        { consentState: 'UNKNOWN', shopifyCustomerId: null, displayRef: context.inbound.externalCustomerRef },
+        context.inbound.channel === 'WHATSAPP'
+          ? // L2-WhatsApp: the customer wrote to the brand's number first — recorded as consent (STOP still
+            // opts out); the console label never shows the phone number.
+            {
+              consentState: 'OPTED_IN',
+              shopifyCustomerId: null,
+              displayRef: whatsappDisplayRef(context.inbound.externalCustomerRef),
+            }
+          : { consentState: 'UNKNOWN', shopifyCustomerId: null, displayRef: context.inbound.externalCustomerRef },
         now().toISOString(),
       );
       context.customerId = customer.customerId;

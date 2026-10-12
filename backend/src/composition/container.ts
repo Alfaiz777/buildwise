@@ -1,4 +1,9 @@
 import { MockAgentRuntime } from '../adapters/agent/mockAgentRuntime.js';
+import { HttpWhatsAppGraphApi } from '../adapters/messaging/whatsappGraphApi.js';
+import { WhatsAppMessagingProvider } from '../adapters/messaging/whatsappMessagingProvider.js';
+import { FirestoreWhatsAppConnectionStore } from '../adapters/firestore/whatsappConnectionStore.js';
+import { WhatsAppConnections } from '../application/whatsappConnections.js';
+import { WhatsAppWebhookService } from '../application/whatsappWebhookService.js';
 import { GoogleOidcVerifier } from '../adapters/auth/googleOidcVerifier.js';
 import { ScheduledWorkService } from '../application/scheduledWork.js';
 import { BigQuery } from '@google-cloud/bigquery';
@@ -121,13 +126,19 @@ function bigQueryTable(config: GcpProviderConfig): BigQueryTableLike {
 type GcpProviderConfig = Pick<Config, 'adapters' | 'localDataDir'> &
   Partial<Pick<Config, 'projectId'>> & { gcp?: Pick<GcpSettings, 'gcsBucket' | 'bigQueryDataset'> | null };
 
-export function createProviders(config: GcpProviderConfig, logger: Logger = silentLogger): Providers {
+export function createProviders(
+  config: GcpProviderConfig,
+  logger: Logger = silentLogger,
+  /** L2-WhatsApp: the per-brand WhatsApp adapter, built by buildContainer (it needs Firestore). */
+  built: { whatsapp?: MessagingProvider } = {},
+): Providers {
   const { adapters, localDataDir } = config;
 
   const messaging = new Map<Channel, MessagingProvider>();
   for (const channel of adapters.messagingChannels) {
+    // The simulator stays in every profile (judges, brands without a connected number).
     if (channel === 'simulator') messaging.set('SIMULATOR', new SimulatorMessagingProvider());
-    else notAvailable('WhatsAppMessagingProvider');
+    else messaging.set('WHATSAPP', built.whatsapp ?? notAvailable('WhatsAppMessagingProvider'));
   }
 
   return {
@@ -187,8 +198,31 @@ export interface Container {
 
 /** `now` is injectable for end-to-end tests (real due_at values without real waiting). */
 export function buildContainer(config: Config, logger: Logger, options: { now?: () => Date } = {}): Container {
-  const providers = createProviders(config, logger);
   const { auth, db } = initFirebase(config.projectId, config.emulators);
+
+  // L2-WhatsApp: one Meta app; each brand sends from its own connected number (encrypted token).
+  let whatsapp: WhatsAppConnections | undefined;
+  let whatsappProvider: WhatsAppMessagingProvider | undefined;
+  let whatsappStore: FirestoreWhatsAppConnectionStore | undefined;
+  if (config.whatsapp) {
+    whatsappStore = new FirestoreWhatsAppConnectionStore(db, new TokenCipher(config.tokenEncryptionKey!));
+    const graph = new HttpWhatsAppGraphApi(config.whatsapp);
+    whatsapp = new WhatsAppConnections({
+      store: whatsappStore,
+      api: graph,
+      audit: new FirestoreAuditRepository(db),
+      devNumber: config.whatsapp.devNumber,
+      now: options.now,
+    });
+    const connections = whatsapp;
+    whatsappProvider = new WhatsAppMessagingProvider({
+      appSecret: config.whatsapp.appSecret,
+      api: graph,
+      senderFor: (brandId) => connections.senderFor(brandId),
+      now: options.now,
+    });
+  }
+  const providers = createProviders(config, logger, { whatsapp: whatsappProvider });
 
   const users = new FirestoreUserRepository(db);
   const brands = new FirestoreBrandRepository(db);
@@ -263,7 +297,9 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     audit,
     now: options.now,
   });
+  const receiptsRepo = new FirestoreWebhookReceiptRepository(db);
   const conversation = createConversationModule({
+    whatsappNumberFor: whatsapp ? (brandId) => whatsapp!.publicNumber(brandId) : undefined,
     brands,
     products,
     connections,
@@ -273,7 +309,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     tokens: new FirestoreIntentTokenRepository(db),
     conversations: new FirestoreConversationRepository(db),
     recommendations: new FirestoreRecommendationRepository(db),
-    receipts: new FirestoreWebhookReceiptRepository(db),
+    receipts: receiptsRepo,
     events: new FirestoreCommerceEventRepository(db),
     audit,
     sink: providers.events,
@@ -359,6 +395,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         fulfilment: conversation.fulfilment,
         handoff: conversation.handoff,
         brandSettings: new BrandSettingsQuery({
+          whatsappStatus: whatsapp ? (brandId) => whatsapp!.status(brandId) : undefined,
           brands,
           channelMode: channelModeOf(config),
           commerceMode: config.adapters.commerce === 'shopify' ? 'SHOPIFY' : 'MOCK',
@@ -375,6 +412,28 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         demoReset,
         shopifyAuth,
         shopifyWebhooks,
+        whatsapp,
+        whatsappWebhooks:
+          whatsapp && whatsappProvider && whatsappStore && config.whatsapp
+            ? new WhatsAppWebhookService({
+                provider: whatsappProvider,
+                verifyToken: config.whatsapp.verifyToken,
+                connections: whatsapp,
+                store: whatsappStore,
+                pipeline: conversation.pipeline,
+                receipts: receiptsRepo,
+                // Local only: the single dev number answers for the demo brand.
+                devBrandId: config.profile === 'local' ? (config.demo.brandIds[0] ?? 'brd_demo') : null,
+                logger,
+              })
+            : undefined,
+        metaConfig: config.whatsapp
+          ? {
+              appId: config.whatsapp.appId,
+              esConfigId: config.whatsapp.esConfigId,
+              graphVersion: config.whatsapp.graphVersion,
+            }
+          : null,
         shopifyOrders,
       },
       internal: config.scheduler

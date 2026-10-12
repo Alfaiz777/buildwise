@@ -394,6 +394,39 @@ Cloud Run:
 
 Signature verification and idempotency follow `03_TECH_ARCHITECTURE.md` §16.3.
 
+**L2-WhatsApp (as built).**
+
+- `GET /api/webhooks/whatsapp` answers `hub.challenge` (text) when `hub.mode=subscribe` and `hub.verify_token` equals `WHATSAPP_VERIFY_TOKEN` (timing-safe), otherwise `403`.
+- `POST /api/webhooks/whatsapp` is mounted before the JSON parser: `X-Hub-Signature-256` (`sha256=` + hex HMAC-SHA256 of the **raw** body with `META_APP_SECRET`) is checked timing-safe → `401 INVALID_SIGNATURE`, nothing processed. A valid delivery is answered `200 { received: true }` at once and processed after the response (Cloud Run keeps CPU always on). The Firebase Hosting rewrite forwards the body unchanged.
+- The brand comes from `metadata.phone_number_id` (`whatsapp_numbers/{phone_number_id}` → `brand_id`). An unknown number is ignored and logged as `whatsapp.webhook_unknown_number` with the id only.
+- Each message is processed once: the pipeline's receipt `WHATSAPP:{brand_id}:MESSAGE:{wamid}`. Text, location, interactive button / list replies and template quick-reply buttons go through the same `ConversationPipeline` as the simulator.
+- Consent: a customer's first inbound WhatsApp message creates the customer `OPTED_IN` (they started the chat on the brand's number); `STOP` opts out as on every channel. The 24-hour window is unchanged: outside it only templates are sent, and follow-ups only to opted-in customers.
+- `statuses[]` (sent / delivered / read / failed) are stored at `brands/{brand_id}/messageStatuses/{wamid}`; a status never moves backwards.
+- `account_update` (RESTRICT / BAN / DISABLE → `RESTRICTED`; REMOVED / UNBAN → `CONNECTED`) and `phone_number_quality_update` (→ `quality_rating`) change only the connection's status fields.
+
+**Connecting a number (Embedded Signup).** One Meta app (Qwikspot, Tech Provider) serves every brand:
+
+```text
+GET  /api/public/meta-config                 (public) → { available, app_id, config_id, graph_version } — never a secret
+GET  /api/integrations/whatsapp              (BRAND_ADMIN) → { enabled, status, display_phone_number (masked), verified_name,
+                                              quality_rating, connected_at, dev_number }
+POST /api/integrations/whatsapp/connect      (BRAND_ADMIN; 10/min per brand; audited WHATSAPP_CONNECTED)
+     { code, waba_id, phone_number_id? }
+  1. GET /{v}/oauth/access_token?client_id&client_secret&code → the brand's business token   (400 WHATSAPP_CODE_INVALID)
+  2. no phone_number_id (Embedded Signup v4 may omit it): GET /{waba}/phone_numbers — exactly one, else 400 WHATSAPP_NUMBER_REQUIRED
+  3. GET /{phone_number_id}?fields=display_phone_number,verified_name,quality_rating
+  4. number held by another brand → 409 WHATSAPP_NUMBER_TAKEN (checked before anything changes, and again in the save transaction)
+  5. POST /{waba}/subscribed_apps;  POST /{phone_number_id}/register { messaging_product: whatsapp, pin }  (random 6-digit PIN)
+  6. save whatsapp_connections/{brand_id} (token + PIN sealed with AES-256-GCM) and whatsapp_numbers/{phone_number_id}
+  Meta failures → 502 WHATSAPP_CONNECT_FAILED (retryable). Without the whatsapp channel → 409 WHATSAPP_NOT_CONFIGURED.
+POST /api/integrations/whatsapp/disconnect   (BRAND_ADMIN; audited WHATSAPP_DISCONNECTED) → best-effort DELETE subscribed_apps,
+     token and PIN deleted, number released, DISCONNECTED; the brand is back on the simulator
+```
+
+**Sending.** `WhatsAppMessagingProvider` sends `POST /{v}/{phone_number_id}/messages` with the **brand's** token (looked up per brand, cached 30 s). Mapping within `whatsappLimits` (§11.1): quick replies → interactive `button`; list → interactive `list`; CTA → `cta_url`; image header → the interactive header (or an `image` message with a caption); a location part → a second `location` message; follow-ups → `template` with body parameters in placeholder order. Meta errors are normalized: `131047` → `OUTSIDE_SERVICE_WINDOW`, `131026` → `INVALID_RECIPIENT`, `132000/132001/132015` → `TEMPLATE_INVALID`, a rejected token → `WHATSAPP_RECONNECT_REQUIRED` (permanent); rate limits and 5xx are retried.
+
+**Channel routing.** Unchanged: each conversation replies on its own channel; a follow-up uses the customer's identity channel. A brand without a connected number gets no WhatsApp customers, so it stays on the simulator. The storefront `wa_link` uses the connected number, otherwise the brand settings' number.
+
 The simulator channel (§14.2) hands its messages to the **same** `ConversationPipeline` at step 4. There is no separate simulator AI flow.
 
 ## 10.1 Web → WhatsApp intent handshake
@@ -612,6 +645,9 @@ POST  /api/integrations/shopify/connect            (BRAND_ADMIN; L2-Shopify — 
 POST  /api/integrations/shopify/disconnect         (BRAND_ADMIN; L2-Shopify — §9)
 POST  /api/integrations/shopify/sync               (BRAND_ADMIN; the brand's connected store in Shopify mode — §8)
 POST  /api/integrations/shopify/orders/sync        (BRAND_ADMIN; L2-Shopify order check — §8.1)
+GET   /api/integrations/whatsapp                   (BRAND_ADMIN; L2-WhatsApp status, number masked — §10)
+POST  /api/integrations/whatsapp/connect           (BRAND_ADMIN; L2-WhatsApp Embedded Signup result — §10)
+POST  /api/integrations/whatsapp/disconnect        (BRAND_ADMIN; L2-WhatsApp — §10)
 GET   /api/products
 GET   /api/customers/:id
 POST  /api/brand/retail-imports                    (create an import + upload target; 06 §6a)
@@ -639,7 +675,9 @@ PATCH /api/reservations/:id                        (RETAIL_ADMIN)
 # Customer AI Channel
 POST  /api/channels/simulator/messages             (simulator channel; §14.2)
 GET   /api/channels/simulator/conversations/:conversationId/messages
-POST  /api/webhooks/whatsapp                       (WhatsApp channel; §10)
+GET   /api/webhooks/whatsapp                       (L2-WhatsApp: Meta's hub.challenge verification — §10)
+POST  /api/webhooks/whatsapp                       (L2-WhatsApp: raw-body X-Hub-Signature-256; messages, statuses, account updates — §10)
+GET   /api/public/meta-config                      (public: Meta app id, Embedded Signup config id, Graph version — §10)
 GET   /api/page/context                            (contextual pages)
 GET   /api/stores/nearby
 POST  /api/reservations                            (page mutation token)
@@ -1247,7 +1285,7 @@ Findings from the isolated integration spikes (S1 Shopify, S2 Meta WhatsApp, S3 
 
 ```text
 S1 Shopify:        recorded below (L2-Shopify, checked against shopify.dev on 2026-10-08)
-S2 Meta WhatsApp:  (pending)
+S2 Meta WhatsApp:  recorded below (L2-WhatsApp, checked against developers.facebook.com on 2026-10-12)
 S3 ADK + Gemini:   (pending; record in 05_AI_AGENT_SPEC.md)
 ```
 
@@ -1266,3 +1304,15 @@ S3 ADK + Gemini:   (pending; record in 05_AI_AGENT_SPEC.md)
 | Product fields | `featuredMedia` replaces the deprecated `featuredImage`; `ProductStatus` has `ACTIVE, ARCHIVED, DRAFT, UNLISTED`; prices in the shop's `currencyCode`. | `featuredMedia.preview.image.url`; UNLISTED → ACTIVE. |
 | Customer fields | `email`, `phone`, `emailMarketingConsent`, `smsMarketingConsent` are deprecated → `defaultEmailAddress { emailAddress marketingState }`, `defaultPhoneNumber { phoneNumber marketingState }`. | Uses the new fields; `SUBSCRIBED` → OPTED_IN. |
 | Order attributes | GraphQL `Order.customAttributes`; the REST-shaped webhook payload carries `note_attributes [{ name, value }]`. | Webhook reads `note_attributes` (`qs_ref`, `qs_ws`). |
+
+**S2 Meta WhatsApp — what the current Meta docs say (2026-10-12):**
+
+| Topic | Finding | What Qwikspot does |
+|---|---|---|
+| Graph version | Latest stable **v26.0**; versions live about two years. | `META_GRAPH_VERSION`, default `v26.0`, validated `vNN.0`. |
+| Embedded Signup | **v4** is selected by the Facebook Login for Business configuration; its `extras` object is intentionally empty. v2 is deprecated on **2026-10-15**. v4 may finish without a phone number id. | `FB.login({ config_id, response_type: 'code', override_default_response_type: true, extras: {} })`; the backend lists the WABA's numbers when the id is missing. |
+| Session info | `window.postMessage` from a `facebook.com` origin: `{ type: WA_EMBEDDED_SIGNUP, event: FINISH* / CANCEL / ERROR, data: { phone_number_id, waba_id } }`. | Origin checked (hostname `facebook.com` or `*.facebook.com`). |
+| Code exchange | The code lives **30 seconds**: `GET /oauth/access_token?client_id&client_secret&code` → a business integration system user token. | Exchanged first, on the server; never logged or returned. |
+| Onboarding | `POST /{waba}/subscribed_apps` (webhooks for that WABA); `POST /{phone}/register { messaging_product, pin }` (6-digit two-step PIN). | Both on connect; the PIN is stored sealed. |
+| Webhook | Verify with `hub.mode`, `hub.verify_token`, `hub.challenge`. Deliveries carry `X-Hub-Signature-256: sha256=<hex HMAC of the raw body with the app secret>`; answer 200 quickly or Meta retries. | §10. |
+| Service window | Free-form messages only within 24 h of the customer's last message (error `131047` outside it); templates otherwise. | Pipeline policy unchanged; `131047` → `OUTSIDE_SERVICE_WINDOW`. |

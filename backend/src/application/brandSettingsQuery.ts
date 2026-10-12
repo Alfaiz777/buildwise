@@ -22,7 +22,15 @@ export type ChannelMode = 'SIMULATOR' | 'WHATSAPP';
  */
 export class BrandSettingsQuery {
   constructor(
-    private readonly deps: { brands: BrandRepository; channelMode: ChannelMode; commerceMode?: 'MOCK' | 'SHOPIFY' },
+    private readonly deps: {
+      brands: BrandRepository;
+      channelMode: ChannelMode;
+      commerceMode?: 'MOCK' | 'SHOPIFY';
+      /** L2-WhatsApp: the brand's own connected number (masked), when the channel is on. */
+      whatsappStatus?: (
+        brandId: string,
+      ) => Promise<{ status: string; display_phone_number: string | null; verified_name: string | null }>;
+    },
   ) {}
 
   async get(brandId: string) {
@@ -59,9 +67,24 @@ export class BrandSettingsQuery {
       retail_freshness_hours: resolveFreshnessHours(s),
       attribution_window_minutes: Math.round(attributionWindowMs(s) / 60_000),
       allowed_storefront_origins: allowedStorefrontOrigins(s),
-      channel: { mode: this.deps.channelMode },
+      // Per brand (L2-WhatsApp): WhatsApp only with its own connected number; otherwise the simulator.
+      channel: await this.channel(brand.brandId),
       // L2-Shopify: where the catalogue comes from on this server (the Settings page's Shopify card).
       commerce: { provider: this.deps.commerceMode ?? 'MOCK' },
     };
+  }
+
+  private async channel(brandId: string) {
+    const wa = this.deps.channelMode === 'WHATSAPP' ? await this.deps.whatsappStatus?.(brandId) : undefined;
+    return wa && wa.status !== 'NOT_CONNECTED'
+      ? {
+          mode: 'WHATSAPP' as const,
+          whatsapp: {
+            display_phone_number: wa.display_phone_number,
+            verified_name: wa.verified_name,
+            status: wa.status,
+          },
+        }
+      : { mode: 'SIMULATOR' as const, whatsapp: null };
   }
 }

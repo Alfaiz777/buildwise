@@ -230,6 +230,8 @@ IntegrationConnection
 
 The SHOPIFY connection uses the deterministic ID `SHOPIFY` (one per brand).
 
+**WhatsAppConnection** (L2-WhatsApp) — `whatsapp_connections/{brand_id}`, server-only, never wiped by Reset demo: `waba_id`, `phone_number_id`, `display_phone_number`, `verified_name`, `quality_rating`, `status` (`CONNECTED | RESTRICTED | DISCONNECTED`), `business_token` and `pin` (AES-256-GCM sealed with `TOKEN_ENCRYPTION_KEY`; deleted on disconnect), `connected_at`, `updated_at`. APIs return the number masked (`+91 •••• 4821`) and never the token or PIN. `whatsapp_numbers/{phone_number_id}` → `{ brand_id, waba_id }` resolves a webhook to its brand and lets one number belong to one brand only (written in the same transaction). Delivery statuses: `brands/{brand_id}/messageStatuses/{wamid}` → `{ brand_id, external_message_id, status (SENT | DELIVERED | READ | FAILED), status_at }`.
+
 Providers:
 
 ```text
@@ -1210,6 +1212,7 @@ Tenant-owned entities live under their brand. Paths are always resolved server-s
 brands/{brand_id}
 brands/{brand_id}/connections/{connection_id}
 brands/{brand_id}/integrationSecrets/{provider}                      (L2-Shopify: encrypted tokens; server-only)
+brands/{brand_id}/messageStatuses/{wamid}                            (L2-WhatsApp: delivery status per sent message)
 brands/{brand_id}/customers/{customer_id}
 brands/{brand_id}/channelIdentities/{sha256(channel:external_ref)}   (uniqueness guard → customer_id)
 brands/{brand_id}/webVisitors/{sha256(visitor_id)}                   (visitor → customer link)
@@ -1240,6 +1243,8 @@ pageAccessTokens/{token_hash}
 webhookReceipts/{receipt_id}
 shopifyShops/{shop_domain}      (L2-Shopify: shop → brand_id)
 oauthStates/{nonce}             (L2-Shopify: single-use OAuth state, 10 minutes)
+whatsapp_connections/{brand_id} (L2-WhatsApp: the brand's number; token + PIN sealed; server-only)
+whatsapp_numbers/{phone_number_id} (L2-WhatsApp: number → brand_id, waba_id)
 platformAuditEvents/{audit_id}  (platform-level; no brand owner)
 ```
 

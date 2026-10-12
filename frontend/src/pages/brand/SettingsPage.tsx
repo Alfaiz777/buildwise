@@ -4,6 +4,7 @@ import { ConsoleShell, useLoad } from '../../components/ConsoleShell';
 import { Badge, Card, ErrorState, Skeleton } from '../../components/ui';
 import { label } from '../../lib/labels';
 import { ShopifyCard } from './ShopifyCard';
+import { WhatsAppCard } from './WhatsAppCard';
 
 export interface BrandSettings {
   brand_id: string;
@@ -17,7 +18,11 @@ export interface BrandSettings {
   retail_freshness_hours: number;
   attribution_window_minutes: number;
   allowed_storefront_origins: string[];
-  channel: { mode: 'SIMULATOR' | 'WHATSAPP' };
+  /** Per brand (L2-WhatsApp): WhatsApp only with the brand's own connected number. */
+  channel: {
+    mode: 'SIMULATOR' | 'WHATSAPP';
+    whatsapp?: { display_phone_number: string | null; verified_name: string | null; status: string } | null;
+  };
   /** L2-Shopify: where this server's catalogue comes from. */
   commerce?: { provider: 'MOCK' | 'SHOPIFY' };
 }
@@ -55,6 +60,7 @@ export function SettingsPage() {
       {s && (
         <>
           <ShopifyCard provider={s.commerce?.provider ?? 'MOCK'} />
+          <WhatsAppCard />
 
           <Card
             title="How Qwikspot follows up for you"
@@ -153,9 +159,9 @@ export function SettingsPage() {
               </dd>
               <dt>Customer channel</dt>
               <dd>
-                {s.channel.mode === 'WHATSAPP'
-                  ? 'WhatsApp'
-                  : 'Simulator now; WhatsApp when the live channel is connected'}
+                {s.channel.mode === 'WHATSAPP' && s.channel.whatsapp
+                  ? `WhatsApp: ${s.channel.whatsapp.display_phone_number ?? ''}${s.channel.whatsapp.verified_name ? ` (${s.channel.whatsapp.verified_name})` : ''}`
+                  : 'Simulator — WhatsApp once your number is connected'}
               </dd>
             </dl>
           </Card>

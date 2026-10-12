@@ -9,15 +9,20 @@ export const SHOPIFY_FAKE = {
   PUBLIC_BACKEND_URL: 'https://api.example.test',
 };
 
+/** Fake Meta app settings (L2-WhatsApp) — never real secrets. */
+export const META_FAKE = {
+  META_APP_ID: '123456789012345',
+  META_APP_SECRET: 'fake-meta-app-secret',
+  META_ES_CONFIG_ID: '987654321098765',
+  WHATSAPP_VERIFY_TOKEN: 'fake-verify',
+};
+
 /** Fake values for every gcp setting (Change 14, G7) — never real secrets. */
 export const GCP_REQUIRED_FAKE = {
   GCP_REGION: 'asia-south1',
   VERTEX_MODEL: 'gemini-test-model',
   VERTEX_LOCATION: 'asia-south1',
-  WHATSAPP_ACCESS_TOKEN: 'fake-wa-token',
-  WHATSAPP_PHONE_NUMBER_ID: '000000000000',
-  WHATSAPP_APP_SECRET: 'fake-app-secret',
-  WHATSAPP_VERIFY_TOKEN: 'fake-verify',
+  ...META_FAKE,
   ...SHOPIFY_FAKE,
   BIGQUERY_DATASET: 'qwikspot_events',
   GCS_BUCKET: 'qwikspot-uploads-test',
@@ -65,6 +70,7 @@ describe('loadConfig — local profile (default)', () => {
       ...SHOPIFY_FAKE,
       COMMERCE_PROVIDER: 'shopify',
       MESSAGING_CHANNELS: 'simulator,whatsapp',
+      ...META_FAKE,
     });
     expect(config.adapters.commerce).toBe('shopify');
     expect(config.adapters.messagingChannels).toEqual(['simulator', 'whatsapp']);
@@ -140,7 +146,7 @@ describe('loadConfig — gcp profile and startup guard (docs/07 §19)', () => {
   });
 
   it('validates the whole gcp configuration contract at once, naming missing settings but never values', () => {
-    const { WHATSAPP_APP_SECRET: _a, SHOPIFY_API_SECRET: _b, ...rest } = GCP_REAL;
+    const { META_APP_SECRET: _a, SHOPIFY_API_SECRET: _b, ...rest } = GCP_REAL;
     let message = '';
     try {
       loadConfig({ ...rest, VERTEX_MODEL: '  ' });
@@ -148,7 +154,7 @@ describe('loadConfig — gcp profile and startup guard (docs/07 §19)', () => {
       message = (err as Error).message;
     }
     expect(message).toBe(
-      'The gcp profile is missing required settings: VERTEX_MODEL, WHATSAPP_APP_SECRET, SHOPIFY_API_SECRET',
+      'The gcp profile is missing required settings: VERTEX_MODEL, META_APP_SECRET, SHOPIFY_API_SECRET',
     );
     expect(message).not.toMatch(/fake-|asia-south1/);
     expect(loadConfig(GCP_REAL).gcp).toMatchObject({
@@ -261,9 +267,9 @@ describe('L1 staged rollout (GCP_STAGED_ROLLOUT) and conditional gcp settings', 
   /** A staged L1 deployment: no WhatsApp, no Vertex settings at all. */
   const { VERTEX_MODEL: _vm, VERTEX_LOCATION: _vl, ...withoutVertex } = GCP_REAL;
   const {
-    WHATSAPP_ACCESS_TOKEN: _a,
-    WHATSAPP_PHONE_NUMBER_ID: _b,
-    WHATSAPP_APP_SECRET: _c,
+    META_APP_ID: _a,
+    META_APP_SECRET: _b,
+    META_ES_CONFIG_ID: _c,
     WHATSAPP_VERIFY_TOKEN: _d,
     ...STAGED_BASE
   } = withoutVertex;
@@ -291,7 +297,8 @@ describe('L1 staged rollout (GCP_STAGED_ROLLOUT) and conditional gcp settings', 
       eventSink: 'bigquery',
     });
     expect(config.staged).toEqual(['AGENT_RUNTIME=mock', 'MESSAGING_CHANNELS=simulator']);
-    expect(config.gcp).toMatchObject({ vertex: null, whatsapp: null, gcsBucket: 'qwikspot-uploads-test' });
+    expect(config.gcp).toMatchObject({ vertex: null, gcsBucket: 'qwikspot-uploads-test' });
+    expect(config.whatsapp).toBeNull();
   });
 
   it.each([
@@ -323,7 +330,7 @@ describe('L1 staged rollout (GCP_STAGED_ROLLOUT) and conditional gcp settings', 
       }
     };
     expect(message({ ...STAGED, MESSAGING_CHANNELS: 'whatsapp,simulator' })).toBe(
-      'The gcp profile is missing required settings: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN',
+      'The gcp profile is missing required settings: META_APP_ID, META_APP_SECRET, META_ES_CONFIG_ID, WHATSAPP_VERIFY_TOKEN',
     );
     expect(message({ ...STAGED, AGENT_RUNTIME: 'adk_gemini' })).toBe(
       'The gcp profile is missing required settings: VERTEX_MODEL, VERTEX_LOCATION',
@@ -331,7 +338,7 @@ describe('L1 staged rollout (GCP_STAGED_ROLLOUT) and conditional gcp settings', 
     // With both missing and something else too: still one message, in contract order.
     const { GCS_BUCKET: _g, ...noBucket } = STAGED_BASE;
     expect(message({ ...noBucket, GCP_STAGED_ROLLOUT: 'true', AGENT_RUNTIME: 'adk_gemini' })).toBe(
-      'The gcp profile is missing required settings: VERTEX_MODEL, VERTEX_LOCATION, WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN, GCS_BUCKET',
+      'The gcp profile is missing required settings: VERTEX_MODEL, VERTEX_LOCATION, META_APP_ID, META_APP_SECRET, META_ES_CONFIG_ID, WHATSAPP_VERIFY_TOKEN, GCS_BUCKET',
     );
   });
 
@@ -344,5 +351,71 @@ describe('L1 staged rollout (GCP_STAGED_ROLLOUT) and conditional gcp settings', 
       /SCHEDULER_SERVICE_ACCOUNT/,
     );
     expect(loadConfig({}).scheduler).toBeNull();
+  });
+});
+
+describe('WhatsApp channel settings (L2-WhatsApp)', () => {
+  const {
+    META_APP_ID: _a,
+    META_APP_SECRET: _b,
+    META_ES_CONFIG_ID: _c,
+    WHATSAPP_VERIFY_TOKEN: _d,
+    ...GCP_NO_META
+  } = GCP_REAL;
+
+  it('gcp: the Meta app instead of a global token/number; staged may run simulator + whatsapp with the mock agent', () => {
+    const config = loadConfig({
+      ...GCP_NO_META,
+      ...META_FAKE,
+      GCP_STAGED_ROLLOUT: 'true',
+      AGENT_RUNTIME: 'mock',
+      MESSAGING_CHANNELS: 'simulator,whatsapp',
+    });
+    expect(config.adapters.messagingChannels).toEqual(['simulator', 'whatsapp']);
+    expect(config.staged).toEqual(['AGENT_RUNTIME=mock']);
+    expect(config.whatsapp).toMatchObject({
+      appId: '123456789012345',
+      esConfigId: '987654321098765',
+      graphVersion: 'v26.0',
+      devNumber: null,
+    });
+    expect(config.tokenEncryptionKey).toHaveLength(32);
+    // A global number in gcp is ignored: every brand connects its own.
+    expect(
+      loadConfig({
+        ...GCP_REAL,
+        WHATSAPP_ACCESS_TOKEN: 'x',
+        WHATSAPP_PHONE_NUMBER_ID: '1234567890',
+      }).whatsapp?.devNumber,
+    ).toBeNull();
+  });
+
+  it('local: the single dev number still works on its own (my current dev setup)', () => {
+    const config = loadConfig({
+      MESSAGING_CHANNELS: 'simulator,whatsapp',
+      META_APP_SECRET: 'local-app-secret',
+      WHATSAPP_VERIFY_TOKEN: 'local-verify',
+      WHATSAPP_ACCESS_TOKEN: 'local-dev-token',
+      WHATSAPP_PHONE_NUMBER_ID: '1122334455',
+      TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 'k').toString('base64'),
+    });
+    expect(config.whatsapp).toMatchObject({ appId: null, devNumber: { phoneNumberId: '1122334455' } });
+  });
+
+  it('names every missing or invalid setting, never a value', () => {
+    let message = '';
+    try {
+      loadConfig({
+        MESSAGING_CHANNELS: 'whatsapp',
+        WHATSAPP_ACCESS_TOKEN: 'secret-token-value',
+        META_GRAPH_VERSION: 'latest',
+      });
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toBe(
+      'MESSAGING_CHANNELS=whatsapp needs valid settings: META_GRAPH_VERSION, META_APP_SECRET, WHATSAPP_VERIFY_TOKEN, WHATSAPP_PHONE_NUMBER_ID, META_APP_ID, META_ES_CONFIG_ID',
+    );
+    expect(message).not.toContain('secret-token-value');
   });
 });

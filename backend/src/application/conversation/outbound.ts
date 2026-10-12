@@ -31,6 +31,8 @@ export interface OutboundDraft {
   origin: Exclude<MessageOrigin, 'CUSTOMER'>;
   messageKind: MessageKind;
   templateName: string | null;
+  /** TEMPLATE only: the approved template's body parameters, in placeholder order (L2-WhatsApp). */
+  templateParameters?: string[];
   actionReference: string | null;
 }
 
@@ -49,7 +51,18 @@ export interface OutboundDeps {
 
 export const SEND_RETRY_DELAYS_MS = [250, 1000] as const;
 /** Failures that will not get better by retrying. */
-const PERMANENT = new Set(['CHANNEL_DISABLED', 'INVALID_RECIPIENT', 'OPTED_OUT', 'MESSAGE_PARTS_INVALID']);
+const PERMANENT = new Set([
+  'CHANNEL_DISABLED',
+  'INVALID_RECIPIENT',
+  'OPTED_OUT',
+  'MESSAGE_PARTS_INVALID',
+  // L2-WhatsApp: no connected number, not a WhatsApp customer, outside the window, template problems.
+  'WHATSAPP_NOT_CONNECTED',
+  'WHATSAPP_RECONNECT_REQUIRED',
+  'NOT_A_WHATSAPP_CUSTOMER',
+  'OUTSIDE_SERVICE_WINDOW',
+  'TEMPLATE_INVALID',
+]);
 
 /**
  * provider.send with up to 2 retries and exponential backoff, always with the SAME
@@ -122,6 +135,8 @@ export async function sendAndPersist(
     parts: body.parts,
     actionReference: draft.actionReference,
     outboundRequestId: messageId,
+    templateName: draft.templateName,
+    ...(draft.templateParameters ? { templateParameters: draft.templateParameters } : {}),
   };
 
   const provider = deps.messaging.get(conversation.channel);

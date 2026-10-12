@@ -64,6 +64,10 @@ export interface OutboundMessage {
   actionReference: string | null;
   /** Stable ID so retries do not send duplicates. */
   outboundRequestId: string;
+  /** TEMPLATE only (outside the 24 h window): the approved template's name, language and body parameters in order. */
+  templateName?: string | null;
+  templateLanguage?: string;
+  templateParameters?: string[];
 }
 
 export interface SendResult {
