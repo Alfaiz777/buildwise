@@ -588,13 +588,15 @@ If the budget is exhausted, the request stops calling the runtime and uses the d
 
 | Dependency | Retry | On final failure |
 |---|---|---|
-| Gemini (timeout, 429, 5xx) | 1 retry with jittered backoff, only if the budget remains | Deterministic fallback |
-| Gemini (invalid structured output) | 1 repair attempt with the validation error | Deterministic fallback |
+| Gemini (timeout, 429, 5xx) | 1 retry per request (6.5 s each), within the runtime's own 12 s deadline | Backup runtime, then the deterministic fallback |
+| Gemini (invalid structured output) | 1 repair attempt with the validation error | Backup runtime, then the deterministic fallback |
 | WhatsApp send (429, 5xx, network) | up to 2 retries with exponential backoff (250 ms, 1 s), same outbound request ID — implemented in M7 for every channel | Message marked `FAILED`; shown as "Not delivered" in the Brand Console |
 | Firestore unavailable (gRPC UNAVAILABLE / DEADLINE_EXCEEDED) | the SDK's own retries | `503 SERVICE_UNAVAILABLE`, retryable, "Qwikspot can't reach its database right now. Please try again in a minute." (M7) |
 | Shopify API (429, 5xx) | exponential backoff respecting Shopify throttling, up to 3 retries | Sync marked failed on the connection (`last_error`) |
 | Firestore transaction contention | handled by the Firestore SDK transaction retry | Reservation request fails with a retryable error |
 | 4xx validation / auth errors | never retried | Normalized error (`06_INTEGRATION_CONTRACTS.md` §16) |
+
+**Backup runtime (L3-Gemini):** when the configured runtime is Gemini and its decision fails (`TIMEOUT`, `RUNTIME_ERROR`, or `INVALID_OUTPUT` after the repair), `MockAgentRuntime` decides the same message with the same context and tools, within 3 s kept inside the 20 s budget. Its decision goes through the guardrail like any other and is recorded with `runtime = MOCK`, `decision_source = AGENT_BACKUP` and the trace's `fallback_reason` (why Gemini failed); it is never presented as Gemini. Only the composition root wires it; with `AGENT_RUNTIME=mock` there is no backup layer. If the backup fails too, the deterministic fallback below is used — and after a `TIMEOUT` it asks the customer to try again (`NO_ACTION`) instead of handing off, so a slow model never stops automated replies.
 
 **Deterministic fallback:** Qwikspot sends a fixed, safe holding reply. It never claims stock, price or policy. The AIRecommendation keeps the `runtime` that failed and is recorded with `action = HUMAN_HANDOFF` and `decision_source = DETERMINISTIC_FALLBACK` when human handoff is enabled for the brand. Otherwise it is recorded with `action = NO_ACTION` and a reply asking the customer to try again. The fallback never executes a commerce action.
 

@@ -93,6 +93,11 @@ export interface Providers {
   /** One MessagingProvider per enabled customer channel. */
   messaging: ReadonlyMap<Channel, MessagingProvider>;
   agent: AgentRuntime;
+  /**
+   * Decides when `agent` fails (docs/03 §16.2): the deterministic mock behind Gemini. Absent with
+   * AGENT_RUNTIME=mock — the mock has no backup layer.
+   */
+  backupAgent?: AgentRuntime;
   files: FileStorageProvider;
   events: EventSink;
 }
@@ -164,6 +169,7 @@ export function createProviders(
     commerce: new MockCommerceProvider(),
     messaging,
     agent: adapters.agentRuntime === 'mock' ? new MockAgentRuntime() : geminiRuntime(config, logger),
+    ...(adapters.agentRuntime === 'mock' ? {} : { backupAgent: new MockAgentRuntime() }),
     files:
       adapters.fileStorage === 'local'
         ? new LocalFileStorageProvider(localDataDir)
@@ -336,6 +342,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     outcomes: new FirestoreOutcomeRepository(db),
     attributionRefs: new FirestoreAttributionRefRepository(db),
     agent: providers.agent,
+    backupAgent: providers.backupAgent,
     logger,
     now: options.now,
     // The demo storefront and its demo shopper / order endpoints exist only in the local profile.

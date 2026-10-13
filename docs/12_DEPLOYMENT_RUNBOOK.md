@@ -173,7 +173,7 @@ The gcp profile never falls back to a mock or local adapter by itself. The mock 
    gcloud run services update qwikspot-api --region asia-south1 --project PROJECT_ID \
      --update-env-vars AGENT_RUNTIME=mock
    ```
-6. Watch: Cloud Logging `jsonPayload.message="agent.gemini_decision"` (latency, retries, tools, tokens, action — never message text). When Gemini is slow or unavailable the pipeline answers with the deterministic fallback; **with human handoff enabled for the brand that fallback is a handoff, which stops automated replies for that conversation** until a person releases it (`03_TECH_ARCHITECTURE.md` §16.2). Many fallbacks in a row mean: roll back, or move to Provisioned Throughput / a faster model.
+6. Watch: Cloud Logging `jsonPayload.message="agent.gemini_decision"` (latency, retries, tools, tokens, action — never message text). When a Gemini turn is slow or fails, the mock agent decides that message instead (`agent.backup` in the log; the console shows "Mock AI (backup after Gemini timeout)"), so the customer still gets an automatic answer and the conversation is not handed to a person (`03_TECH_ARCHITECTURE.md` §16.2). Many backups in a row mean Gemini is not really answering: roll back, or move to Provisioned Throughput.
 
 ## 7. Web app on Firebase Hosting — UNVERIFIED
 
@@ -255,7 +255,7 @@ Data: Firestore is not rolled back with code. For the demo brand, **Reset demo**
 | Service exits at start: "The gcp profile is missing required settings: …" | A variable or secret from §3 is not attached |
 | Service exits: "The gcp profile refuses local/mock infrastructure" | A selector (`COMMERCE_PROVIDER`, …) or an emulator host is set — or `AGENT_RUNTIME=mock` without `GCP_STAGED_ROLLOUT=true` |
 | Service exits: "AGENT_RUNTIME=adk_gemini needs valid settings: …" | `VERTEX_MODEL` / `VERTEX_LOCATION` is malformed (or, locally, `VERTEX_PROJECT` is missing) |
-| Replies become "A member of the … team will reply here shortly" | Gemini failed or was too slow and the fallback handed off. Look at `agent.gemini_decision` (`action: ERROR`, high `latency_ms`, `retries`): `403` = the service account lacks `roles/aiplatform.user` or the API is off; `404` = the model is not served in `VERTEX_LOCATION`; `429` / `504` = shared capacity. Roll back with `AGENT_RUNTIME=mock` (§6) |
+| Many decisions labelled "Mock AI (backup after Gemini …)" | Gemini is failing or too slow and the mock is answering. Look at `agent.gemini_decision` (`action: ERROR`, high `latency_ms`, `retries`): `403` = the service account lacks `roles/aiplatform.user` or the API is off; `404` = the model is not served in `VERTEX_LOCATION`; `429` / `504` = shared capacity. Roll back with `AGENT_RUNTIME=mock` (§6) |
 | Service exits: "MESSAGING_CHANNELS=whatsapp needs valid settings: …" | A `META_*` variable or `WHATSAPP_VERIFY_TOKEN` is missing, or `META_GRAPH_VERSION` is not `vNN.0` |
 | Meta: "The callback URL or verify token couldn't be validated" | `WHATSAPP_VERIFY_TOKEN` differs from the dashboard, or the service is not running with the `whatsapp` channel yet |
 | WhatsApp messages arrive but nobody answers | Webhook `401` (wrong `META_APP_SECRET`), or `whatsapp.webhook_unknown_number` in the log: that number is not connected to any brand |

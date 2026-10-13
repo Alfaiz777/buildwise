@@ -15,9 +15,10 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { AdkGeminiAgentRuntime } from '../../src/adapters/agent/adkGeminiAgentRuntime.js';
 import { VertexGeminiClient } from '../../src/adapters/agent/geminiClient.js';
+import { MockAgentRuntime } from '../../src/adapters/agent/mockAgentRuntime.js';
 import { DEFAULT_VERTEX_LOCATION, DEFAULT_VERTEX_MODEL } from '../../src/config/env.js';
 import type { Logger } from '../../src/lib/logger.js';
-import { globalNever, requiredPasses, SCENARIOS } from '../contracts/agentScenarioSuite.js';
+import { globalNever, requiredPasses, SCENARIOS, setScenarioWorldDefaults } from '../contracts/agentScenarioSuite.js';
 import { buildScenarioWorld, ORIGIN, type ScenarioWorld } from '../scenarioWorld.js';
 
 const ENABLED = process.env.RUN_GEMINI_EVAL === '1';
@@ -30,10 +31,26 @@ interface Row {
   id: string;
   scenario: string;
   result: string;
+  /** Who decided the turns: Gemini (G), the mock backup (B), the fixed fallback (F). */
+  decided: string;
   detail: string;
   reply: string;
 }
 const rows: Row[] = [];
+const totals = { gemini: 0, backup: 0, fallback: 0 };
+/** Who decided, from recommendation index `from` on. */
+function decidedBy(s: ScenarioWorld, from = 0): string {
+  const recs = s.world.recommendations.recommendations.slice(from);
+  const gemini = recs.filter((r) => r.decisionSource === 'AGENT').length;
+  const backup = recs.filter((r) => r.decisionSource === 'AGENT_BACKUP').length;
+  const fallback = recs.length - gemini - backup;
+  totals.gemini += gemini;
+  totals.backup += backup;
+  totals.fallback += fallback;
+  return [gemini ? `${gemini}G` : '', backup ? `${backup}B` : '', fallback ? `${fallback}F` : '']
+    .filter(Boolean)
+    .join(' ');
+}
 const latencies: number[] = [];
 const tokens = { prompt: 0, output: 0 };
 
@@ -67,15 +84,21 @@ describe.skipIf(!ENABLED)(`LIVE Gemini evaluation — ${MODEL} @ ${LOCATION} (${
     const lines = [
       '',
       `Gemini live eval — model ${MODEL}, location ${LOCATION}, ${RUNS} run(s) per scenario`,
-      `Decisions: ${latencies.length}; latency p50 ${pct(0.5)} ms, p95 ${pct(0.95)} ms, max ${sorted.at(-1) ?? 0} ms; tokens in ${tokens.prompt}, out ${tokens.output}`,
+      `Turns decided by Gemini (G): ${totals.gemini}; by the mock backup after a Gemini failure (B): ${totals.backup}; fixed fallback (F): ${totals.fallback}`,
+      `Gemini attempts: ${latencies.length}; latency p50 ${pct(0.5)} ms, p95 ${pct(0.95)} ms, max ${sorted.at(-1) ?? 0} ms; tokens in ${tokens.prompt}, out ${tokens.output}`,
       '',
-      '| # | Scenario | Result | Action / detail | Reply (last message) |',
-      '|---|---|---|---|---|',
-      ...rows.map((r) => `| ${r.id} | ${r.scenario} | ${r.result} | ${r.detail} | ${short(r.reply)} |`),
+      '| # | Scenario | Result | Decided by | Action / detail | Reply (last message) |',
+      '|---|---|---|---|---|---|',
+      ...rows.map(
+        (r) => `| ${r.id} | ${r.scenario} | ${r.result} | ${r.decided} | ${r.detail} | ${short(r.reply, 110)} |`,
+      ),
       '',
     ];
     console.log(lines.join('\n'));
   });
+
+  // As in production (composition/container.ts): the deterministic mock stands behind Gemini.
+  setScenarioWorldDefaults({ backupAgent: new MockAgentRuntime() });
 
   it('is configured: a real project (VERTEX_PROJECT) and Application Default Credentials', () => {
     expect(PROJECT, 'set VERTEX_PROJECT to the Google Cloud project that has Vertex AI enabled').not.toBe('');
@@ -91,8 +114,10 @@ describe.skipIf(!ENABLED)(`LIVE Gemini evaluation — ${MODEL} @ ${LOCATION} (${
           const details: string[] = [];
           const never: string[] = [];
           let reply = '';
+          const decided: string[] = [];
           for (let run = 0; run < RUNS; run++) {
             const { s, obs } = await scenario.run(makeRuntime);
+            decided.push(decidedBy(s));
             never.push(...(obs.never ?? []), ...globalNever(s, 'ADK_GEMINI'));
             if (obs.ok) passes++;
             details.push(obs.detail);
@@ -104,6 +129,7 @@ describe.skipIf(!ENABLED)(`LIVE Gemini evaluation — ${MODEL} @ ${LOCATION} (${
             id: String(scenario.n),
             scenario: oneLine(scenario.title),
             result: `${ok ? 'PASS' : 'FAIL'} ${passes}/${RUNS}`,
+            decided: decided.join(' · '),
             detail: oneLine([...new Set(details)].join(' ; ') + (never.length ? ` NEVER: ${never.join(', ')}` : '')),
             reply,
           });
@@ -122,9 +148,7 @@ describe.skipIf(!ENABLED)(`LIVE Gemini evaluation — ${MODEL} @ ${LOCATION} (${
     const GEL_50 = 'var_2013';
     /** The scenario world plus a Bandra store that stocks both sunscreens. */
     async function bandraWorld() {
-      // Handoff is off here so that one slow turn (→ fallback) does not hand the whole conversation
-      // to a person and hide the turns after it; a fallback still fails the test below.
-      const s = await buildScenarioWorld({ agent: makeRuntime(), handoffEnabled: false });
+      const s = await buildScenarioWorld({ agent: makeRuntime(), backupAgent: new MockAgentRuntime() });
       await s.world.stores.upsertFromImport('brand_A', [
         {
           storeId: 'sc_BND',
@@ -180,6 +204,7 @@ describe.skipIf(!ENABLED)(`LIVE Gemini evaluation — ${MODEL} @ ${LOCATION} (${
           id,
           scenario,
           result: ok ? 'PASS' : 'FAIL',
+          decided: decidedBy(s, s.world.recommendations.recommendations.length - 1),
           detail: oneLine(`${action(res)}${detail ? ` ${detail}` : ''}`),
           reply: text(res),
         });
@@ -257,15 +282,16 @@ describe.skipIf(!ENABLED)(`LIVE Gemini evaluation — ${MODEL} @ ${LOCATION} (${
           'Hinglish "kal tak Bandra mein milega?" → understood: store search or online',
           hinglish,
           ['STORE_DISCOVERY', 'ONLINE_PURCHASE', 'EDUCATE', 'NO_ACTION'].includes(action(hinglish)) &&
-            hinglish.body.decision?.decision_source === 'AGENT',
+            hinglish.body.decision?.decision_source !== 'DETERMINISTIC_FALLBACK',
           String(hinglish.body.decision?.decision_source),
         ),
       );
 
       expect(globalNever(s, 'ADK_GEMINI')).toEqual([]);
+      // A slow Gemini turn is answered by the mock backup; only the fixed fallback is a failure here.
       expect(
-        s.world.recommendations.recommendations.filter((r) => r.decisionSource !== 'AGENT').length,
-        'a turn fell back to the deterministic reply (timeout, error or invalid output)',
+        s.world.recommendations.recommendations.filter((r) => r.decisionSource === 'DETERMINISTIC_FALLBACK').length,
+        'a turn ended in the fixed fallback reply (Gemini and the backup both failed)',
       ).toBe(0);
       expect(results.filter((ok) => !ok).length, 'failed WhatsApp steps (see the table)').toBe(0);
     }, 600_000);

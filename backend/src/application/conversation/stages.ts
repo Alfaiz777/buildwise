@@ -27,6 +27,7 @@ import {
   truncateInbound,
 } from '../../domain/conversationPolicy.js';
 import { buildFallbackDecision } from '../../domain/fallbackDecision.js';
+import type { Logger } from '../../lib/logger.js';
 import { checkIntentToken, extractIntentToken, hashIntentToken } from '../../domain/intentToken.js';
 import { newId, sortableId } from '../../lib/ids.js';
 import { AgentDecisionSchema, type AgentRuntime } from '../../ports/agent.js';
@@ -56,7 +57,7 @@ import type { AttributionService } from '../attributionService.js';
 import type { OnlineStockService } from '../onlineStock.js';
 import type { OutcomeService } from '../outcomeService.js';
 import type { ReservationService } from '../reservationService.js';
-import { runAgentRuntime, AI_DECISION_BUDGET_MS } from './agentStage.js';
+import { runAgentRuntime, AI_BACKUP_BUDGET_MS, AI_DECISION_BUDGET_MS } from './agentStage.js';
 import { sendAndPersist, type OutboundDeps } from './outbound.js';
 import {
   CONTINUE,
@@ -83,6 +84,15 @@ export interface ConversationDeps extends OutboundDeps {
   agent: AgentRuntime;
   /** The configured AgentRuntime's name (recorded on every decision). */
   runtimeName: AgentRuntimeName;
+  /**
+   * The backup brain (docs/03 §16.2): when the configured runtime fails — too slow, an error,
+   * or output still invalid after the repair — this runtime decides the same message with the
+   * same tools. The composition root sets it (the deterministic mock behind Gemini); absent
+   * when the configured runtime is the mock itself.
+   */
+  backupAgent?: AgentRuntime;
+  /** Codes and counts only; never message text. */
+  logger?: Logger;
   /** Total AI decision budget per inbound message (docs/03 §16.1); injectable for tests. */
   aiBudgetMs?: number;
   /** M6: qs_ref on "Buy online" links, and the step-11 evidence re-check. */
@@ -374,31 +384,50 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
       context.data.contextHash = pkg.hash;
       context.data.contextSummary = pkg.summary;
 
-      const result = await runAgentRuntime(
-        deps.agent,
-        {
-          brandId: brand.brandId,
-          customerId: customer.customerId,
-          conversationId: conversation.conversationId,
-          message: context.inbound,
-          text: context.data.text ?? null,
-          context: pkg.context,
-          history: pkg.context.history,
-          tools: toolDeclarations(AgentToolExecutor.DECIDE_TOOLS),
-        },
-        tools,
-        deps.aiBudgetMs ?? AI_DECISION_BUDGET_MS,
-      );
+      const input = {
+        brandId: brand.brandId,
+        customerId: customer.customerId,
+        conversationId: conversation.conversationId,
+        message: context.inbound,
+        text: context.data.text ?? null,
+        context: pkg.context,
+        history: pkg.context.history,
+        tools: toolDeclarations(AgentToolExecutor.DECIDE_TOOLS),
+      };
+      const budget = deps.aiBudgetMs ?? AI_DECISION_BUDGET_MS;
+      const backupAgent = deps.backupAgent;
+      // With a backup runtime, its time is kept inside the same total budget.
+      const backupBudget = backupAgent ? Math.min(AI_BACKUP_BUDGET_MS, Math.floor(budget / 2)) : 0;
+      const result = await runAgentRuntime(deps.agent, input, tools, budget - backupBudget);
       context.data.repaired = result.repaired;
+      // The configured runtime failed: the backup runtime answers the same message with the
+      // same tools, so a slow model still gets the customer a useful automatic reply.
+      const backup = !result.ok && backupAgent ? await runAgentRuntime(backupAgent, input, tools, backupBudget) : null;
+      if (!result.ok && backupAgent) {
+        deps.logger?.warn('agent.backup', {
+          brand_id: brand.brandId,
+          runtime: deps.runtimeName,
+          backup_runtime: backupAgent.runtime,
+          failure: result.reason,
+          outcome: backup?.ok ? 'BACKUP_DECIDED' : 'DETERMINISTIC_FALLBACK',
+        });
+      }
       if (result.ok) {
         context.decision = result.decision;
         context.decisionSource = 'AGENT';
         context.data.fallbackReason = null;
+      } else if (backup?.ok) {
+        // Labelled with the runtime that really decided; the trace keeps why the first one failed.
+        context.decision = backup.decision;
+        context.decisionSource = 'AGENT_BACKUP';
+        context.data.fallbackReason = result.reason;
       } else {
         context.decision = AgentDecisionSchema.parse(
           buildFallbackDecision({
             runtime: deps.runtimeName,
-            handoffEnabled: messaging.handoffEnabled,
+            // Last resort after the backup also failed: a slow model is not a reason to hand the
+            // customer to a person — they are asked to try again and automated replies continue.
+            handoffEnabled: messaging.handoffEnabled && !(backupAgent && result.reason === 'TIMEOUT'),
             brandName: messaging.displayName,
             intentType: context.data.intent?.type ?? null,
             failure: result.reason,

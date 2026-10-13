@@ -12,7 +12,14 @@ import { isWriteTool, type NearbyStoresOutput } from '../../domain/agentTools.js
 import type { IntentType } from '../../domain/ai.js';
 import type { Logger } from '../../lib/logger.js';
 import { silentLogger } from '../../lib/logger.js';
-import type { AgentDecision, AgentRuntime, DecisionInput, ToolExecutor, ToolResult } from '../../ports/agent.js';
+import {
+  AgentTimeoutError,
+  type AgentDecision,
+  type AgentRuntime,
+  type DecisionInput,
+  type ToolExecutor,
+  type ToolResult,
+} from '../../ports/agent.js';
 import type { InboundMessage } from '../../ports/messaging.js';
 import type { GeminiClient, GeminiResponse, GeminiTurn } from './geminiClient.js';
 
@@ -36,7 +43,7 @@ export interface GeminiRuntimeOptions {
   logger?: Logger;
   /** Tool calls allowed per decision. */
   maxToolCalls?: number;
-  /** Time for the whole decide, kept under the pipeline's 20 s budget so a fallback is still in time. */
+  /** Time for the whole decide, kept well under the pipeline's 20 s budget so the backup runtime still has time. */
   deadlineMs?: number;
   /** Time for one model request. */
   requestTimeoutMs?: number;
@@ -47,9 +54,10 @@ export const GEMINI_MAX_TOOL_CALLS = 5;
 /**
  * Measured on the global endpoint (2026-10-13, docs/05 §16): a request usually takes 2–7 s,
  * about one in ten stalls for 10–30 s. So each request is cut off at 6.5 s and tried once more, and the
- * whole decision stops at 18.5 s — inside the pipeline's 20 s budget.
+ * whole decision stops at 12 s — which leaves the backup runtime (the mock) its 3 s inside
+ * the pipeline's 20 s budget.
  */
-export const GEMINI_DEADLINE_MS = 18_500;
+export const GEMINI_DEADLINE_MS = 12_000;
 export const GEMINI_REQUEST_TIMEOUT_MS = 6_500;
 export const GEMINI_REQUEST_ATTEMPTS = 2;
 export const GEMINI_TEMPERATURE = 0.2;
@@ -184,14 +192,15 @@ export class AdkGeminiAgentRuntime implements AgentRuntime {
   ): Promise<GeminiResponse> {
     for (let attempt = 1; ; attempt++) {
       const remaining = deadline - performance.now();
-      if (remaining <= 0) throw new Error('GEMINI_DEADLINE_EXCEEDED');
+      if (remaining <= 0) throw new AgentTimeoutError('GEMINI_DEADLINE_EXCEEDED');
       const controller = new AbortController();
       const limit = Math.min(remaining, this.options.requestTimeoutMs ?? GEMINI_REQUEST_TIMEOUT_MS);
       let timer: NodeJS.Timeout | undefined;
       const timeout = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
-          controller.abort();
+          // Reject first: the abort makes the request itself fail, and that must not win the race.
           reject(new GeminiTimeout());
+          controller.abort();
         }, limit);
       });
       try {
@@ -206,7 +215,7 @@ export class AdkGeminiAgentRuntime implements AgentRuntime {
   }
 }
 
-class GeminiTimeout extends Error {}
+class GeminiTimeout extends AgentTimeoutError {}
 
 /** Worth one more try: our own timeout, rate limiting, a server error, or no HTTP status at all. */
 function isTransient(err: unknown): boolean {

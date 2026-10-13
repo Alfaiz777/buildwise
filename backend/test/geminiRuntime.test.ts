@@ -7,15 +7,26 @@
 import { describe, expect, it } from 'vitest';
 import {
   AdkGeminiAgentRuntime,
+  GEMINI_DEADLINE_MS,
   GEMINI_MAX_TOOL_CALLS,
+  GEMINI_REQUEST_TIMEOUT_MS,
   modelInput,
 } from '../src/adapters/agent/adkGeminiAgentRuntime.js';
 import type { GeminiClient, GeminiRequest, GeminiResponse } from '../src/adapters/agent/geminiClient.js';
-import { runAgentRuntime } from '../src/application/conversation/agentStage.js';
+import { MockAgentRuntime } from '../src/adapters/agent/mockAgentRuntime.js';
+import {
+  AI_BACKUP_BUDGET_MS,
+  AI_DECISION_BUDGET_MS,
+  runAgentRuntime,
+} from '../src/application/conversation/agentStage.js';
+import { createProviders } from '../src/composition/container.js';
+import { loadConfig } from '../src/config/env.js';
+import type { AgentRuntime } from '../src/ports/agent.js';
 import { AGENT_PROMPT_VERSION, QWIKSPOT_AGENT_PROMPT_V1, extractJson } from '../src/domain/agentPrompt.js';
 import { READ_TOOLS, WRITE_TOOLS } from '../src/domain/agentTools.js';
 import { AgentDecisionSchema, type AgentContext } from '../src/ports/agent.js';
 import { toolDeclarations } from '../src/ports/agentTools.js';
+import { createLogger } from '../src/lib/logger.js';
 import { decisionInput, emptyContext, stubExecutor } from './agentFixtures.js';
 import { buildScenarioWorld, V1 } from './scenarioWorld.js';
 
@@ -348,7 +359,7 @@ describe('AdkGeminiAgentRuntime — repair, fallback and limits (through runAgen
     expect(requests).toHaveLength(2);
   });
 
-  it('a Vertex error → RUNTIME_ERROR; a slow model → cancelled at the request timeout or the pipeline budget', async () => {
+  it('a Vertex error → RUNTIME_ERROR; a slow model → TIMEOUT, cancelled at the request timeout or the pipeline budget', async () => {
     const failing = fakeGemini([() => Promise.reject(new Error('503 UNAVAILABLE'))]);
     expect(await runAgentRuntime(runtime(failing.client), input('hi'), stubExecutor({}))).toEqual({
       ok: false,
@@ -367,7 +378,7 @@ describe('AdkGeminiAgentRuntime — repair, fallback and limits (through runAgen
         }),
     };
     const own = await runAgentRuntime(runtime(hanging, { requestTimeoutMs: 20 }), input('hi'), stubExecutor({}));
-    expect(own).toEqual({ ok: false, reason: 'RUNTIME_ERROR', repaired: false });
+    expect(own).toEqual({ ok: false, reason: 'TIMEOUT', repaired: false }); // a slow model is a timeout, not an error
     expect(aborted).toBe(true); // the HTTP request is cancelled, not left running
 
     const budget = await runAgentRuntime(runtime(hanging), input('hi'), stubExecutor({}), 30);
@@ -421,7 +432,7 @@ describe('AdkGeminiAgentRuntime — repair, fallback and limits (through runAgen
       return execute(c);
     };
     const result = await runAgentRuntime(runtime(client, { deadlineMs: 50 }), input('policy?'), slowTools);
-    expect(result).toEqual({ ok: false, reason: 'RUNTIME_ERROR', repaired: false });
+    expect(result).toEqual({ ok: false, reason: 'TIMEOUT', repaired: false });
     expect(slowTools.calls.length).toBeLessThan(5);
   });
 });
@@ -542,5 +553,143 @@ describe('AdkGeminiAgentRuntime — through the real pipeline', () => {
     const res = await s.say('g1', 'just book it at Colaba');
     expect(res.body.decision).toMatchObject({ action: 'STORE_RESERVATION', guardrail_status: 'BLOCKED' });
     expect(s.world.reservations.reservations).toHaveLength(0);
+  });
+});
+
+describe('L3: the mock agent is the backup brain behind Gemini (docs/03 §16.2)', () => {
+  /** Gemini never answers: every request hangs until it is cancelled. */
+  const hangingClient: GeminiClient = {
+    generate: (_request, signal) =>
+      new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')))),
+  };
+  const slowGemini = () => runtime(hangingClient, { requestTimeoutMs: 15, deadlineMs: 60 });
+  const failing = (reason: 'throw' | 'invalid'): AgentRuntime => ({
+    runtime: 'MOCK',
+    async decide() {
+      if (reason === 'throw') throw new Error('backup broke');
+      return { runtime: 'MOCK', nonsense: true } as never;
+    },
+  });
+  const lastTrace = (s: Awaited<ReturnType<typeof buildScenarioWorld>>) => s.lastRecommendation().trace!;
+
+  it('time is kept for the backup: Gemini stops at 12 s (6.5 s per request, one retry), the backup has 3 s of the 20 s budget', () => {
+    expect(GEMINI_DEADLINE_MS).toBe(12_000);
+    expect(GEMINI_REQUEST_TIMEOUT_MS).toBe(6_500);
+    expect(AI_BACKUP_BUDGET_MS).toBe(3_000);
+    expect(GEMINI_DEADLINE_MS + AI_BACKUP_BUDGET_MS).toBeLessThan(AI_DECISION_BUDGET_MS);
+  });
+
+  it('only the container picks it: the mock stands behind Gemini; AGENT_RUNTIME=mock has no backup layer', () => {
+    const adapters = loadConfig({}).adapters;
+    const gemini = createProviders({
+      adapters: { ...adapters, agentRuntime: 'adk_gemini' },
+      localDataDir: '.d',
+      vertex: { project: 'qwikspot-test', model: 'gemini-test-model', location: 'global' },
+    });
+    expect(gemini.agent.runtime).toBe('ADK_GEMINI');
+    expect(gemini.backupAgent?.runtime).toBe('MOCK');
+    expect(createProviders({ adapters, localDataDir: '.d' }).backupAgent).toBeUndefined();
+  });
+
+  it('Gemini timeout → the mock decides the same message with the same tools: a real store card, traced as AGENT_BACKUP', async () => {
+    const s = await buildScenarioWorld({ agent: slowGemini(), backupAgent: new MockAgentRuntime() });
+    const res = await s.say('g1', 'I need the Vitamin C Glow Serum 30 ml today near Colaba');
+    expect(res.body.decision).toMatchObject({
+      action: 'STORE_DISCOVERY',
+      runtime: 'MOCK', // the runtime that really decided — never presented as Gemini
+      decision_source: 'AGENT_BACKUP',
+      guardrail_status: 'ALLOWED',
+    });
+    expect(res.body.outbound_messages[0].text).toContain('Colaba Store');
+    expect(res.body.outbound_messages[0].options.map((o: { option_id: string }) => o.option_id)).toContain('hold:sc_A');
+    expect(s.lastRecommendation()).toMatchObject({ runtime: 'MOCK', decisionSource: 'AGENT_BACKUP' });
+    expect(lastTrace(s)).toMatchObject({ fallback_reason: 'TIMEOUT' }); // the trace still says Gemini failed
+    // The conversation is NOT handed to a person: the next message is answered automatically too.
+    expect(s.world.conversations.conversations[0]!.humanHandoff).toBe(false);
+    const hold = await s.tap('g1', 'hold:sc_A');
+    expect(hold.body.decision).toMatchObject({ action: 'STORE_RESERVATION', decision_source: 'AGENT_BACKUP' });
+    expect(s.world.reservations.reservations).toHaveLength(1);
+  });
+
+  it('Gemini runtime error → mock backup', async () => {
+    const down = fakeGemini([() => Promise.reject(Object.assign(new Error('denied'), { status: 403 }))]);
+    const s = await buildScenarioWorld({ agent: runtime(down.client), backupAgent: new MockAgentRuntime() });
+    const res = await s.startFromStore('g1', 'Is this good for oily skin?');
+    expect(res.body.decision).toMatchObject({ action: 'EDUCATE', runtime: 'MOCK', decision_source: 'AGENT_BACKUP' });
+    expect(lastTrace(s)).toMatchObject({ fallback_reason: 'RUNTIME_ERROR' });
+  });
+
+  it('output still invalid after the repair attempt → mock backup', async () => {
+    const broken = fakeGemini([{ text: 'not json' }]);
+    const s = await buildScenarioWorld({ agent: runtime(broken.client), backupAgent: new MockAgentRuntime() });
+    const res = await s.say('g1', 'hi');
+    expect(broken.requests).toHaveLength(2); // the first attempt and the single repair
+    expect(res.body.decision).toMatchObject({ action: 'NO_ACTION', runtime: 'MOCK', decision_source: 'AGENT_BACKUP' });
+    expect(res.body.outbound_messages[0].text).toMatch(/^Hi! Welcome to Brand brand_A\./);
+    expect(lastTrace(s)).toMatchObject({ fallback_reason: 'INVALID_OUTPUT', repaired: true });
+  });
+
+  it('both fail on a timeout → "please try again", NO_ACTION, and no handoff even though handoff is enabled', async () => {
+    for (const backup of [failing('throw'), failing('invalid')]) {
+      const s = await buildScenarioWorld({ agent: slowGemini(), backupAgent: backup, handoffEnabled: true });
+      const res = await s.say('g1', 'I need it today');
+      expect(res.body.decision).toMatchObject({
+        action: 'NO_ACTION',
+        runtime: 'ADK_GEMINI',
+        decision_source: 'DETERMINISTIC_FALLBACK',
+        executed_action: null,
+      });
+      expect(res.body.outbound_messages[0].text).toBe(
+        'Sorry, something went wrong on our side. Please try again in a moment.',
+      );
+      expect(lastTrace(s)).toMatchObject({ fallback_reason: 'TIMEOUT' });
+      expect(s.world.conversations.conversations[0]!.humanHandoff).toBe(false);
+      expect(s.world.reservations.reservations).toHaveLength(0);
+    }
+  });
+
+  it('a customer who asks for a person is still handed off (that path is a decision, not the fallback)', async () => {
+    const s = await buildScenarioWorld({ agent: slowGemini(), backupAgent: new MockAgentRuntime() });
+    const res = await s.say('g1', 'I want to talk to a person');
+    expect(res.body.decision).toMatchObject({ action: 'HUMAN_HANDOFF', decision_source: 'AGENT_BACKUP' });
+    expect(s.world.conversations.conversations[0]!.humanHandoff).toBe(true);
+  });
+
+  it('AGENT_RUNTIME=mock is unchanged: no backup layer, the same fallback as before', async () => {
+    const slowMock: AgentRuntime = {
+      runtime: 'MOCK',
+      async decide(i, t) {
+        await new Promise((r) => setTimeout(r, 200));
+        return new MockAgentRuntime().decide(i, t);
+      },
+    };
+    const s = await buildScenarioWorld({ agent: slowMock, aiBudgetMs: 20 });
+    const res = await s.say('c1', 'I need it today');
+    expect(res.body.decision).toMatchObject({
+      action: 'HUMAN_HANDOFF', // handoff is enabled in this world: exactly today's behaviour
+      runtime: 'MOCK',
+      decision_source: 'DETERMINISTIC_FALLBACK',
+    });
+    const ok = await buildScenarioWorld();
+    const normal = await ok.startFromStore('c1', 'Is this good for oily skin?');
+    expect(normal.body.decision).toMatchObject({ action: 'EDUCATE', runtime: 'MOCK', decision_source: 'AGENT' });
+  });
+
+  it('log hygiene: the backup is logged with codes only — no message text, reply or customer reference', async () => {
+    const lines: string[] = [];
+    const logger = createLogger('debug', (line) => lines.push(line));
+    const s = await buildScenarioWorld({ agent: slowGemini(), backupAgent: new MockAgentRuntime(), logger });
+    await s.say('g1', 'SECRET-TEXT I need the Vitamin C Glow Serum 30 ml today near Colaba, call +91 98765 43210');
+    const backup = lines.map((l) => JSON.parse(l)).filter((l) => l.message === 'agent.backup');
+    expect(backup).toHaveLength(1);
+    expect(backup[0]).toMatchObject({
+      severity: 'WARNING',
+      brand_id: 'brand_A',
+      runtime: 'ADK_GEMINI',
+      backup_runtime: 'MOCK',
+      failure: 'TIMEOUT',
+      outcome: 'BACKUP_DECIDED',
+    });
+    expect(lines.join('\n')).not.toMatch(/SECRET-TEXT|98765|Colaba Store|Glow Serum/);
   });
 });

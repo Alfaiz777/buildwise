@@ -598,6 +598,8 @@ export function buildTestWorld(
     demoStorefront?: boolean;
     /** M5: the agent runtime (default: MockAgentRuntime) and its per-message budget. */
     agent?: AgentRuntime;
+    /** L3: the backup runtime behind `agent` (as the container wires the mock behind Gemini). */
+    backupAgent?: AgentRuntime;
     aiBudgetMs?: number;
     pickupCode?: () => string;
     /** M7: replace the simulator provider (e.g. one that fails) and the retry backoff. */
@@ -742,6 +744,7 @@ export function buildTestWorld(
     outcomes,
     attributionRefs,
     agent: options.agent ?? new MockAgentRuntime(),
+    backupAgent: options.backupAgent,
     aiBudgetMs: options.aiBudgetMs,
     pickupCode: options.pickupCode,
     sendRetryDelaysMs: options.sendRetryDelaysMs ?? [0, 0],

@@ -51,6 +51,7 @@ export type ScenarioWorld = Awaited<ReturnType<typeof buildScenarioWorld>>;
 export async function buildScenarioWorld(
   options: {
     agent?: AgentRuntime;
+    backupAgent?: AgentRuntime;
     aiBudgetMs?: number;
     now?: () => Date;
     overrides?: Partial<Record<string, { km?: number; v1?: number; hours?: Record<string, string> }>>;
@@ -65,6 +66,7 @@ export async function buildScenarioWorld(
   const world = buildTestWorld({
     now: clock,
     agent: options.agent,
+    backupAgent: options.backupAgent,
     aiBudgetMs: options.aiBudgetMs,
     simulatorProvider: options.simulatorProvider,
     logger: options.logger,

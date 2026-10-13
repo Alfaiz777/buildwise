@@ -358,6 +358,25 @@ describe('Brand Console — M5 decision trace and reservations', () => {
     expect(screen.queryByText('Mock AI · deterministic')).not.toBeInTheDocument();
   });
 
+  it('a backup decision says so: "Mock AI (backup after Gemini timeout)", not a fallback and not Gemini (L3)', () => {
+    const [first] = TRACED.recommendations as unknown as Recommendation[];
+    const backup = (reason: string) =>
+      ({
+        ...first!,
+        runtime: 'MOCK',
+        decision_source: 'AGENT_BACKUP',
+        trace: { ...first!.trace!, fallback_reason: reason },
+      }) as Recommendation;
+    const view = render(<DecisionTrace recommendations={[backup('TIMEOUT')]} />);
+    expect(screen.getByText('Mock AI (backup after Gemini timeout)')).toBeInTheDocument();
+    expect(screen.queryByText('Safe fallback reply')).not.toBeInTheDocument();
+    expect(screen.queryByText('Gemini (Vertex AI)')).not.toBeInTheDocument();
+    expect(screen.getByText(/so the rule-based assistant decided/)).toBeInTheDocument();
+    view.unmount();
+    render(<DecisionTrace recommendations={[backup('RUNTIME_ERROR')]} />);
+    expect(screen.getByText('Mock AI (backup after Gemini error)')).toBeInTheDocument();
+  });
+
   it('"Why Qwikspot did this": a plain sentence per decision, safety check in words, technical details collapsed', async () => {
     renderAt('/brand/conversations', api5());
     fireEvent.click(await screen.findByRole('button', { name: /sim:shopper_3002/ }));

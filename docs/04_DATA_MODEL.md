@@ -778,7 +778,7 @@ AIRecommendation
 - rationale_summary
 - evidence_references
 - runtime                (MOCK | ADK_GEMINI)
-- decision_source        (AGENT | DETERMINISTIC_FALLBACK)
+- decision_source        (AGENT | AGENT_BACKUP | DETERMINISTIC_FALLBACK)
 - proposed_at
 - guardrail_status
 - guardrail_reason       (M5: block code when BLOCKED)
@@ -801,6 +801,7 @@ Guardrail block codes: `OUT_OF_STOCK`, `STORE_CLOSED`, `NOT_ELIGIBLE`, `SCOPE_VI
 `runtime` records which `AgentRuntime` produced the decision. It is mandatory on every recommendation.
 
 - `MOCK` decisions come from the deterministic `MockAgentRuntime`. They are never presented or reported as Gemini intelligence (`05_AI_AGENT_SPEC.md` §9.2).
+- `decision_source = AGENT_BACKUP` (L3-Gemini) means the configured runtime failed and the backup runtime (the deterministic mock) decided; `runtime` is then `MOCK` and `trace.fallback_reason` says why the first one failed.
 - `decision_source = AGENT` means the runtime produced the decision. `DETERMINISTIC_FALLBACK` means the runtime failed and the fixed fallback was used (`03_TECH_ARCHITECTURE.md` §16.2).
 
 `action` is the **canonical AI action taxonomy**:

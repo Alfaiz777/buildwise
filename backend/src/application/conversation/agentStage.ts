@@ -1,5 +1,6 @@
 import {
   AgentDecisionSchema,
+  AgentTimeoutError,
   type AgentDecision,
   type AgentRuntime,
   type DecisionInput,
@@ -8,6 +9,11 @@ import {
 
 /** docs/03_TECH_ARCHITECTURE.md §16.1: total AI decision budget per inbound message. */
 export const AI_DECISION_BUDGET_MS = 20_000;
+/**
+ * Time kept inside that budget for the backup runtime (docs/03 §16.2): when the configured
+ * runtime fails, the deterministic mock answers the same message with the same tools.
+ */
+export const AI_BACKUP_BUDGET_MS = 3_000;
 
 export type AgentRunResult =
   | { ok: true; decision: AgentDecision; repaired: boolean }
@@ -46,7 +52,8 @@ export async function runAgentRuntime(
     try {
       raw = await withinBudget(runtime.decide({ ...input, ...(repair ? { repair } : {}) }, tools));
     } catch (err) {
-      return { ok: false, reason: err instanceof BudgetExceeded ? 'TIMEOUT' : 'RUNTIME_ERROR', repaired: attempt > 0 };
+      const timedOut = err instanceof BudgetExceeded || err instanceof AgentTimeoutError;
+      return { ok: false, reason: timedOut ? 'TIMEOUT' : 'RUNTIME_ERROR', repaired: attempt > 0 };
     }
     const parsed = AgentDecisionSchema.safeParse(raw);
     if (parsed.success && parsed.data.runtime === runtime.runtime) {

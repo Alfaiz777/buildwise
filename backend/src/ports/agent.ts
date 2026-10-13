@@ -142,6 +142,17 @@ export interface ToolResult {
   reasonCode: string | null;
 }
 
+/**
+ * A runtime ran out of its own time (a slow model). The pipeline records it as TIMEOUT, the
+ * same as its own budget running out — not as a runtime error.
+ */
+export class AgentTimeoutError extends Error {
+  constructor(message = 'AGENT_TIMEOUT') {
+    super(message);
+    this.name = 'AgentTimeoutError';
+  }
+}
+
 /** Backend-owned tool execution: authorization, validation and guardrail happen here. */
 export interface ToolExecutor {
   execute(call: ToolCall): Promise<ToolResult>;
