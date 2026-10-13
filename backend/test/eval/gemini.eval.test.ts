@@ -9,9 +9,13 @@
  *   RUN_GEMINI_EVAL=1 VERTEX_PROJECT=<project> npm run eval:gemini --workspace backend
  * Optional: EVAL_RUNS (default 1; the final evaluation uses 5), VERTEX_MODEL, VERTEX_LOCATION.
  *
- * Prints one table: action, reply and pass / fail per scenario. Assertions are on structured
+ * Prints one table — who decided, action, reply and pass / fail per scenario — and writes it to
+ * GEMINI_EVAL_REPORT (default: <tmp>/qwikspot-gemini-eval.md). Assertions are on structured
  * output (action, guardrail, offered stores, persisted records), never on wording.
  */
+import { writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { AdkGeminiAgentRuntime } from '../../src/adapters/agent/adkGeminiAgentRuntime.js';
 import { VertexGeminiClient } from '../../src/adapters/agent/geminiClient.js';
@@ -26,6 +30,8 @@ const RUNS = Math.max(1, Number(process.env.EVAL_RUNS ?? 1));
 const PROJECT = process.env.VERTEX_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? '';
 const MODEL = process.env.VERTEX_MODEL || DEFAULT_VERTEX_MODEL;
 const LOCATION = process.env.VERTEX_LOCATION || DEFAULT_VERTEX_LOCATION;
+/** Where the result table is also written, as Markdown (the runner hides console output of a passing file). */
+const REPORT = process.env.GEMINI_EVAL_REPORT || join(tmpdir(), 'qwikspot-gemini-eval.md');
 
 interface Row {
   id: string;
@@ -95,6 +101,7 @@ describe.skipIf(!ENABLED)(`LIVE Gemini evaluation — ${MODEL} @ ${LOCATION} (${
       '',
     ];
     console.log(lines.join('\n'));
+    writeFileSync(REPORT, lines.join('\n'));
   });
 
   // As in production (composition/container.ts): the deterministic mock stands behind Gemini.
