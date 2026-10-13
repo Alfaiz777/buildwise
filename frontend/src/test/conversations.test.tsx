@@ -358,6 +358,14 @@ describe('Brand Console — M5 decision trace and reservations', () => {
     expect(screen.queryByText('Mock AI · deterministic')).not.toBeInTheDocument();
   });
 
+  it('a button tap decided by the rules is labelled "Rules (button tap)" (L3)', () => {
+    const [first] = TRACED.recommendations as unknown as Recommendation[];
+    render(<DecisionTrace recommendations={[{ ...first!, runtime: 'MOCK', decision_source: 'RULES_TAP' }]} />);
+    expect(screen.getByText('Rules (button tap)')).toBeInTheDocument();
+    expect(screen.queryByText('Mock AI · deterministic')).not.toBeInTheDocument();
+    expect(screen.queryByText('Safe fallback reply')).not.toBeInTheDocument();
+  });
+
   it('a backup decision says so: "Mock AI (backup after Gemini timeout)", not a fallback and not Gemini (L3)', () => {
     const [first] = TRACED.recommendations as unknown as Recommendation[];
     const backup = (reason: string) =>

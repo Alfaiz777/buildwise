@@ -94,7 +94,8 @@ export interface Providers {
   messaging: ReadonlyMap<Channel, MessagingProvider>;
   agent: AgentRuntime;
   /**
-   * Decides when `agent` fails (docs/03 §16.2): the deterministic mock behind Gemini. Absent with
+   * Decides when `agent` fails, and decides button taps directly (docs/03 §16.2): the
+   * deterministic mock behind Gemini. Absent with
    * AGENT_RUNTIME=mock — the mock has no backup layer.
    */
   backupAgent?: AgentRuntime;

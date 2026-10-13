@@ -37,23 +37,25 @@ interface Row {
   id: string;
   scenario: string;
   result: string;
-  /** Who decided the turns: Gemini (G), the mock backup (B), the fixed fallback (F). */
+  /** Who decided the turns: Gemini (G), the mock backup (B), the rules on a button tap (T), the fixed fallback (F). */
   decided: string;
   detail: string;
   reply: string;
 }
 const rows: Row[] = [];
-const totals = { gemini: 0, backup: 0, fallback: 0 };
+const totals = { gemini: 0, backup: 0, tap: 0, fallback: 0 };
 /** Who decided, from recommendation index `from` on. */
 function decidedBy(s: ScenarioWorld, from = 0): string {
   const recs = s.world.recommendations.recommendations.slice(from);
   const gemini = recs.filter((r) => r.decisionSource === 'AGENT').length;
   const backup = recs.filter((r) => r.decisionSource === 'AGENT_BACKUP').length;
-  const fallback = recs.length - gemini - backup;
+  const tap = recs.filter((r) => r.decisionSource === 'RULES_TAP').length;
+  const fallback = recs.length - gemini - backup - tap;
   totals.gemini += gemini;
   totals.backup += backup;
+  totals.tap += tap;
   totals.fallback += fallback;
-  return [gemini ? `${gemini}G` : '', backup ? `${backup}B` : '', fallback ? `${fallback}F` : '']
+  return [gemini ? `${gemini}G` : '', backup ? `${backup}B` : '', tap ? `${tap}T` : '', fallback ? `${fallback}F` : '']
     .filter(Boolean)
     .join(' ');
 }
@@ -90,7 +92,7 @@ describe.skipIf(!ENABLED)(`LIVE Gemini evaluation — ${MODEL} @ ${LOCATION} (${
     const lines = [
       '',
       `Gemini live eval — model ${MODEL}, location ${LOCATION}, ${RUNS} run(s) per scenario`,
-      `Turns decided by Gemini (G): ${totals.gemini}; by the mock backup after a Gemini failure (B): ${totals.backup}; fixed fallback (F): ${totals.fallback}`,
+      `Turns decided by Gemini (G): ${totals.gemini}; by the mock backup after a Gemini failure (B): ${totals.backup}; by the rules on a button tap (T): ${totals.tap}; fixed fallback (F): ${totals.fallback}`,
       `Gemini attempts: ${latencies.length}; latency p50 ${pct(0.5)} ms, p95 ${pct(0.95)} ms, max ${sorted.at(-1) ?? 0} ms; tokens in ${tokens.prompt}, out ${tokens.output}`,
       '',
       '| # | Scenario | Result | Decided by | Action / detail | Reply (last message) |',

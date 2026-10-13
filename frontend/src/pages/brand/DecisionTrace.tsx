@@ -33,7 +33,9 @@ export function DecisionTrace({ recommendations }: { recommendations: Recommenda
           <article key={r.recommendation_id} className="trace-card" aria-label={label(r.action)}>
             <header className="trace-card__head">
               <strong>{label(r.action)}</strong> <Badge tone={safety.tone}>{safety.text}</Badge>{' '}
-              {r.decision_source === 'AGENT_BACKUP' ? (
+              {r.decision_source === 'RULES_TAP' ? (
+                <Badge>Rules (button tap)</Badge>
+              ) : r.decision_source === 'AGENT_BACKUP' ? (
                 <Badge tone="warning">{backupLabel(r.trace?.fallback_reason)}</Badge>
               ) : (
                 <>

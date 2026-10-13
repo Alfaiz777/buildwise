@@ -33,8 +33,8 @@ const action = (res: Response) => res.body.decision?.action as string;
 export function globalNever(s: ScenarioWorld, runtime: AgentRuntimeName): string[] {
   const out: string[] = [];
   for (const r of s.world.recommendations.recommendations) {
-    // A backup decision (docs/03 §16.2) carries the runtime that really decided it.
-    const expected = r.decisionSource === 'AGENT_BACKUP' ? 'MOCK' : runtime;
+    // A backup or button-tap decision (docs/03 §16.2) carries the runtime that really decided it.
+    const expected = r.decisionSource === 'AGENT_BACKUP' || r.decisionSource === 'RULES_TAP' ? 'MOCK' : runtime;
     if (r.runtime !== expected) out.push(`recommendation ${r.recommendationId} labelled ${r.runtime}`);
     for (const c of r.trace?.tool_calls ?? []) {
       if (c.kind === 'WRITE' && c.phase === 'DECIDE' && c.status === 'EXECUTED')

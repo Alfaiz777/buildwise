@@ -607,7 +607,7 @@ describe('L3: the mock agent is the backup brain behind Gemini (docs/03 §16.2)'
     // The conversation is NOT handed to a person: the next message is answered automatically too.
     expect(s.world.conversations.conversations[0]!.humanHandoff).toBe(false);
     const hold = await s.tap('g1', 'hold:sc_A');
-    expect(hold.body.decision).toMatchObject({ action: 'STORE_RESERVATION', decision_source: 'AGENT_BACKUP' });
+    expect(hold.body.decision).toMatchObject({ action: 'STORE_RESERVATION', decision_source: 'RULES_TAP' });
     expect(s.world.reservations.reservations).toHaveLength(1);
   });
 
@@ -691,5 +691,110 @@ describe('L3: the mock agent is the backup brain behind Gemini (docs/03 §16.2)'
       outcome: 'BACKUP_DECIDED',
     });
     expect(lines.join('\n')).not.toMatch(/SECRET-TEXT|98765|Colaba Store|Glow Serum/);
+  });
+});
+
+describe('L3: button taps are decided by the rules, not by Gemini (RULES_TAP)', () => {
+  /**
+   * A Gemini that counts its requests. A shared location gets a real store search for V1 (so an
+   * offer is on the table); everything else a plain NO_ACTION answer.
+   */
+  function countingGemini() {
+    const requests: GeminiRequest[] = [];
+    const answer = (functionCalls: GeminiResponse['functionCalls'], text: string | null): GeminiResponse => ({
+      functionCalls,
+      text,
+      raw: { role: 'model', parts: [] },
+      usage: { promptTokens: 1, outputTokens: 1 },
+    });
+    const client: GeminiClient = {
+      async generate(request) {
+        requests.push(request);
+        const first = JSON.parse((request.turns[0] as { text: string }).text) as { message: { type: string } };
+        if (first.message.type !== 'LOCATION') return answer([], proposal());
+        return request.turns.length === 1
+          ? answer([{ name: 'find_nearby_stores', args: { variant_id: V1 } }], null)
+          : answer([], proposal({ action: 'STORE_DISCOVERY', intent_type: 'STORE_ORIENTED', variant_id: V1 }));
+      },
+    };
+    return { requests, agent: runtime(client) };
+  }
+  const withGemini = (gemini: ReturnType<typeof countingGemini>, overrides = {}) =>
+    buildScenarioWorld({ agent: gemini.agent, backupAgent: new MockAgentRuntime(), ...overrides });
+
+  it('a tapped hold for an un-offered, out-of-stock store is BLOCKED OUT_OF_STOCK every time, with Gemini configured', async () => {
+    for (let run = 0; run < 5; run++) {
+      const gemini = countingGemini();
+      // Store D is the nearest (0.5 km) and has no stock, so it is never offered.
+      const s = await withGemini(gemini, { overrides: { sc_D: { km: 0.5 } } });
+      await s.startFromStore('c1', 'hi');
+      await s.share('c1');
+      const before = gemini.requests.length;
+      const crafted = await s.tap('c1', 'hold:sc_D');
+      expect(crafted.body.decision).toMatchObject({
+        action: 'STORE_RESERVATION',
+        runtime: 'MOCK',
+        decision_source: 'RULES_TAP',
+        guardrail_status: 'BLOCKED',
+        guardrail_reason: 'OUT_OF_STOCK',
+      });
+      expect(gemini.requests.length).toBe(before); // the tap never reached Gemini
+      expect(s.world.reservations.reservations).toEqual([]);
+      expect(s.lastRecommendation().trace).toMatchObject({ fallback_reason: null });
+    }
+  });
+
+  it('taps never call the Gemini client: hold, cancel, other stores, buy online, talk to a person', async () => {
+    const gemini = countingGemini();
+    const s = await withGemini(gemini);
+    await s.startFromStore('c1', 'hi');
+    await s.share('c1');
+    const typed = gemini.requests.length;
+    expect(typed).toBeGreaterThan(0); // typed text and a shared location did go to Gemini
+
+    const hold = await s.tap('c1', 'hold:sc_A');
+    expect(hold.body.decision).toMatchObject({ action: 'STORE_RESERVATION', guardrail_status: 'ALLOWED' });
+    const reservationId = s.world.reservations.reservations[0]!.reservationId;
+    const cancel = await s.tap('c1', `cancel:${reservationId}`);
+    expect(s.world.reservations.reservations[0]!.status).toBe('CANCELLED');
+    const other = await s.tap('c1', 'other_stores');
+    const online = await s.tap('c1', 'buy_online');
+    expect(online.body.decision).toMatchObject({ action: 'ONLINE_PURCHASE' });
+    const person = await s.tap('c1', 'handoff');
+    expect(person.body.decision).toMatchObject({ action: 'HUMAN_HANDOFF' });
+
+    for (const res of [other, hold, cancel, online, person]) {
+      expect(res.body.decision).toMatchObject({ runtime: 'MOCK', decision_source: 'RULES_TAP' });
+    }
+    expect(gemini.requests.length).toBe(typed); // five taps, not one request
+  });
+
+  it('Gemini still decides typed text, a shared location and an option id the rules do not know', async () => {
+    const gemini = countingGemini();
+    const s = await withGemini(gemini);
+    const steps = [
+      () => s.say('c1', 'hello'),
+      () => s.share('c1'),
+      () => s.tap('c1', 'something_else'),
+      () => s.tap('c1', 'recheck:var_2001'), // "Check stores again": a fresh search, left to the model
+    ];
+    for (const step of steps) {
+      const before = gemini.requests.length;
+      const res = await step();
+      expect(gemini.requests.length).toBeGreaterThan(before);
+      expect(res.body.decision).toMatchObject({ runtime: 'ADK_GEMINI', decision_source: 'AGENT' });
+    }
+  });
+
+  it('AGENT_RUNTIME=mock is unchanged: a tap is an ordinary AGENT decision', async () => {
+    const s = await buildScenarioWorld();
+    await s.startFromStore('c1', 'hi');
+    await s.share('c1');
+    const hold = await s.tap('c1', 'hold:sc_A');
+    expect(hold.body.decision).toMatchObject({
+      action: 'STORE_RESERVATION',
+      runtime: 'MOCK',
+      decision_source: 'AGENT',
+    });
   });
 });
