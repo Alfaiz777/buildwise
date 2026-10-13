@@ -28,10 +28,10 @@ export function HeroVisual() {
       <div className="hero-phone">
         <div className="hero-phone__bar">
           <span className="hero-phone__avatar" aria-hidden="true">
-            DB
+            AS
           </span>
           <div>
-            <strong>Demo Beauty Co</strong>
+            <strong>AquaSkin</strong>
             <span>usually replies instantly</span>
           </div>
         </div>

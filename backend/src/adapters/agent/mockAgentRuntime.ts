@@ -1,4 +1,5 @@
 import type {
+  CatalogEntry,
   CustomerHistoryOutput,
   NearbyStoresOutput,
   ProductContextOutput,
@@ -19,6 +20,7 @@ import {
   cancelNotFoundReply,
   type Reply,
 } from '../../domain/agentReplies.js';
+import { matchProducts, matchSize } from '../../domain/catalogMatch.js';
 import { classifyMessage } from '../../domain/mockAgentRules.js';
 import type { AgentDecision, AgentRuntime, DecisionInput, ToolExecutor, ToolResult } from '../../ports/agent.js';
 
@@ -40,6 +42,11 @@ export interface MockAgentOptions {
 }
 
 const URGENT = /\b(today|tonight|right now|asap|urgent(ly)?|need it)\b/i;
+const GREETING = /^\s*(hi+|hello+|hey+|namaste|good (morning|afternoon|evening))\b[\s!.,]*$/i;
+/** How far back a follow-up question looks for the product being discussed. */
+const HISTORY_LOOKBACK = 3;
+/** find_nearby_stores accepts an area text of this length at most. */
+const MAX_AREA_TEXT = 200;
 
 export class MockAgentRuntime implements AgentRuntime {
   readonly runtime = 'MOCK' as const;
@@ -121,6 +128,14 @@ class MockRun {
     return this.ctx.intent && this.ctx.intent.intent_type !== type ? [...tools, 'record_customer_intent'] : tools;
   }
 
+  /**
+   * A store search for a known product: refine the bound intent — or, when the conversation has
+   * none (a customer who wrote in directly), record one so the product stays bound.
+   */
+  private refineOrBind(type: IntentType): string[] {
+    return this.ctx.intent ? this.refine(type) : ['record_customer_intent'];
+  }
+
   private get canHold() {
     return this.ctx.brand.reservation_policy.reservations_enabled;
   }
@@ -153,7 +168,7 @@ class MockRun {
             })
           : this.decision({
               action: 'NO_ACTION',
-              reply: clarifyReply(this.boundProduct()?.title ?? null),
+              reply: this.clarifyText(),
               reason: 'Asked for a person, but the brand has human handoff switched off.',
               intentType: 'SUPPORT_REQUEST',
             });
@@ -176,17 +191,111 @@ class MockRun {
         if (this.text && (this.ctx.pending_proposal || this.ctx.intent?.variant_id)) {
           return this.storeSearch({ otherStores: false, fromLocation: false, areaOnly: true });
         }
-        return this.clarify();
+        return this.namedProductOnly();
     }
+  }
+
+  /** The customer's earlier messages in this conversation, newest first (a few at most). */
+  private earlier(): string[] {
+    const inbound = this.ctx.history.filter((m) => m.direction === 'INBOUND').map((m) => m.text);
+    // The message being answered is already the newest entry of the history.
+    if (this.text && inbound.at(-1)?.includes(this.text)) inbound.pop();
+    return inbound.slice(-HISTORY_LOOKBACK).reverse();
+  }
+
+  /**
+   * A message that only names a product ("Mineral Sunscreen SPF 50, 50 g") — usually the answer
+   * to "which one do you mean?". If the customer was looking for a store, carry on with that
+   * search (and the area they gave); otherwise offer what can be done for that product.
+   */
+  private namedProductOnly(): Promise<AgentDecision> | AgentDecision {
+    const named = this.named(this.text);
+    if (!named) return this.clarify();
+    const search = this.earlier().find(
+      (text) =>
+        classifyMessage({ text, optionId: null, isLocation: false, mentionsArea: false }).rule === 'STORE_SEARCH',
+    );
+    if (search) return this.storeSearch({ otherStores: false, fromLocation: false, basis: `${this.text} ${search}` });
+    return this.decision({
+      action: 'NO_ACTION',
+      reply: clarifyReply(named.entry.title),
+      reason: 'The customer named a product: ask what they need for it.',
+      confidence: 0.6,
+    });
   }
 
   private clarify(): AgentDecision {
     return this.decision({
       action: 'NO_ACTION',
-      reply: clarifyReply(this.boundProduct()?.title ?? null),
+      reply: this.clarifyText(),
       reason: 'No rule matched: ask what the customer needs.',
       confidence: 0.4,
     });
+  }
+
+  /** With a bound product: what to do with it. Without: a welcome (first message / greeting) and example names. */
+  private clarifyText(): Reply {
+    const first = !this.ctx.history.some((m) => m.direction === 'OUTBOUND');
+    return clarifyReply(this.boundProduct()?.title ?? null, {
+      brandName: this.ctx.brand.display_name,
+      examples: this.examples,
+      welcome: first || GREETING.test(this.text),
+    });
+  }
+
+  /** A few product names from the catalogue index, as examples for "which product?". */
+  private get examples(): string[] {
+    return this.ctx.catalog.slice(0, 3).map((c) => c.title);
+  }
+
+  private askWhich(candidates: { title: string; sizes?: string[] }[] = []): Reply {
+    return whichProductReply(candidates, this.examples);
+  }
+
+  /** The single product a text names (catalogue index), with the size when the text gives one. */
+  private named(text: string): { entry: CatalogEntry; variantId: string | null } | null {
+    if (!text) return null;
+    const matches = matchProducts(text, this.ctx.catalog);
+    if (matches.length !== 1) return null;
+    const entry = matches[0]!;
+    const variantId =
+      matchSize(text, entry.variants)?.variant_id ??
+      (entry.variants.length === 1 ? entry.variants[0]!.variant_id : null);
+    return { entry, variantId };
+  }
+
+  /**
+   * The product this conversation has been about, when nothing is bound or pending: the
+   * customer's active reservation, else the most recent of their last few messages that
+   * names a single product.
+   */
+  private async discussed(): Promise<{ productId: string | null; variantId: string | null } | null> {
+    const { output } = await this.call<CustomerHistoryOutput>('get_customer_history', {});
+    const reserved = output?.active_reservations[0]?.variant_id;
+    if (reserved) return { productId: null, variantId: reserved };
+    for (const text of this.earlier()) {
+      const hit = this.named(text);
+      if (hit) return { productId: hit.entry.product_id, variantId: hit.variantId };
+    }
+    return null;
+  }
+
+  /**
+   * get_product_context arguments for a question without a clear product, in this order: the
+   * product named now → the bound intent's product → the pending offer → the active
+   * reservation → a product named in the last few messages → the text as a catalogue query.
+   */
+  private async productArgs(): Promise<Record<string, unknown>> {
+    const named = this.named(this.text);
+    if (named) return named.variantId ? { variant_id: named.variantId } : { product_id: named.entry.product_id };
+    const bound = this.boundProduct();
+    if (bound) return { product_id: bound.product_id };
+    const known = this.ctx.pending_proposal?.variant_id ?? this.ctx.intent?.variant_id;
+    if (known) return { variant_id: known };
+    const discussed = await this.discussed();
+    if (discussed?.variantId) return { variant_id: discussed.variantId };
+    if (discussed?.productId) return { product_id: discussed.productId };
+    return { query: this.text || 'product' };
   }
 
   private boundProduct(): ProductSheet | null {
@@ -241,14 +350,17 @@ class MockRun {
   }
 
   private async buyOnline(): Promise<AgentDecision> {
-    const variantId = this.ctx.pending_proposal?.variant_id ?? this.ctx.intent?.variant_id ?? null;
-    const productId = this.boundProduct()?.product_id;
-    const { output } = await this.call<ProductContextOutput>(
-      'get_product_context',
-      variantId ? { variant_id: variantId } : productId ? { product_id: productId } : { query: this.text || 'product' },
-    );
+    // A product named now wins; then the offer on the table, the bound variant, the conversation's product.
+    const known = this.ctx.pending_proposal?.variant_id ?? this.ctx.intent?.variant_id ?? null;
+    const args = this.named(this.text) || !known ? await this.productArgs() : { variant_id: known };
+    const { output } = await this.call<ProductContextOutput>('get_product_context', args);
+    const variantId = (args.variant_id as string | undefined) ?? output?.variant_id ?? null;
     if (!output?.product) {
-      return this.decision({ action: 'NO_ACTION', reply: whichProductReply([]), reason: 'Product unknown.' });
+      return this.decision({
+        action: 'NO_ACTION',
+        reply: this.askWhich(output?.candidates),
+        reason: 'Product unknown.',
+      });
     }
     return this.decision({
       action: 'ONLINE_PURCHASE',
@@ -258,27 +370,41 @@ class MockRun {
     });
   }
 
-  /** The variant being asked about: a size named in the text, the pending hold, the bound intent, or a catalogue match. */
+  /**
+   * The variant being asked about: a product (and size) named in the text, a size named for the
+   * bound product, the pending hold, the bound intent, the product this conversation has been
+   * about, or a catalogue match.
+   */
   private async resolveVariant(): Promise<{ variantId: string | null; ask: Reply | null }> {
-    const q = this.text.toLowerCase().replace(/(\d)\s+(ml|g)\b/g, '$1$2');
-    for (const sheet of this.ctx.products.slice(0, 1)) {
-      const named = sheet.variants.find((v) => q.includes(v.title.toLowerCase().replace(/(\d)\s+(ml|g)\b/g, '$1$2')));
-      if (named) return { variantId: named.variant_id, ask: null };
-    }
     const known = this.ctx.pending_proposal?.variant_id ?? this.ctx.intent?.variant_id ?? null;
+    const named = this.named(this.text);
+    if (named) {
+      if (named.variantId) return { variantId: named.variantId, ask: null };
+      // The product is named without a size: keep the size already in play for that product.
+      if (known && named.entry.variants.some((v) => v.variant_id === known)) return { variantId: known, ask: null };
+      const sizes = named.entry.variants.map((v) => v.title);
+      return { variantId: null, ask: this.askWhich([{ title: named.entry.title, sizes }]) };
+    }
+    const sized = matchSize(this.text, this.ctx.products[0]?.variants ?? []);
+    if (sized) return { variantId: sized.variant_id, ask: null };
     if (known) return { variantId: known, ask: null };
     const bound = this.boundProduct();
     if (bound?.variants.length === 1) return { variantId: bound.variants[0]!.variant_id, ask: null };
-    if (!this.text) return { variantId: null, ask: whichProductReply([]) };
+    if (!this.text) return { variantId: null, ask: this.askWhich() };
+    const discussed = await this.discussed();
+    if (discussed?.variantId) return { variantId: discussed.variantId, ask: null };
     const { output } = await this.call<ProductContextOutput>('get_product_context', { query: this.text });
     if (output?.status === 'FOUND' && output.product) {
       const variantId =
         output.variant_id ?? (output.product.variants.length === 1 ? output.product.variants[0]!.variant_id : null);
       return variantId
         ? { variantId, ask: null }
-        : { variantId: null, ask: whichProductReply([{ title: output.product.title }]) };
+        : {
+            variantId: null,
+            ask: this.askWhich([{ title: output.product.title, sizes: output.product.variants.map((v) => v.title) }]),
+          };
     }
-    return { variantId: null, ask: whichProductReply(output?.candidates ?? []) };
+    return { variantId: null, ask: this.askWhich(output?.candidates) };
   }
 
   private async storeSearch(opts: {
@@ -286,8 +412,11 @@ class MockRun {
     fromLocation: boolean;
     areaOnly?: boolean;
     variantId?: string;
+    /** The text to read urgency and the area from, when it is more than the current message. */
+    basis?: string;
   }): Promise<AgentDecision> {
-    const intentType: IntentType = URGENT.test(this.text)
+    const basis = (opts.basis ?? this.text).slice(0, MAX_AREA_TEXT);
+    const intentType: IntentType = URGENT.test(basis)
       ? 'URGENT_PURCHASE'
       : (this.ctx.intent?.intent_type ?? 'STORE_ORIENTED');
     const { variantId, ask } = opts.variantId ? { variantId: opts.variantId, ask: null } : await this.resolveVariant();
@@ -300,7 +429,7 @@ class MockRun {
       });
     }
     const exclude = opts.otherStores && this.ctx.pending_proposal ? [this.ctx.pending_proposal.store_id] : [];
-    const area = !opts.fromLocation && this.text ? { area: this.text } : {};
+    const area = !opts.fromLocation && basis ? { area: basis } : {};
     const { output: find } = await this.call<NearbyStoresOutput>('find_nearby_stores', {
       variant_id: variantId,
       ...area,
@@ -328,6 +457,8 @@ class MockRun {
             : 'Area is ambiguous: ask.',
         intentType,
         variantId,
+        // Keep the product for the customer's answer ("Bandra") when nothing is bound yet.
+        requiredTools: this.ctx.intent ? [] : ['record_customer_intent'],
       });
     }
     if (reply) {
@@ -340,7 +471,7 @@ class MockRun {
         confidence: 0.85,
         storeId: best.store_id,
         variantId,
-        requiredTools: this.refine(intentType),
+        requiredTools: this.refineOrBind(intentType),
         includeStoreContext: true,
         askForConfirmation: this.canHold,
       });
@@ -348,7 +479,7 @@ class MockRun {
     if (find.status !== 'OK' || !find.variant) {
       return this.decision({
         action: 'NO_ACTION',
-        reply: whichProductReply([]),
+        reply: this.askWhich(),
         reason: 'Unknown variant.',
         intentType,
       });
@@ -373,7 +504,7 @@ class MockRun {
           reason: 'No eligible store nearby and no eligible alternative: offer online purchase.',
           intentType,
           variantId,
-          requiredTools: this.refine(intentType),
+          requiredTools: this.refineOrBind(intentType),
         });
   }
 
@@ -397,11 +528,7 @@ class MockRun {
   }
 
   private async productForQuestion(): Promise<ProductContextOutput | null> {
-    const bound = this.boundProduct();
-    const { output } = await this.call<ProductContextOutput>(
-      'get_product_context',
-      bound ? { product_id: bound.product_id } : { query: this.text },
-    );
+    const { output } = await this.call<ProductContextOutput>('get_product_context', await this.productArgs());
     return output;
   }
 
@@ -410,7 +537,7 @@ class MockRun {
     if (!ctx?.product) {
       return this.decision({
         action: 'NO_ACTION',
-        reply: whichProductReply(ctx?.candidates ?? []),
+        reply: this.askWhich(ctx?.candidates),
         reason: 'Product question without a known product: ask which one.',
         intentType: 'PRODUCT_QUESTION',
       });
@@ -434,7 +561,7 @@ class MockRun {
     if (!ctx?.product || !other) {
       return this.decision({
         action: 'NO_ACTION',
-        reply: whichProductReply(ctx?.candidates ?? []),
+        reply: this.askWhich(ctx?.candidates),
         reason: 'Nothing verified to compare: ask which products.',
         intentType: 'COMPARISON',
       });

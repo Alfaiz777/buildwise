@@ -236,6 +236,7 @@ export const EVENT_TEXT: Record<string, string> = {
   ADD_TO_CART: 'Added to cart',
   CHECKOUT_STARTED: 'Started checkout',
   WHATSAPP_CLICK: 'Clicked the WhatsApp button',
+  CONVERSATION_MESSAGE: 'Asked for a product in the chat',
   ORDER_CREATED: 'Placed an order',
   FOLLOW_UP_SCHEDULED: 'Follow-up scheduled',
   FOLLOW_UP_SUPPRESSED: 'Follow-up suppressed',

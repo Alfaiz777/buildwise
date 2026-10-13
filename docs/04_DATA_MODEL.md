@@ -583,7 +583,8 @@ CustomerIntent
 - intent_type
 - confidence
 - event_reference
-- last_event / last_event_at
+- last_event / last_event_at (`CONVERSATION_MESSAGE` for an intent recorded in a chat)
+- source: `WEBSITE` (detected on the storefront) or `CONVERSATION` (L2-WhatsApp replies: a store search for a known variant in a conversation that began without an intent; id `int_{conversation_id}`, `web_session_id = conv:{conversation_id}`, stage `PRODUCT_VIEW`, no follow-up scheduled at creation)
 - detected_at
 - updated_at
 - status                (ACTIVE | ABANDONED | CONVERTED | EXPIRED)
@@ -1189,12 +1190,17 @@ The backend builds a temporary, request-scoped decision context from the custome
       "variants": [{ "variant_id": "...", "title": "30 ml", "sku": "...", "price": 795, "currency": "INR" }]
     }
   ],
+  "catalog": [
+    { "product_id": "...", "title": "Mineral Sunscreen SPF 50", "category": "Sunscreen",
+      "variants": [{ "variant_id": "...", "title": "50 g" }, { "variant_id": "...", "title": "80 g" }] }
+  ],
   "history": [{ "direction": "INBOUND", "text": "need it today" }],
   "pending_proposal": null
 }
 ```
 
 - `products` holds the bound product and its verified alternatives (same `concern` attribute).
+- `catalog` is the brand's catalogue index (L2-WhatsApp replies): ACTIVE product names with their ACTIVE sizes, at most 60 entries, nothing else. It lets the agent recognise a product the customer names when no intent is bound; every product fact still comes from `get_product_context`.
 - `history` is the last 10 messages, oldest first, with any intent token already removed.
 - Store availability, distance and hours are **not** in the package: the agent obtains them from tools (`05` §6), so every store fact is a verified, recorded tool result.
 - No other customer's data, no orders, no phone number or email.

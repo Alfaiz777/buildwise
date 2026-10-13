@@ -233,7 +233,7 @@ export const intentFromDoc = (id: string, d: FirebaseFirestore.DocumentData): In
   customerId: d.customer_id ?? null,
   webSessionId: d.web_session_id,
   visitorHash: d.visitor_hash ?? null,
-  source: 'WEBSITE',
+  source: d.source === 'CONVERSATION' ? 'CONVERSATION' : 'WEBSITE',
   stage: d.intent_stage,
   strength: d.intent_strength,
   type: d.intent_type,

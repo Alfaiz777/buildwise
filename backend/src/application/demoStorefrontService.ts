@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { AppError } from '../lib/errors.js';
 import type { CommerceProvider } from '../ports/commerce.js';
 import type { CustomerRepository, IntentRepository, VisitorLinkRepository } from '../ports/conversationRepositories.js';
-import type { ProductRepository } from '../ports/repositories.js';
+import { resolveMessagingSettings } from '../domain/brandSettings.js';
+import type { BrandRepository, ProductRepository } from '../ports/repositories.js';
 import type { FollowUpService } from './followUpService.js';
 import { intentIdFor, visitorHashOf } from './intentService.js';
 import { variantIdFor } from './commerceSyncService.js';
@@ -31,6 +32,7 @@ export class DemoStorefrontService {
   constructor(
     private readonly deps: {
       commerce: CommerceProvider;
+      brands: BrandRepository;
       products: ProductRepository;
       customers: CustomerRepository;
       visitors: VisitorLinkRepository;
@@ -45,6 +47,15 @@ export class DemoStorefrontService {
 
   private now() {
     return (this.deps.now ?? (() => new Date()))();
+  }
+
+  /** The storefront's own name: the brand's customer-facing display name (never hard-coded in the page). */
+  async brand(brandId: string) {
+    const brand = await this.deps.brands.getById(brandId);
+    return {
+      brand_id: brandId,
+      display_name: resolveMessagingSettings(brand?.settings ?? {}, brand?.name ?? '').displayName,
+    };
   }
 
   async products(brandId: string) {

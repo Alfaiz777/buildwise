@@ -111,7 +111,8 @@ function fakeBackend(config: unknown = { demo_mode: true, logins: [], shopper_de
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
     if (url === '/api/demo/config') return json(config);
-    if (url.startsWith('/api/demo-storefront/products')) return json({ products: PRODUCTS });
+    if (url.startsWith('/api/demo-storefront/products'))
+      return json({ brand: { brand_id: 'brd_demo', display_name: 'AquaSkin' }, products: PRODUCTS });
     if (url === '/api/demo-storefront/shoppers') return json({ shoppers: SHOPPERS });
     if (url === '/api/demo-storefront/shopper-sign-in') return json({ ok: true });
     if (url === '/api/shopper/session')
@@ -119,7 +120,7 @@ function fakeBackend(config: unknown = { demo_mode: true, logins: [], shopper_de
         {
           session_token: `tok_${++n}`,
           expires_at: new Date(Date.now() + 3_600_000).toISOString(),
-          brand: { brand_id: 'brd_demo', display_name: 'Demo Beauty Co', logo_url: null },
+          brand: { brand_id: 'brd_demo', display_name: 'AquaSkin', logo_url: null },
         },
         201,
       );
@@ -212,6 +213,10 @@ describe('/shop — the demo store with the Qwikspot widget', () => {
     renderAt('/shop');
     expect(await screen.findByText('Demo storefront · synthetic data')).toBeInTheDocument();
     await waitFor(() => expect(tracker.track).toHaveBeenCalledWith('STOREFRONT_VISIT', undefined));
+    // The store is named by the brand's display name from the API — never a hard-coded name.
+    expect(await screen.findByText('AquaSkin', { selector: '.shop-brand span' })).toBeInTheDocument();
+    expect(document.title).toBe('AquaSkin · Demo store');
+    expect(screen.queryByText('Demo Beauty Co')).not.toBeInTheDocument();
     const card = await screen.findByRole('button', { name: /Vitamin C Glow Serum/ });
     expect(card.querySelector('img')).toHaveAttribute('src', '/demo-products/vitamin-c-glow-serum.png');
 
@@ -242,7 +247,7 @@ describe('/shop — the demo store with the Qwikspot widget', () => {
     expect(within(widget).getByText('Powered by Qwikspot')).toBeInTheDocument();
     fireEvent.click(within(widget).getByRole('button', { name: /Need it today\? Check a store near you/ }));
     // /chat, full screen, with the text in the fragment.
-    expect(await screen.findByRole('region', { name: 'Chat with Demo Beauty Co' })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Chat with AquaSkin' })).toBeInTheDocument();
     expect(screen.getByLabelText('Message')).toHaveValue('START_QWIKSPOT_0123456789ABCDEFGHJKMNPQRS');
     expectNoRefSent(calls);
   });
@@ -280,6 +285,8 @@ describe('/chat — the brand chat as the shopper sees it', () => {
     expect(await screen.findByText('Demo · synthetic data ·', { exact: false })).toBeInTheDocument();
     const input = await screen.findByLabelText('Message');
     expect(input).toHaveValue('Need it today');
+    // The page title carries the brand's display name from the session, never a hard-coded one.
+    await waitFor(() => expect(document.title).toBe('Chat · AquaSkin'));
     await waitFor(() => expect(calls.some((c) => c.url === '/api/shopper/session')).toBe(true));
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(await screen.findByText('Which store is near you? Share your location.')).toBeInTheDocument();
@@ -305,7 +312,7 @@ describe('/chat — the brand chat as the shopper sees it', () => {
             {
               session_token: `tok_${++n}`,
               expires_at: new Date(Date.now() + 3_600_000).toISOString(),
-              brand: { brand_id: 'brd_demo', display_name: 'Demo Beauty Co', logo_url: null },
+              brand: { brand_id: 'brd_demo', display_name: 'AquaSkin', logo_url: null },
             },
             201,
           );

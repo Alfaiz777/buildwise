@@ -523,7 +523,11 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
               ? { reservation_id: nba.reservation_id }
               : tool === 'request_human_handoff'
                 ? { reason: nba.reason.slice(0, 200) || 'handoff' }
-                : { intent_type: decision.intent.intent_type };
+                : {
+                    intent_type: decision.intent.intent_type,
+                    // No intent bound yet: the product the customer asked a store for becomes one.
+                    ...(!context.intentId && nba.variant_id ? { variant_id: nba.variant_id } : {}),
+                  };
         const result = await tools.execute({ tool, input });
         const reservationId =
           (result.output as { reservation?: { reservation_id: string } | null } | null)?.reservation?.reservation_id ??

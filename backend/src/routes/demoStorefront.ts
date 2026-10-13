@@ -63,7 +63,8 @@ export function demoStorefrontRouter(
     const brandId = typeof req.query.brand_id === 'string' ? req.query.brand_id : '';
     if (!BRAND_ID.safeParse(brandId).success || !brandAllowed(brandId)) throw Errors.notFound();
     if (req.get('origin')) await intents.brandForOrigin(brandId, req.get('origin'));
-    res.json({ products: await demo.products(brandId) });
+    const [brand, products] = await Promise.all([demo.brand(brandId), demo.products(brandId)]);
+    res.json({ brand, products });
   });
 
   router.get('/shoppers', async (req, res) => {

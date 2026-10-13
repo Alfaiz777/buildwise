@@ -359,11 +359,26 @@ export const noPendingHoldReply = (): Reply => ({
   text: "I don't have a store hold waiting for you right now. Tell me your area or share your location and I'll check which nearby store has it today.",
 });
 
-export const whichProductReply = (candidates: { title: string }[]): Reply => ({
+/** "A, B or C" */
+const orList = (names: string[]) =>
+  names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names.at(-1)}` : (names[0] ?? '');
+
+/**
+ * Asks which product: the candidates with their sizes, one per line; without candidates, a
+ * few product names from the catalogue as examples. Plain text, well inside WhatsApp's limit.
+ */
+export const whichProductReply = (
+  candidates: { title: string; sizes?: string[] }[],
+  examples: string[] = [],
+): Reply => ({
   message_type: 'TEXT',
   text: candidates.length
-    ? `Which product do you mean: ${candidates.map((c) => c.title).join(', ')}? Please include the size.`
-    : 'Which product and size are you looking for?',
+    ? [
+        candidates.length > 1 ? 'Which one do you mean?' : 'Which size would you like?',
+        ...candidates.slice(0, 6).map((c) => `• ${c.title}${c.sizes?.length ? ` (${c.sizes.join(', ')})` : ''}`),
+        candidates.length > 1 ? 'Reply with the name and size.' : 'Reply with the size.',
+      ].join('\n')
+    : `Which product and size are you looking for?${examples.length ? ` For example: ${orList(examples.slice(0, 3))}.` : ''}`,
 });
 
 const BLOCK_TEXT: Record<string, string> = {
@@ -401,9 +416,22 @@ export const handoffReply = (brandName: string): Reply => ({
   text: `Thanks. I've asked a member of the ${brandName} team to take over this conversation. They will reply here.`,
 });
 
-export const clarifyReply = (productTitle: string | null): Reply => ({
+/**
+ * NO_ACTION clarification. With a bound product: the three things the assistant can do for
+ * it. Without one: what it can do and which product, with example names — opened by a
+ * welcome naming the brand when the customer has just said hello.
+ */
+export const clarifyReply = (
+  productTitle: string | null,
+  open?: { brandName: string; examples: string[]; welcome: boolean },
+): Reply => ({
   message_type: 'TEXT',
-  text: `Happy to help${productTitle ? ` with ${productTitle}` : ''}. Would you like product details, a nearby store that has it today, or to order online?`,
+  text:
+    productTitle || !open
+      ? `Happy to help${productTitle ? ` with ${productTitle}` : ''}. Would you like product details, a nearby store that has it today, or to order online?`
+      : `${open.welcome ? `Hi! Welcome to ${open.brandName}. ` : ''}I can tell you about a product, check which nearby store has it today, or help you order online. Which product are you looking for?${
+          open.examples.length ? ` For example: ${orList(open.examples.slice(0, 2))}.` : ''
+        }`,
 });
 
 const TOPICS: { pattern: RegExp; keys: string[] }[] = [

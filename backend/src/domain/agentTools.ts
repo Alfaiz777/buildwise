@@ -53,7 +53,23 @@ export interface ProductContextOutput {
   variant_id: string | null;
   /** Verified alternatives (same `concern` attribute). */
   alternatives: ProductSheet[];
-  candidates: { product_id: string; title: string }[];
+  /** Several products match the query: each with its ACTIVE sizes, so the customer can pick. */
+  candidates: ProductCandidate[];
+}
+
+export interface ProductCandidate {
+  product_id: string;
+  title: string;
+  /** ACTIVE variant titles ("50 g", "80 g"). */
+  sizes: string[];
+}
+
+/** One line of the catalogue index in the context package: names and sizes only. */
+export interface CatalogEntry {
+  product_id: string;
+  title: string;
+  category: string | null;
+  variants: { variant_id: string; title: string }[];
 }
 
 export interface BrandPolicyOutput {

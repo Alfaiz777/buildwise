@@ -85,7 +85,9 @@ type View =
   | { page: 'done' };
 
 export function ShopPage({ tracker: injected }: { tracker?: IntentTracker }) {
-  usePageTitle('Demo Beauty Co · Demo store');
+  // The store's name is the brand's display name, from the catalogue response (never hard-coded).
+  const [brandName, setBrandName] = useState<string | null>(null);
+  usePageTitle(brandName ? `${brandName} · Demo store` : 'Demo store');
   const demo = useDemoConfig();
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -142,7 +144,10 @@ export function ShopPage({ tracker: injected }: { tracker?: IntentTracker }) {
     if (!brandId) return;
     fetch(`/api/demo-storefront/products?brand_id=${encodeURIComponent(brandId)}`)
       .then((r) => r.json())
-      .then((j: { products?: Product[] }) => setProducts(j.products ?? []))
+      .then((j: { products?: Product[]; brand?: { display_name?: string } }) => {
+        setProducts(j.products ?? []);
+        setBrandName(j.brand?.display_name ?? null);
+      })
       .catch(() => setError('Could not load products. Is the backend running?'));
     fetch('/api/demo-storefront/shoppers')
       .then((r) => r.json())
@@ -303,7 +308,7 @@ export function ShopPage({ tracker: injected }: { tracker?: IntentTracker }) {
       <header className="shop-header">
         <button type="button" className="shop-brand" onClick={() => setView({ page: 'home' })}>
           <img src="/demo-products/demo-beauty-co-logo.png" alt="" width={32} height={32} />
-          <span>Demo Beauty Co</span>
+          <span>{brandName ?? 'Demo store'}</span>
         </button>
         <form className="shop-search" onSubmit={onSearch} role="search">
           <Search size={16} aria-hidden="true" />

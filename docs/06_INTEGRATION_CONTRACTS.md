@@ -692,7 +692,7 @@ POST  /api/internal/process-due                    (L1: Cloud Scheduler only —
                                                     email = SCHEDULER_SERVICE_ACCOUNT; every ACTIVE brand's due work: follow-ups,
                                                     hold expiry, NONE outcomes; audited per brand, SYSTEM actor `cloud-scheduler`)
 PUT   /api/local-files/uploads/:uploadId           (LocalFileStorageProvider upload target; local profile only, 06 §6a)
-GET   /api/demo-storefront/products                (shopper demo only — same gating as §14.11: demo storefront catalogue incl. image_url)
+GET   /api/demo-storefront/products                (shopper demo only — same gating as §14.11: { brand: { brand_id, display_name }, products } incl. image_url)
 POST  /api/demo-storefront/shopper-sign-in         (shopper demo only: link the visitor to a synthetic shopper)
 POST  /api/demo-storefront/orders                  (shopper demo only: same order path as the L2 orders webhook)
 ```

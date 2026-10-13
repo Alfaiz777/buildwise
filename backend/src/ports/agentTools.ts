@@ -38,7 +38,7 @@ export const TOOL_INPUTS = {
     .strict(),
   cancel_reservation: z.object({ reservation_id: id }).strict(),
   request_human_handoff: z.object({ reason: z.string().min(1).max(200) }).strict(),
-  record_customer_intent: z.object({ intent_type: z.enum(INTENT_TYPES) }).strict(),
+  record_customer_intent: z.object({ intent_type: z.enum(INTENT_TYPES), variant_id: id.optional() }).strict(),
 } satisfies Record<ToolName, z.ZodType>;
 
 export type ToolInput<T extends ToolName> = z.infer<(typeof TOOL_INPUTS)[T]>;
@@ -56,7 +56,8 @@ export const TOOL_DESCRIPTIONS: Record<ToolName, string> = {
     'Holds units of a variant at a store for the current customer. Executed by the backend only after the guardrail approves it.',
   cancel_reservation: "Cancels one of the current customer's own active reservations.",
   request_human_handoff: 'Stops automated replies and routes the conversation to a person.',
-  record_customer_intent: "Refines the bound intent's intent_type (never its stage).",
+  record_customer_intent:
+    "Refines the bound intent's intent_type (never its stage). In a conversation without an intent, records one for the given variant so the product stays bound.",
 };
 
 /** JSON Schema tool declarations for a runtime (docs/06 §6). */
