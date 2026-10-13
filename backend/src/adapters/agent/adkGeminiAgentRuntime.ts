@@ -53,12 +53,12 @@ export interface GeminiRuntimeOptions {
 export const GEMINI_MAX_TOOL_CALLS = 5;
 /**
  * Measured on the global endpoint (2026-10-13, docs/05 §16): a request usually takes 2–7 s,
- * about one in ten stalls for 10–30 s. So each request is cut off at 6.5 s and tried once more, and the
- * whole decision stops at 12 s — which leaves the backup runtime (the mock) its 3 s inside
+ * about one in ten stalls for 10–30 s. So each request is cut off at 8 s and tried once more, and the
+ * whole decision stops at 15 s — which leaves the backup runtime (the mock) its 3 s inside
  * the pipeline's 20 s budget.
  */
-export const GEMINI_DEADLINE_MS = 12_000;
-export const GEMINI_REQUEST_TIMEOUT_MS = 6_500;
+export const GEMINI_DEADLINE_MS = 15_000;
+export const GEMINI_REQUEST_TIMEOUT_MS = 8_000;
 export const GEMINI_REQUEST_ATTEMPTS = 2;
 export const GEMINI_TEMPERATURE = 0.2;
 

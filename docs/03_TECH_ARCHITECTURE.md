@@ -588,7 +588,7 @@ If the budget is exhausted, the request stops calling the runtime and uses the d
 
 | Dependency | Retry | On final failure |
 |---|---|---|
-| Gemini (timeout, 429, 5xx) | 1 retry per request (6.5 s each), within the runtime's own 12 s deadline | Backup runtime, then the deterministic fallback |
+| Gemini (timeout, 429, 5xx) | 1 retry per request (8 s each), within the runtime's own 15 s deadline | Backup runtime, then the deterministic fallback |
 | Gemini (invalid structured output) | 1 repair attempt with the validation error | Backup runtime, then the deterministic fallback |
 | WhatsApp send (429, 5xx, network) | up to 2 retries with exponential backoff (250 ms, 1 s), same outbound request ID — implemented in M7 for every channel | Message marked `FAILED`; shown as "Not delivered" in the Brand Console |
 | Firestore unavailable (gRPC UNAVAILABLE / DEADLINE_EXCEEDED) | the SDK's own retries | `503 SERVICE_UNAVAILABLE`, retryable, "Qwikspot can't reach its database right now. Please try again in a minute." (M7) |
