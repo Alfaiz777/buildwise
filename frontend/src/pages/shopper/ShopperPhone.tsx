@@ -24,11 +24,14 @@ export function ShopperPhone({
   chat,
   initialDraft = '',
   onClose,
+  onBrand,
   className,
 }: {
   chat: ShopperChat;
   initialDraft?: string;
   onClose?: () => void;
+  /** Told the brand once the chat session knows it (the page titles itself with the name). */
+  onBrand?: (brand: ShopperBrand) => void;
   className?: string;
 }) {
   const [brand, setBrand] = useState<ShopperBrand | null>(chat.brand);
@@ -37,6 +40,9 @@ export function ShopperPhone({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastId = useRef<string | undefined>(undefined);
+  // A notification, not an input: a new callback must not restart the session.
+  const onBrandRef = useRef(onBrand);
+  onBrandRef.current = onBrand;
 
   useEffect(() => setDraft(initialDraft), [initialDraft]);
 
@@ -66,7 +72,10 @@ export function ShopperPhone({
     (async () => {
       try {
         const b = chat.brand ?? (await chat.start());
-        if (!cancelled) setBrand(b);
+        if (!cancelled) {
+          setBrand(b);
+          onBrandRef.current?.(b);
+        }
         await poll();
       } catch (err) {
         if (!cancelled) setError(err instanceof ShopperApiError ? err.message : 'The chat is not available right now.');
@@ -93,9 +102,10 @@ export function ShopperPhone({
     }
   };
 
-  const name = brand?.display_name ?? 'Demo Beauty Co';
+  // The name always comes from the brand's own settings; until the session answers, no name is shown.
+  const name = brand?.display_name ?? null;
   return (
-    <section className={`wa-phone ${className ?? ''}`} aria-label={`Chat with ${name}`}>
+    <section className={`wa-phone ${className ?? ''}`} aria-label={name ? `Chat with ${name}` : 'Chat'}>
       <header className="wa-bar">
         {onClose && (
           <button type="button" className="wa-bar__back" aria-label="Close chat" onClick={onClose}>
@@ -106,11 +116,11 @@ export function ShopperPhone({
           <img className="wa-avatar" src={brand.logo_url} alt="" />
         ) : (
           <span className="wa-avatar wa-avatar--initials" aria-hidden="true">
-            {name.slice(0, 2).toUpperCase()}
+            {(name ?? '').slice(0, 2).toUpperCase()}
           </span>
         )}
         <div className="wa-bar__who">
-          <strong>{name}</strong>
+          <strong>{name ?? 'Chat'}</strong>
           <span>usually replies instantly</span>
         </div>
       </header>
@@ -119,7 +129,7 @@ export function ShopperPhone({
         mode="customer"
         busy={busy}
         onChoose={(o: ChatOption) => void send({ type: 'INTERACTIVE_REPLY', option_id: o.option_id })}
-        empty={`Say hello to ${name}. Ask about a product, or share your location to find a store that has it today.`}
+        empty={`Say hello${name ? ` to ${name}` : ''}. Ask about a product, or share your location to find a store that has it today.`}
       />
       {error && (
         <p className="wa-error" role="alert">

@@ -17,7 +17,7 @@ import type {
   JsonValue,
 } from '../../ports/conversationRepositories.js';
 import type { BrandRecord, ProductRepository } from '../../ports/repositories.js';
-import { alternativesOf, sheetOf } from './tools.js';
+import { alternativesOf, catalogIndex, sheetOf } from './tools.js';
 
 export const HISTORY_LIMIT = 10;
 
@@ -79,6 +79,7 @@ export async function buildAgentContext(
         }
       : null,
     products: sheets,
+    catalog: catalogIndex(products, variants),
     history: messages
       .filter((m) => m.text)
       .slice(-HISTORY_LIMIT)
@@ -99,6 +100,7 @@ export async function buildAgentContext(
     intent_type: intent?.type ?? null,
     intent_stage: intent?.stage ?? null,
     product_ids: sheets.map((s) => s.product_id),
+    catalog_products: context.catalog.length,
     location: customer.lastLocation ? customer.lastLocation.source : 'NONE',
     messages: context.history.length,
     pending_proposal: pending !== null,

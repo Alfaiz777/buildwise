@@ -14,6 +14,7 @@ export function emptyContext(overrides: Partial<AgentContext> = {}): AgentContex
     customer: { channel: 'SIMULATOR', customer_ref: 'sim:c', consent_state: 'UNKNOWN', last_location: null },
     intent: null,
     products: [],
+    catalog: [],
     history: [],
     pending_proposal: null,
     ...overrides,

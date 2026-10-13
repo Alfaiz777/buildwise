@@ -16,7 +16,7 @@ import {
   type IntentStrength,
   type IntentType,
 } from '../domain/ai.js';
-import type { ProductSheet } from '../domain/agentTools.js';
+import type { CatalogEntry, ProductSheet } from '../domain/agentTools.js';
 import type { InboundMessage } from './messaging.js';
 
 export const AgentDecisionSchema = z.object({
@@ -101,6 +101,11 @@ export interface AgentContext {
   } | null;
   /** The bound product and its verified alternatives. */
   products: ProductSheet[];
+  /**
+   * The brand's catalogue index: ACTIVE product names with their sizes, nothing else. It lets
+   * the agent recognise a product the customer names; facts still come from get_product_context.
+   */
+  catalog: CatalogEntry[];
   /** Last 10 messages, oldest first, intent token already removed. */
   history: { direction: 'INBOUND' | 'OUTBOUND'; text: string }[];
   pending_proposal: PendingProposalView | null;

@@ -107,7 +107,8 @@ export interface IntentRecord {
   customerId: string | null;
   webSessionId: string;
   visitorHash: string | null;
-  source: 'WEBSITE';
+  /** WEBSITE: detected on the storefront. CONVERSATION: recorded in a chat that began without one. */
+  source: 'WEBSITE' | 'CONVERSATION';
   stage: IntentStage;
   strength: IntentStrength;
   type: IntentType;
@@ -116,7 +117,7 @@ export interface IntentRecord {
   variantId: string | null;
   matchedCategory: string | null;
   signals: IntentSignals;
-  lastEvent: WebEventType;
+  lastEvent: WebEventType | 'CONVERSATION_MESSAGE';
   lastEventAt: string;
   eventCount: number;
   detectedAt: string;

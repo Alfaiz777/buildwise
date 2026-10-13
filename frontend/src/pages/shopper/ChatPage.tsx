@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useDemoConfig } from '../../lib/demoConfig';
 import { ShopperChat } from '../../lib/shopperApi';
@@ -12,7 +12,8 @@ import { ShopperUnavailable } from './ShopperUnavailable';
  * (`#text=…`, never the query string, so it stays out of server logs).
  */
 export function ChatPage() {
-  usePageTitle('Chat · Demo Beauty Co');
+  const [brandName, setBrandName] = useState<string | null>(null);
+  usePageTitle(brandName ? `Chat · ${brandName}` : 'Chat');
   const demo = useDemoConfig();
   const [params] = useSearchParams();
   const location = useLocation();
@@ -31,7 +32,13 @@ export function ChatPage() {
       <p className="demo-ribbon">
         Demo · synthetic data · <Link to="/shop">Back to the store</Link>
       </p>
-      <ShopperPhone chat={chat} initialDraft={prefill} onClose={() => navigate('/shop')} className="wa-phone--full" />
+      <ShopperPhone
+        chat={chat}
+        initialDraft={prefill}
+        onClose={() => navigate('/shop')}
+        onBrand={(b) => setBrandName(b.display_name)}
+        className="wa-phone--full"
+      />
     </div>
   );
 }

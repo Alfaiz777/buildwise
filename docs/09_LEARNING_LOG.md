@@ -695,3 +695,27 @@ frontend Settings              Channels: WhatsApp card (Facebook SDK, Embedded S
 ### Teach-back
 
 One app, many tenants: the app secret proves Meta sent a webhook, but the `phone_number_id` inside it decides which brand it belongs to, and that brand's own token sends the reply. A brand that never connects keeps working on the simulator, so adding a channel never takes one away.
+
+## L2-WhatsApp replies — a chat that starts without a storefront intent
+
+### What changed
+
+```text
+domain/catalogMatch.ts         one matcher for the tool and the mock runtime: a distinctive word wins,
+                               a generic word ("sunscreen") lists every product of that kind
+context package                catalog: ACTIVE product names and sizes (no facts)
+mockAgentRuntime               product for a follow-up: text → bound intent → pending offer → active
+                               reservation → last 3 inbound messages; welcome naming the brand
+record_customer_intent         a store search in a chat without an intent records one (source CONVERSATION)
+shopper pages                  the brand name comes from the API, never from the page
+```
+
+### What can fail?
+
+- "gel" is in two product titles: the kind of product named next to it ("gel sunscreen") has to break the tie.
+- "50 g" must not be found inside "150 g": sizes are matched as whole words.
+- After "which one do you mean?" the answer is only a product name. On its own it matches no rule, so the agent carries on with the store search asked before, and its area.
+
+### Teach-back
+
+The first real WhatsApp test showed what the simulator hid: the storefront always bound a product before the chat began. An agent that only works with a bound product is not a shop assistant; it has to keep track of what the conversation is about from what the customer said and did, and still take every fact from verified data.

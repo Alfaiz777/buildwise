@@ -59,7 +59,8 @@ export interface IntentClassification {
   variantId: string | null;
   matchedCategory: string | null;
   signals: IntentSignals;
-  lastEvent: WebEventType;
+  /** The last storefront event; CONVERSATION_MESSAGE for an intent recorded in a chat. */
+  lastEvent: WebEventType | 'CONVERSATION_MESSAGE';
   lastEventAt: string;
   eventCount: number;
 }

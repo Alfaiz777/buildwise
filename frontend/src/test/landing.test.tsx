@@ -119,7 +119,7 @@ describe('landing page (/)', () => {
     expect(screen.getByText('Example · synthetic data')).toBeInTheDocument();
     expect(screen.getByText('Example')).toBeInTheDocument();
     const visual = screen.getByRole('figure', { name: /Example/ });
-    expect(within(visual).getByText('Demo Beauty Co')).toBeInTheDocument();
+    expect(within(visual).getByText('AquaSkin')).toBeInTheDocument();
     expect(within(visual).getByText('Powered by Qwikspot')).toBeInTheDocument();
     // WhatsApp reply buttons are at most 20 characters.
     for (const b of within(visual).getByLabelText('Reply buttons').querySelectorAll('span')) {

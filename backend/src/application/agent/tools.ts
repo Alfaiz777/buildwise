@@ -5,6 +5,7 @@
  */
 import type {
   BrandPolicyOutput,
+  CatalogEntry,
   CustomerHistoryOutput,
   ExcludedStoreView,
   NearbyStoresOutput,
@@ -24,6 +25,7 @@ import {
   resolveFreshnessHours,
   resolveMessagingSettings,
 } from '../../domain/brandSettings.js';
+import { matchProducts, matchSize } from '../../domain/catalogMatch.js';
 import { primaryLocality, resolveLocality, roundCoordinate } from '../../domain/locality.js';
 import { ACTIVE_RESERVATION_STATUSES, resolveReservationPolicy } from '../../domain/reservationStatus.js';
 import { closingTimeToday, isOpenNow } from '../../domain/storeHours.js';
@@ -56,9 +58,15 @@ import type { ReservationService } from '../reservationService.js';
 import type { ToolHandlers, ToolOutcome, ToolScope } from './toolExecutor.js';
 
 export const DEFAULT_RADIUS_KM = 10;
+/** "Which one do you mean?" stays a short message. */
+export const MAX_CANDIDATES = 6;
+/** The context package's catalogue index is bounded (names and sizes only). */
+export const MAX_CATALOG_ENTRIES = 60;
 
 /** Intent types the conversation may refine to (docs/05 §8: type only, never the stage). */
 export const CONVERSATIONAL_INTENT_TYPES: readonly IntentType[] = ['PRODUCT_QUESTION', 'COMPARISON', 'URGENT_PURCHASE'];
+/** Types a conversation without a storefront intent may start one with (a store search). */
+export const CONVERSATION_START_INTENT_TYPES: readonly IntentType[] = ['URGENT_PURCHASE', 'STORE_ORIENTED'];
 
 export interface ToolDeps {
   brands: BrandRepository;
@@ -109,30 +117,36 @@ export function alternativesOf(product: ProductRecord, products: ProductRecord[]
   );
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/(\d)\s+(ml|g)\b/g, '$1$2');
-const tokens = (s: string) =>
-  norm(s)
-    .split(/[^a-z0-9]+/)
-    .filter(Boolean);
-
-/** A unique product (and variant) named in free text, or the candidates when several match. */
+/**
+ * A unique product (and variant) named in free text, or the candidates when several match —
+ * a generic word ("sunscreen") lists every product of that kind (domain/catalogMatch.ts).
+ */
 export function matchCatalog(query: string, products: ProductRecord[], variants: VariantRecord[]) {
-  const words = new Set(tokens(query));
-  const scored = products
-    .filter((p) => p.status === 'ACTIVE')
-    .map((p) => {
-      const generic = new Set(tokens(p.category ?? ''));
-      const distinctive = tokens(p.title).filter((t) => t.length >= 3 && !generic.has(t));
-      return { product: p, hits: distinctive.filter((t) => words.has(t)).length };
-    })
-    .filter((s) => s.hits > 0)
-    .sort((a, b) => b.hits - a.hits);
-  const best = scored.filter((s) => s.hits === scored[0]?.hits).map((s) => s.product);
-  const q = norm(query);
+  const matches = matchProducts(
+    query,
+    products.filter((p) => p.status === 'ACTIVE'),
+  );
   const variantIn = (p: ProductRecord) =>
-    variants.find((v) => v.productId === p.productId && q.includes(norm(v.title))) ?? null;
-  return { matches: best, variantIn };
+    matchSize(
+      query,
+      variants.filter((v) => v.productId === p.productId && v.status !== 'ARCHIVED'),
+    );
+  return { matches, variantIn };
 }
+
+/** The catalogue index of the context package: ACTIVE products with their ACTIVE sizes. */
+export const catalogIndex = (products: ProductRecord[], variants: VariantRecord[]): CatalogEntry[] =>
+  products
+    .filter((p) => p.status === 'ACTIVE')
+    .slice(0, MAX_CATALOG_ENTRIES)
+    .map((p) => ({
+      product_id: p.productId,
+      title: p.title,
+      category: p.category,
+      variants: variants
+        .filter((v) => v.productId === p.productId && v.status === 'ACTIVE')
+        .map((v) => ({ variant_id: v.variantId, title: v.title })),
+    }));
 
 export function shopifyVariantNumber(variant: any): string | null {
   if (!variant) return null;
@@ -298,7 +312,11 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
             product: null,
             variant_id: null,
             alternatives: [],
-            candidates: candidates.map((p) => ({ product_id: p.productId, title: p.title })),
+            candidates: candidates.slice(0, MAX_CANDIDATES).map((p) => ({
+              product_id: p.productId,
+              title: p.title,
+              sizes: variants.filter((v) => v.productId === p.productId && v.status === 'ACTIVE').map((v) => v.title),
+            })),
           };
       return ok(output);
     },
@@ -557,6 +575,56 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
     },
 
     async record_customer_intent(input: ToolInput<'record_customer_intent'>, scope: ToolScope) {
+      if (!scope.intentId && input.variant_id && CONVERSATION_START_INTENT_TYPES.includes(input.intent_type)) {
+        // A customer who wrote in directly (no storefront intent): bind the product they asked a store for.
+        const variant = (await deps.products.listVariants(scope.brandId)).find((v) => v.variantId === input.variant_id);
+        const conversation = await deps.conversations.get(scope.brandId, scope.conversationId);
+        if (variant && variant.status !== 'ARCHIVED' && conversation && !conversation.currentIntentId) {
+          const at = deps.now().toISOString();
+          const intentId = `int_${scope.conversationId}`;
+          await deps.intents.update(scope.brandId, intentId, (current) =>
+            current
+              ? null
+              : {
+                  intentId,
+                  brandId: scope.brandId,
+                  customerId: scope.customerId,
+                  webSessionId: `conv:${scope.conversationId}`,
+                  visitorHash: null,
+                  source: 'CONVERSATION',
+                  stage: 'PRODUCT_VIEW',
+                  strength: input.intent_type === 'URGENT_PURCHASE' ? 'HIGH_INTENT' : 'INTERESTED',
+                  type: input.intent_type,
+                  confidence: 0.8,
+                  productId: variant.productId,
+                  variantId: variant.variantId,
+                  matchedCategory: null,
+                  signals: {
+                    productViews: {},
+                    detailViews: {},
+                    variantSelected: [],
+                    whatsappClicks: 0,
+                    storeNeedClickedAt: null,
+                    chatClickedAt: null,
+                  },
+                  lastEvent: 'CONVERSATION_MESSAGE',
+                  lastEventAt: at,
+                  eventCount: 1,
+                  detectedAt: at,
+                  updatedAt: at,
+                  status: 'ACTIVE',
+                  tokenConsumedAt: null,
+                  followUp: null,
+                  processedEventIds: [],
+                },
+          );
+          await deps.conversations.update(scope.brandId, scope.conversationId, {
+            currentIntentId: intentId,
+            updatedAt: at,
+          });
+          return ok({ intent_id: intentId, intent_type: input.intent_type, changed: true });
+        }
+      }
       if (!scope.intentId || !CONVERSATIONAL_INTENT_TYPES.includes(input.intent_type)) {
         return {
           status: 'FAILED',

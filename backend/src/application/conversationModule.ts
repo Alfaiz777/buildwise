@@ -177,6 +177,7 @@ export function createConversationModule(deps: ConversationModuleDeps) {
     demoStorefront: deps.demoStorefront
       ? new DemoStorefrontService({
           commerce: deps.demoStorefront.commerce,
+          brands: deps.brands,
           products: deps.products,
           customers: deps.customers,
           visitors: deps.visitors,
