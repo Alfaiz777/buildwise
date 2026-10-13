@@ -5,7 +5,8 @@ import { ApiContext, type MeResponse } from '../api/apiContext';
 import type { ApiClient } from '../api/client';
 import { AppRoutes } from '../AppRoutes';
 import { AuthContext, type AuthState } from '../auth/authContext';
-import { countdown } from '../pages/brand/conversationTypes';
+import { countdown, type Recommendation } from '../pages/brand/conversationTypes';
+import { DecisionTrace } from '../pages/brand/DecisionTrace';
 
 const ME: MeResponse = {
   scope: 'BRAND',
@@ -346,6 +347,16 @@ describe('Brand Console — M5 decision trace and reservations', () => {
     });
     return { ...api, get: get as ApiClient['get'] };
   }
+
+  it('a Gemini decision is labelled "Gemini (Vertex AI)", never as the mock (L3-Gemini)', () => {
+    const gemini = (TRACED.recommendations as unknown as Recommendation[]).map((r) => ({
+      ...r,
+      runtime: 'ADK_GEMINI',
+    }));
+    render(<DecisionTrace recommendations={gemini} />);
+    expect(screen.getAllByText('Gemini (Vertex AI)')).toHaveLength(gemini.length);
+    expect(screen.queryByText('Mock AI · deterministic')).not.toBeInTheDocument();
+  });
 
   it('"Why Qwikspot did this": a plain sentence per decision, safety check in words, technical details collapsed', async () => {
     renderAt('/brand/conversations', api5());

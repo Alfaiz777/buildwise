@@ -30,7 +30,7 @@ const offered = (res: Response) =>
 const action = (res: Response) => res.body.decision?.action as string;
 
 /** Conditions that must hold in EVERY run of EVERY scenario. */
-function globalNever(s: ScenarioWorld, runtime: AgentRuntimeName): string[] {
+export function globalNever(s: ScenarioWorld, runtime: AgentRuntimeName): string[] {
   const out: string[] = [];
   for (const r of s.world.recommendations.recommendations) {
     if (r.runtime !== runtime) out.push(`recommendation ${r.recommendationId} labelled ${r.runtime}`);

@@ -1286,7 +1286,7 @@ Findings from the isolated integration spikes (S1 Shopify, S2 Meta WhatsApp, S3 
 ```text
 S1 Shopify:        recorded below (L2-Shopify, checked against shopify.dev on 2026-10-08)
 S2 Meta WhatsApp:  recorded below (L2-WhatsApp, checked against developers.facebook.com on 2026-10-12)
-S3 ADK + Gemini:   (pending; record in 05_AI_AGENT_SPEC.md)
+S3 ADK + Gemini:   recorded in 05_AI_AGENT_SPEC.md §16 (L3-Gemini, 2026-10-13)
 ```
 
 **S1 Shopify — what the current Shopify docs say (2026-10-08):**

@@ -20,7 +20,7 @@ Browser ──► Firebase Hosting ──(/api/** rewrite)──► Cloud Run: q
 | Database | Firestore emulator `:8085` | Firestore (Native mode) |
 | Credentials | none (emulators) or `gcloud auth application-default login` | Cloud Run service account (ADC). No key files. |
 | Profile | `QWIKSPOT_PROFILE=local` (default) | `QWIKSPOT_PROFILE=gcp`, `VITE_QWIKSPOT_PROFILE=gcp` |
-| Adapters | mock commerce, simulator channel, mock agent, local files (`backend/.data`), local event sink | Shopify, Cloud Storage, BigQuery; **staged** until Gemini ships: mock agent with the simulator, optionally plus WhatsApp for brands that connect a number (`GCP_STAGED_ROLLOUT=true`) → later ADK + Gemini |
+| Adapters | mock commerce, simulator channel, mock agent, local files (`backend/.data`), local event sink | Shopify, Cloud Storage, BigQuery; Gemini on Vertex AI (`AGENT_RUNTIME=adk_gemini`), simulator plus WhatsApp for brands that connect a number; the mock agent stays available as the rollback while `GCP_STAGED_ROLLOUT=true` |
 | Config | none required (optional `backend/.env`) | Cloud Run env vars, `frontend/.env.production.local` at build time |
 | Secrets | none | Secret Manager (`SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `TOKEN_ENCRYPTION_KEY`, `SHOPPER_SESSION_SECRET`, `DEMO_LOGINS`) |
 | Due work | "Process due work now" (Brand Console) | Cloud Scheduler every 5 min → `POST /api/internal/process-due` (OIDC) |

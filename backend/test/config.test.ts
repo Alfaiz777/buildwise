@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig, LOCAL_DEMO_LOGINS } from '../src/config/env.js';
+import { DEFAULT_VERTEX_LOCATION, DEFAULT_VERTEX_MODEL, loadConfig, LOCAL_DEMO_LOGINS } from '../src/config/env.js';
 
 /** Fake Shopify app settings (L2-Shopify) — never real secrets; the key is 32 bytes of "x". */
 export const SHOPIFY_FAKE = {
@@ -149,13 +149,11 @@ describe('loadConfig — gcp profile and startup guard (docs/07 §19)', () => {
     const { META_APP_SECRET: _a, SHOPIFY_API_SECRET: _b, ...rest } = GCP_REAL;
     let message = '';
     try {
-      loadConfig({ ...rest, VERTEX_MODEL: '  ' });
+      loadConfig({ ...rest, VERTEX_MODEL: '  ' }); // Vertex has defaults: a blank is not "missing"
     } catch (err) {
       message = (err as Error).message;
     }
-    expect(message).toBe(
-      'The gcp profile is missing required settings: VERTEX_MODEL, META_APP_SECRET, SHOPIFY_API_SECRET',
-    );
+    expect(message).toBe('The gcp profile is missing required settings: META_APP_SECRET, SHOPIFY_API_SECRET');
     expect(message).not.toMatch(/fake-|asia-south1/);
     expect(loadConfig(GCP_REAL).gcp).toMatchObject({
       region: 'asia-south1',
@@ -332,13 +330,18 @@ describe('L1 staged rollout (GCP_STAGED_ROLLOUT) and conditional gcp settings', 
     expect(message({ ...STAGED, MESSAGING_CHANNELS: 'whatsapp,simulator' })).toBe(
       'The gcp profile is missing required settings: META_APP_ID, META_APP_SECRET, META_ES_CONFIG_ID, WHATSAPP_VERIFY_TOKEN',
     );
-    expect(message({ ...STAGED, AGENT_RUNTIME: 'adk_gemini' })).toBe(
-      'The gcp profile is missing required settings: VERTEX_MODEL, VERTEX_LOCATION',
-    );
+    // L3-Gemini: nothing extra is required — the model and location have defaults, the project
+    // is GOOGLE_CLOUD_PROJECT and the credentials are the service account's.
+    expect(loadConfig({ ...STAGED, AGENT_RUNTIME: 'adk_gemini', MESSAGING_CHANNELS: 'simulator' }).vertex).toEqual({
+      project: 'qwikspot-prod',
+      model: DEFAULT_VERTEX_MODEL,
+      location: DEFAULT_VERTEX_LOCATION,
+    });
+    expect(loadConfig(STAGED).vertex).toBeNull(); // the mock agent needs no Vertex settings
     // With both missing and something else too: still one message, in contract order.
     const { GCS_BUCKET: _g, ...noBucket } = STAGED_BASE;
     expect(message({ ...noBucket, GCP_STAGED_ROLLOUT: 'true', AGENT_RUNTIME: 'adk_gemini' })).toBe(
-      'The gcp profile is missing required settings: VERTEX_MODEL, VERTEX_LOCATION, META_APP_ID, META_APP_SECRET, META_ES_CONFIG_ID, WHATSAPP_VERIFY_TOKEN, GCS_BUCKET',
+      'The gcp profile is missing required settings: META_APP_ID, META_APP_SECRET, META_ES_CONFIG_ID, WHATSAPP_VERIFY_TOKEN, GCS_BUCKET',
     );
   });
 
@@ -417,5 +420,51 @@ describe('WhatsApp channel settings (L2-WhatsApp)', () => {
       'MESSAGING_CHANNELS=whatsapp needs valid settings: META_GRAPH_VERSION, META_APP_SECRET, WHATSAPP_VERIFY_TOKEN, WHATSAPP_PHONE_NUMBER_ID, META_APP_ID, META_ES_CONFIG_ID',
     );
     expect(message).not.toContain('secret-token-value');
+  });
+});
+
+describe('L3-Gemini: Vertex settings (AGENT_RUNTIME=adk_gemini)', () => {
+  it('defaults: the current GA Flash model on the global endpoint, in the deployment project', () => {
+    expect(DEFAULT_VERTEX_MODEL).toBe('gemini-3.8-flash');
+    expect(DEFAULT_VERTEX_LOCATION).toBe('global');
+    const { VERTEX_MODEL: _m, VERTEX_LOCATION: _l, ...rest } = GCP_REAL;
+    const config = loadConfig(rest);
+    expect(config.adapters.agentRuntime).toBe('adk_gemini');
+    expect(config.vertex).toEqual({
+      project: rest.GOOGLE_CLOUD_PROJECT,
+      model: 'gemini-3.8-flash',
+      location: 'global',
+    });
+    expect(config.staged).toEqual([]);
+  });
+
+  it('gcp starts with Gemini plus simulator,whatsapp — staged or not; the mock stays the rollback while staged', () => {
+    const gemini = { ...GCP_REAL, AGENT_RUNTIME: 'adk_gemini', MESSAGING_CHANNELS: 'simulator,whatsapp' };
+    expect(loadConfig(gemini).vertex).toMatchObject({ model: 'gemini-test-model', location: 'asia-south1' });
+    expect(loadConfig({ ...gemini, GCP_STAGED_ROLLOUT: 'true' }).staged).toEqual([]);
+    const rollback = loadConfig({ ...gemini, GCP_STAGED_ROLLOUT: 'true', AGENT_RUNTIME: 'mock' });
+    expect(rollback.vertex).toBeNull();
+    expect(rollback.staged).toEqual(['AGENT_RUNTIME=mock']);
+    expect(() => loadConfig({ ...gemini, AGENT_RUNTIME: 'mock' })).toThrow(/AGENT_RUNTIME=mock/);
+  });
+
+  it('local: Gemini needs a real project (the demo- project of the emulators cannot call Vertex AI)', () => {
+    expect(() => loadConfig({ AGENT_RUNTIME: 'adk_gemini' })).toThrow(
+      'AGENT_RUNTIME=adk_gemini needs valid settings: VERTEX_PROJECT',
+    );
+    const config = loadConfig({ AGENT_RUNTIME: 'adk_gemini', VERTEX_PROJECT: 'qwikspot-dev' });
+    expect(config.projectId).toBe('demo-qwikspot'); // Firestore and Auth stay on the emulators
+    expect(config.vertex).toEqual({ project: 'qwikspot-dev', model: 'gemini-3.8-flash', location: 'global' });
+    expect(loadConfig({}).vertex).toBeNull();
+  });
+
+  it('one error names every invalid Vertex variable, never its value', () => {
+    let message = '';
+    try {
+      loadConfig({ ...GCP_REAL, VERTEX_MODEL: 'Gemini Flash!', VERTEX_LOCATION: 'Asia South' });
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toBe('AGENT_RUNTIME=adk_gemini needs valid settings: VERTEX_MODEL, VERTEX_LOCATION');
   });
 });

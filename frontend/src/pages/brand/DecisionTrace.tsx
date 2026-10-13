@@ -4,7 +4,7 @@ import { EXCLUSION_TEXT, GUARDRAIL_TEXT, humanize, type Recommendation } from '.
 import { formatDateTime } from './types';
 import { safetyLabel, whySentence } from './whySentence';
 
-const RUNTIME_TEXT: Record<string, string> = { MOCK: 'Mock AI · deterministic', ADK_GEMINI: 'Gemini' };
+const RUNTIME_TEXT: Record<string, string> = { MOCK: 'Mock AI · deterministic', ADK_GEMINI: 'Gemini (Vertex AI)' };
 
 /**
  * "Why Qwikspot did this" (docs/11 §4; Change 16, UI-3): for each decision, newest first,

@@ -13,6 +13,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --exclude \"test/emulator/**\"",
     "test:emulator": "vitest run test/emulator",
+    "eval:gemini": "vitest run test/eval/gemini.eval.test.ts",
     "seed:platform-admin": "tsx --env-file-if-exists=.env scripts/seed-platform-admin.ts",
     "seed:demo": "tsx --env-file-if-exists=.env scripts/seed-demo.ts",
     "demo:check": "tsx scripts/demoCheck.ts",
@@ -21,6 +22,7 @@
   "dependencies": {
     "@google-cloud/bigquery": "^9.2.0",
     "@google-cloud/storage": "^8.4.0",
+    "@google/genai": "^2.29.0",
     "cors": "^2.8.6",
     "csv-parse": "^6.2.1",
     "express": "^5.2.1",

@@ -1,3 +1,5 @@
+import { AdkGeminiAgentRuntime } from '../adapters/agent/adkGeminiAgentRuntime.js';
+import { VertexGeminiClient } from '../adapters/agent/geminiClient.js';
 import { MockAgentRuntime } from '../adapters/agent/mockAgentRuntime.js';
 import { HttpWhatsAppGraphApi } from '../adapters/messaging/whatsappGraphApi.js';
 import { WhatsAppMessagingProvider } from '../adapters/messaging/whatsappMessagingProvider.js';
@@ -123,8 +125,22 @@ function bigQueryTable(config: GcpProviderConfig): BigQueryTableLike {
   return new BigQuery({ projectId: config.projectId }).dataset(dataset).table('events') as unknown as BigQueryTableLike;
 }
 
+/**
+ * L3-Gemini: Gemini on Vertex AI with ADC (the Cloud Run service account, or the developer's
+ * own login locally). Nothing is contacted until the first decision.
+ */
+function geminiRuntime(config: GcpProviderConfig, logger: Logger): AgentRuntime {
+  const vertex = config.vertex;
+  if (!vertex) throw new Error('AGENT_RUNTIME=adk_gemini needs the Vertex settings (VERTEX_MODEL, VERTEX_LOCATION)');
+  return new AdkGeminiAgentRuntime({
+    client: new VertexGeminiClient({ project: vertex.project, location: vertex.location }),
+    model: vertex.model,
+    logger,
+  });
+}
+
 type GcpProviderConfig = Pick<Config, 'adapters' | 'localDataDir'> &
-  Partial<Pick<Config, 'projectId'>> & { gcp?: Pick<GcpSettings, 'gcsBucket' | 'bigQueryDataset'> | null };
+  Partial<Pick<Config, 'projectId' | 'vertex'>> & { gcp?: Pick<GcpSettings, 'gcsBucket' | 'bigQueryDataset'> | null };
 
 export function createProviders(
   config: GcpProviderConfig,
@@ -147,7 +163,7 @@ export function createProviders(
     // (CommerceProviderResolver, built in buildContainer from the brand's stored connection).
     commerce: new MockCommerceProvider(),
     messaging,
-    agent: adapters.agentRuntime === 'mock' ? new MockAgentRuntime() : notAvailable('AdkGeminiAgentRuntime'),
+    agent: adapters.agentRuntime === 'mock' ? new MockAgentRuntime() : geminiRuntime(config, logger),
     files:
       adapters.fileStorage === 'local'
         ? new LocalFileStorageProvider(localDataDir)
