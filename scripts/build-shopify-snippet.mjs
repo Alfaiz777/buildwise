@@ -16,6 +16,8 @@ export function buildSnippet() {
   if (!template.includes(MARKER)) throw new Error('qwikspot.liquid.template has no script marker');
   // Liquid would read "{{" / "{%" inside the script: the JS must not contain them.
   if (/\{\{|\{%/.test(js)) throw new Error('qwikspot-shopify.js must not contain "{{" or "{%" (Liquid)');
+  // Shopify's theme editor reads "<script" or "</" inside the script as HTML and reports the tag unclosed.
+  if (/<script|<\//i.test(js)) throw new Error('qwikspot-shopify.js must not contain "<script" or "</" (write "<\\/")');
   return template.replace(MARKER, js);
 }
 
