@@ -5,7 +5,7 @@
  */
 import request from 'supertest';
 import type { AgentRuntime } from '../src/ports/agent.js';
-import { bearer, buildTestWorld, TEST_ORIGIN } from './helpers.js';
+import { bearer, buildTestWorld, refOf, TEST_ORIGIN } from './helpers.js';
 
 export const SCENARIO_NOW = new Date('2026-10-07T06:30:00.000Z'); // Wed 12:00 Asia/Kolkata
 export const ORIGIN = { latitude: 19.0, longitude: 72.8 };
@@ -173,7 +173,8 @@ export async function buildScenarioWorld(
           entry: 'STORE_NEED',
           shopify_variant_id: gid,
         });
-      return send(ref, { type: 'TEXT', text: `${click.body.whatsapp.prefilled_text} ${text}` });
+      // The shopper's own words, with the reference from the prefilled message kept.
+      return send(ref, { type: 'TEXT', text: `${text} ${refOf(click.body.whatsapp.prefilled_text)}` });
     },
     lastRecommendation: () => world.recommendations.recommendations.at(-1)!,
   };

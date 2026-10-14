@@ -292,6 +292,15 @@ const ROUTES: [string, Step][] = [
       return res;
     },
   ],
+  // Last: it replaces the brand's storefront origins, which the steps above post from.
+  [
+    'brandSettings.ts PATCH /settings/storefront-origins',
+    (s) =>
+      request(s.world.app)
+        .patch('/api/brand/settings/storefront-origins')
+        .set('Authorization', bearer('admin_a'))
+        .send({ origins: ['https://m6ccxz-wk.myshopify.com'] }),
+  ],
 ];
 
 describe('audit completeness (docs/07 §11)', () => {

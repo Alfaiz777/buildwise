@@ -440,7 +440,7 @@ Cloud Run
    ↓  records CommerceEvent, updates CustomerIntent (customer_id = null)
    ↓  issues IntentToken bound to intent_id
 Storefront
-   ↓  opens wa.me/<brand WhatsApp number>?text=START_QWIKSPOT_<INTENT_TOKEN>
+   ↓  opens wa.me/<brand WhatsApp number>?text=<readable message (ref START_QWIKSPOT_<INTENT_TOKEN>)>  (URL-encoded)
 Customer sends the prefilled message
    ↓
 WhatsApp webhook → Cloud Run
@@ -455,14 +455,24 @@ Token rules:
 
 | Rule | Value |
 |---|---|
-| Format | `START_QWIKSPOT_<INTENT_TOKEN>` |
+| Format | `START_QWIKSPOT_<INTENT_TOKEN>`, carried at the end of a readable message as ` (ref START_QWIKSPOT_<INTENT_TOKEN>)` (L4, below) |
 | `INTENT_TOKEN` | 128-bit cryptographically random value, Crockford Base32, uppercase, 26 characters |
 | Contents | Opaque. No PII, no customer, brand, product or intent identifiers encoded. |
 | Storage | Only the SHA-256 hash is stored (`intentTokens/{token_hash}`, `04_DATA_MODEL.md` §18.1) |
 | TTL | 30 minutes from issue |
 | Use | Single use. It is consumed by the first valid WhatsApp message that carries it. |
 | Brand binding | Valid only when the message arrives on the WhatsApp number of the brand that issued it |
-| Detection | Regex `START_QWIKSPOT_([0-9A-HJKMNP-TV-Z]{26})` anywhere in the first inbound text |
+| Detection | Regex `START_QWIKSPOT_([0-9A-HJKMNP-TV-Z]{26})` anywhere in the first inbound text; the `(ref …)` wrapper (and an empty `(ref )` the shopper left behind) is removed with it, so the agent sees only the shopper's words |
+
+**The readable prefilled message (L4).** Built by the backend from verified data only — the brand's display name, the intent's product and size from the catalogue, and the entry the shopper tapped — then the token. About 200 characters at most (long names are shortened with "…"):
+
+```text
+STORE_NEED  Hi AquaSkin! I'd like Mineral Sunscreen SPF 50 (50 g) today. Is it available at a store near me? (ref START_QWIKSPOT_…)
+CHAT        Hi AquaSkin! I have a question about Mineral Sunscreen SPF 50 (50 g). (ref START_QWIKSPOT_…)
+no product  Hi AquaSkin! I'd like some help choosing a product. (ref START_QWIKSPOT_…)
+```
+
+The `wa.me` link carries it with `encodeURIComponent`. The shopper may send it as is or rewrite it; as long as the `(ref …)` stays, the chat is bound to the browsing intent.
 
 Validation (inside one Firestore transaction):
 
@@ -659,7 +669,8 @@ GET   /api/brand/conversations/:conversationId     (messages, bound intent + web
 GET   /api/brand/intents                           (every intent incl. anonymous; ?type=&follow_up_status=)
 POST  /api/brand/follow-ups/process-due            (process due follow-ups; Cloud Scheduler with OIDC in gcp, L-phase)
 GET   /api/brand/demo                              (M7: { reset_available } for this brand)
-GET   /api/brand/settings                          (Change 16, UI-3: the read-only Settings page; §14.7)
+GET   /api/brand/settings                          (Change 16, UI-3: the Settings page; §14.7)
+PATCH /api/brand/settings/storefront-origins       (L4: { origins } — storefronts allowed to POST /api/intents; https exact origins, ≤ 10; audited)
 POST  /api/brand/demo/reset                        (M7: Reset demo — DEMO_MODE + allowlisted brand only; 1/min per brand; §14.10)
 
 # Retailer Console (RETAIL_ADMIN, own store only) — §14.9
@@ -765,8 +776,8 @@ Response `202`:
   "intent_strength": "HIGH_INTENT",
   "intent_type": "CART_ABANDONMENT",
   "whatsapp": {
-    "prefilled_text": "START_QWIKSPOT_7K3M9Q2XH4T8VBN6R1CZ5WJPDA",
-    "wa_link": "https://wa.me/<brand number>?text=START_QWIKSPOT_7K3M9Q2XH4T8VBN6R1CZ5WJPDA",
+    "prefilled_text": "Hi AquaSkin! I'd like Mineral Sunscreen SPF 50 (50 g) today. Is it available at a store near me? (ref START_QWIKSPOT_7K3M9Q2XH4T8VBN6R1CZ5WJPDA)",
+    "wa_link": "https://wa.me/<brand number>?text=Hi%20AquaSkin!%20I'd%20like%20…%20(ref%20START_QWIKSPOT_7K3M9Q2XH4T8VBN6R1CZ5WJPDA)",
     "expires_at": "2026-10-01T10:30:00Z"
   }
 }

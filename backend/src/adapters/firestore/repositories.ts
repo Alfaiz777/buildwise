@@ -213,6 +213,14 @@ export class FirestoreBrandRepository implements BrandRepository {
     await this.db.collection('brands').doc(brandId).update({ status, updated_at: FieldValue.serverTimestamp() });
   }
 
+  async setAllowedStorefrontOrigins(brandId: string, origins: string[]): Promise<void> {
+    // A field path: the other settings stay as they are.
+    await this.db
+      .collection('brands')
+      .doc(brandId)
+      .update({ 'settings.allowed_storefront_origins': origins, updated_at: FieldValue.serverTimestamp() });
+  }
+
   adminSlot(brandId: string): AdminSlot {
     return adminSlot(this.db, this.db.collection('brands').doc(brandId), 'brand_admin_user_id');
   }

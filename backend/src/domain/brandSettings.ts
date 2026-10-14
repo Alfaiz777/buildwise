@@ -58,6 +58,36 @@ export function allowedStorefrontOrigins(settings: Record<string, unknown>): str
   return Array.isArray(list) ? list.filter((o): o is string => typeof o === 'string') : [];
 }
 
+export const MAX_STOREFRONT_ORIGINS = 10;
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
+
+/**
+ * A Brand Admin's list of storefront origins (L4), or null if any entry is not acceptable:
+ * an exact origin — scheme, host and port, no path — over https (http only for localhost),
+ * at most 10, duplicates removed. "https://Shop.example.com/" becomes "https://shop.example.com".
+ */
+export function parseStorefrontOrigins(input: unknown): string[] | null {
+  if (!Array.isArray(input) || input.length > MAX_STOREFRONT_ORIGINS) return null;
+  const out: string[] = [];
+  for (const raw of input) {
+    if (typeof raw !== 'string' || raw.length > 200) return null;
+    const value = raw.trim();
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      return null;
+    }
+    const https = url.protocol === 'https:';
+    const localHttp = url.protocol === 'http:' && LOCAL_HOSTS.has(url.hostname);
+    if (!https && !localHttp) return null;
+    if (url.username || url.password || url.search || url.hash || (url.pathname !== '/' && url.pathname !== ''))
+      return null;
+    if (!out.includes(url.origin)) out.push(url.origin);
+  }
+  return out;
+}
+
 /** brand.settings.online_store.product_url_template → the "Buy online" link (Change 12, E10). */
 export function onlineProductUrl(settings: Record<string, unknown>, productId: string): string | null {
   const template = record(settings.online_store).product_url_template;

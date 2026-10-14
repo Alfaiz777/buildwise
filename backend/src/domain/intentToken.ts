@@ -28,14 +28,65 @@ export function encodeIntentToken(bytes: Uint8Array): string {
 
 export const hashIntentToken = (token: string) => createHash('sha256').update(token, 'utf8').digest('hex');
 
+/** The token as it appears in a message: START_QWIKSPOT_<token>. */
 export const prefilledText = (token: string) => `${TOKEN_PREFIX}${token}`;
 
-/** Finds the token in an inbound text and returns the text with it removed. */
+/** "(ref START_QWIKSPOT_<token>)" — how the readable prefilled message carries the token. */
+export const intentRef = (token: string) => `(ref ${prefilledText(token)})`;
+
+/** The readable message's longest parts, so the whole stays around 200 characters. */
+const MAX_BRAND = 30;
+const MAX_PRODUCT = 45;
+const MAX_SIZE = 15;
+
+const clip = (value: string, max: number) => {
+  const clean = value.replace(/\s+/g, ' ').trim();
+  return clean.length > max ? `${clean.slice(0, max - 1).trimEnd()}…` : clean;
+};
+
+/**
+ * The prefilled WhatsApp message (docs/06 §10.1), built only from verified data: the brand's
+ * display name, the intent's product and size (catalogue), the entry the shopper tapped — then
+ * the token, as " (ref START_QWIKSPOT_<token>)". No customer data is ever part of it.
+ *   STORE_NEED: "Hi AquaSkin! I'd like Mineral Sunscreen SPF 50 (50 g) today. Is it available at a store near me?"
+ *   CHAT:       "Hi AquaSkin! I have a question about Mineral Sunscreen SPF 50 (50 g)."
+ *   no product: "Hi AquaSkin! I'd like some help choosing a product."
+ */
+export function readablePrefilledText(input: {
+  brandName: string;
+  productTitle: string | null;
+  size: string | null;
+  entry: 'STORE_NEED' | 'CHAT';
+  token: string;
+}): string {
+  const brand = clip(input.brandName, MAX_BRAND);
+  const hi = brand ? `Hi ${brand}!` : 'Hi!';
+  const product = input.productTitle
+    ? `${clip(input.productTitle, MAX_PRODUCT)}${input.size ? ` (${clip(input.size, MAX_SIZE)})` : ''}`
+    : null;
+  const body = !product
+    ? `${hi} I'd like some help choosing a product.`
+    : input.entry === 'STORE_NEED'
+      ? `${hi} I'd like ${product} today. Is it available at a store near me?`
+      : `${hi} I have a question about ${product}.`;
+  return `${body} ${intentRef(input.token)}`;
+}
+
+/** "(ref START_QWIKSPOT_<token>)", or the bare token, anywhere in the text. */
+const WRAPPED_TOKEN = new RegExp(`\\(\\s*ref\\s*:?\\s*${TOKEN_PATTERN.source}\\s*\\)`, 'i');
+/** What is left of "(ref …)" if the shopper edited the token away. */
+const EMPTY_REF = /\(\s*ref\s*:?\s*\)/gi;
+const HAS_EMPTY_REF = /\(\s*ref\s*:?\s*\)/i;
+
+/**
+ * Finds the token in an inbound text and returns the text with it removed — together with
+ * its "(ref …)" wrapper, so the agent sees only the shopper's words.
+ */
 export function extractIntentToken(text: string): { token: string | null; text: string } {
-  const match = TOKEN_PATTERN.exec(text);
-  if (!match) return { token: null, text };
-  const cleaned = text.replace(match[0], ' ').replace(/\s+/g, ' ').trim();
-  return { token: match[1]!, text: cleaned };
+  const match = WRAPPED_TOKEN.exec(text) ?? TOKEN_PATTERN.exec(text);
+  const tidy = (t: string) => t.replace(EMPTY_REF, ' ').replace(/\s+/g, ' ').trim();
+  if (!match) return { token: null, text: HAS_EMPTY_REF.test(text) ? tidy(text) : text };
+  return { token: match[1]!, text: tidy(text.replace(match[0], ' ')) };
 }
 
 export type TokenRejection = 'TOKEN_UNKNOWN' | 'TOKEN_WRONG_BRAND' | 'TOKEN_EXPIRED' | 'TOKEN_ALREADY_USED';

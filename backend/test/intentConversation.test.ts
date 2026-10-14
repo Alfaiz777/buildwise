@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { hashIntentToken } from '../src/domain/intentToken.js';
-import { bearer, buildTestWorld, TEST_ORIGIN } from './helpers.js';
+import { bearer, buildTestWorld, refOf, TEST_ORIGIN, tokenOf } from './helpers.js';
 
 type World = ReturnType<typeof buildTestWorld>;
 const SYSTEM = { type: 'SYSTEM' as const, id: 'test' };
@@ -129,9 +129,16 @@ describe('POST /api/intents (public storefront endpoint)', () => {
       shopify_variant_id: SERUM_30,
     });
     expect(res.status).toBe(202);
-    const token = res.body.whatsapp.prefilled_text.replace('START_QWIKSPOT_', '');
+    const prefilled: string = res.body.whatsapp.prefilled_text;
+    const token = tokenOf(prefilled);
     expect(token).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
-    expect(res.body.whatsapp.wa_link).toBe(`https://wa.me/910000000000?text=START_QWIKSPOT_${token}`);
+    // L4: a readable message from verified data, URL-encoded in the wa.me link.
+    expect(prefilled).toBe(
+      `Hi Brand brand_A! I'd like Vitamin C Glow Serum (30 ml) today. Is it available at a store near me? (ref START_QWIKSPOT_${token})`,
+    );
+    expect(res.body.whatsapp.wa_link).toBe(`https://wa.me/910000000000?text=${encodeURIComponent(prefilled)}`);
+    // Spaces, '?', '&' and '#' in the message are encoded, so WhatsApp gets the whole text.
+    expect(res.body.whatsapp.wa_link.split('?text=')[1]).not.toMatch(/[ ?&#]/);
     expect(res.body.intent_type).toBe('STORE_ORIENTED');
     const stored = world.tokens.tokens[0]!;
     expect(stored.tokenHash).toBe(hashIntentToken(token));
@@ -222,8 +229,8 @@ describe('simulator channel → ConversationPipeline', () => {
       shopify_variant_id: SERUM_30,
     });
     const prefilled: string = click.body.whatsapp.prefilled_text;
-    const token = prefilled.replace('START_QWIKSPOT_', '');
-    const res = await simulate(world, 'admin_a', text('customer_02', `${prefilled} Do you have it today?`));
+    const token = tokenOf(prefilled);
+    const res = await simulate(world, 'admin_a', text('customer_02', `Do you have it today? ${refOf(prefilled)}`));
     expect(res.status).toBe(200);
 
     const intent = world.intents.intents[0]!;

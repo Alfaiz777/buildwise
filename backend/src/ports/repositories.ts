@@ -68,6 +68,8 @@ export interface BrandRepository {
   list(): Promise<BrandRecord[]>;
   create(brand: { brandId: string; name: string }): Promise<BrandRecord>;
   setStatus(brandId: string, status: 'ACTIVE' | 'SUSPENDED'): Promise<void>;
+  /** L4: replaces settings.allowed_storefront_origins only (the rest of the settings is untouched). */
+  setAllowedStorefrontOrigins(brandId: string, origins: string[]): Promise<void>;
   adminSlot(brandId: string): AdminSlot;
 }
 

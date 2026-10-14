@@ -5,6 +5,7 @@
  *
  * Run from the repo root: npm run test:emulator
  */
+import { refOf } from '../helpers.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -182,7 +183,7 @@ describe('Reset demo (Change 14, G4)', () => {
       entry: 'STORE_NEED',
       shopify_variant_id: 'gid://shopify/ProductVariant/2001',
     });
-    await send({ type: 'TEXT', text: `${click.body.whatsapp.prefilled_text} I need it today` });
+    await send({ type: 'TEXT', text: `I need it today ${refOf(click.body.whatsapp.prefilled_text)}` });
     await send({ type: 'LOCATION', latitude: 19.12, longitude: 72.9 });
     const hold = await send({ type: 'INTERACTIVE_REPLY', option_id: 'hold:st_north_2' });
     expect(hold.body.decision.executed_action?.type).toBe('RESERVATION_CREATED');
