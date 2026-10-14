@@ -14,7 +14,9 @@ import {
   encodeIntentToken,
   hashIntentToken,
   MAX_TOKENS_PER_SESSION_PER_HOUR,
-  readablePrefilledText,
+  prefilledText,
+  prefillTextHash,
+  readableMessage,
   TOKEN_TTL_MS,
 } from '../domain/intentToken.js';
 import { AppError } from '../lib/errors.js';
@@ -43,7 +45,11 @@ export interface StorefrontEventResult {
   accepted: true;
   replay: boolean;
   intent: IntentRecord;
-  whatsapp: { prefilledText: string; waLink: string | null; expiresAt: string } | null;
+  /**
+   * prefilledText: the sentence the shopper sees (no code). ref: "START_QWIKSPOT_<token>" for
+   * clients that can carry it invisibly (the simulator, tests); never put into the wa.me text.
+   */
+  whatsapp: { prefilledText: string; ref: string; waLink: string | null; expiresAt: string } | null;
   /** L4: whether the brand can be reached on WhatsApp (the storefront hides its WhatsApp entry points otherwise). */
   whatsappAvailable: boolean;
 }
@@ -261,16 +267,6 @@ export class IntentService {
     }
     const token = encodeIntentToken(randomBytes(16));
     const expiresAt = new Date(now.getTime() + TOKEN_TTL_MS).toISOString();
-    await this.deps.tokens.create({
-      tokenHash: hashIntentToken(token),
-      brandId: brand.brandId,
-      intentId: intent.intentId,
-      webSessionId: intent.webSessionId,
-      issuedAt: now.toISOString(),
-      expiresAt,
-      consumedAt: null,
-      consumedByCustomerId: null,
-    });
     // The readable message names the product and size from the catalogue (verified data only).
     const [products, variants] = intent.productId
       ? await Promise.all([
@@ -280,17 +276,29 @@ export class IntentService {
       : [[], []];
     const product = products.find((p) => p.productId === intent.productId) ?? null;
     const variant = variants.find((v) => v.variantId === intent.variantId) ?? null;
-    const text = readablePrefilledText({
+    // L4 plain prefill: the shopper sees only the sentence; the chat is linked by recognising it.
+    const text = readableMessage({
       brandName: resolveMessagingSettings(brand.settings, brand.name).displayName,
       productTitle: product?.title ?? null,
       size: variant?.title ?? null,
       entry,
-      token,
+    });
+    await this.deps.tokens.create({
+      tokenHash: hashIntentToken(token),
+      brandId: brand.brandId,
+      intentId: intent.intentId,
+      webSessionId: intent.webSessionId,
+      issuedAt: now.toISOString(),
+      expiresAt,
+      consumedAt: null,
+      consumedByCustomerId: null,
+      textHash: prefillTextHash(text),
     });
     // L2-WhatsApp: the brand's own connected number; otherwise the configured (simulator) number.
     const { number } = await this.whatsappTarget(brand);
     return {
       prefilledText: text,
+      ref: prefilledText(token),
       waLink: number ? `https://wa.me/${number}?text=${encodeURIComponent(text)}` : null,
       expiresAt,
     };

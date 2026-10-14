@@ -153,7 +153,8 @@ const offer = await step('Customer: storefront "Need it today?" → simulator ch
     },
     { Origin: ORIGIN },
   );
-  await send({ type: 'TEXT', text: `${click.whatsapp.prefilled_text} I need it today` });
+  // The shopper sends the prefilled sentence as it is (L4: the chat is linked by recognising it).
+  await send({ type: 'TEXT', text: click.whatsapp.prefilled_text });
   const res = await send({ type: 'LOCATION', ...NEAR_POWAI });
   const holds = ((res.outbound_messages[0]?.options ?? []) as Json[])
     .map((o) => o.option_id as string)

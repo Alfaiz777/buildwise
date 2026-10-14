@@ -117,7 +117,7 @@ describe('shopper conversation', () => {
       entry: 'STORE_NEED',
       shopify_variant_id: 'gid://shopify/ProductVariant/2001',
     });
-    await send(world, token, { type: 'TEXT', text: `I need it today ${refOf(click.body.whatsapp.prefilled_text)}` });
+    await send(world, token, { type: 'TEXT', text: `I need it today ${refOf(click.body.whatsapp)}` });
     await send(world, token, { type: 'LOCATION', latitude: 19.0, longitude: 72.8 });
     const offer = (await poll(world, token)).body.messages.at(-1);
     expect(offer.parts.header).toMatchObject({ type: 'IMAGE' });

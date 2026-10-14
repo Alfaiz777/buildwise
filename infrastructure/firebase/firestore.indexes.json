@@ -25,6 +25,14 @@
       ]
     },
     {
+      "collectionGroup": "intentTokens",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "text_hash", "order": "ASCENDING" },
+        { "fieldPath": "brand_id", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "reservations",
       "queryScope": "COLLECTION",
       "fields": [

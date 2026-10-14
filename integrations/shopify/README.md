@@ -7,9 +7,11 @@ along they are) and adds two ways into WhatsApp:
 - a round **WhatsApp bubble** at the bottom right of every page.
 
 Tapping either opens WhatsApp with a ready message, for example
-`Hi AquaSkin! I'd like Mineral Sunscreen SPF 50 (50 g) today. Is it available at a store near me? (ref START_QWIKSPOT_…)`.
+`Hi AquaSkin! I'd like Mineral Sunscreen SPF 50 (50 g) today. Is it available at a store near me?`.
 When the shopper sends it, Qwikspot links the chat to what they were browsing and answers about that
-product straight away. The `(ref …)` part is a one-time code (30 minutes); it contains no personal data.
+product straight away. Qwikspot recognises the exact message it prepared (within 30 minutes, once); there is no
+code in it and no personal data. If the shopper rewrites the message, the chat still works — only the browsing
+history is not attached.
 
 ## Files
 

@@ -332,22 +332,38 @@ const tokenFromDoc = (d: FirebaseFirestore.DocumentData): IntentTokenRecord => (
   expiresAt: d.expires_at,
   consumedAt: d.consumed_at ?? null,
   consumedByCustomerId: d.consumed_by_customer_id ?? null,
+  textHash: d.text_hash ?? null,
 });
 
 export class FirestoreIntentTokenRepository implements IntentTokenRepository {
   constructor(private readonly db: Firestore) {}
 
   async create(t: IntentTokenRecord) {
-    await this.db.collection('intentTokens').doc(t.tokenHash).create({
-      token_hash: t.tokenHash,
-      brand_id: t.brandId,
-      intent_id: t.intentId,
-      web_session_id: t.webSessionId,
-      issued_at: t.issuedAt,
-      expires_at: t.expiresAt,
-      consumed_at: null,
-      consumed_by_customer_id: null,
-    });
+    await this.db
+      .collection('intentTokens')
+      .doc(t.tokenHash)
+      .create({
+        token_hash: t.tokenHash,
+        brand_id: t.brandId,
+        intent_id: t.intentId,
+        web_session_id: t.webSessionId,
+        issued_at: t.issuedAt,
+        expires_at: t.expiresAt,
+        consumed_at: null,
+        consumed_by_customer_id: null,
+        text_hash: t.textHash ?? null,
+      });
+  }
+
+  async listOpenByTextHash(brandId: string, textHash: string, nowIso: string) {
+    // Composite index intentTokens (text_hash, brand_id) — infrastructure/firebase/firestore.indexes.json.
+    const snap = await this.db
+      .collection('intentTokens')
+      .where('text_hash', '==', textHash)
+      .where('brand_id', '==', brandId)
+      .limit(50)
+      .get();
+    return snap.docs.map((d) => tokenFromDoc(d.data())).filter((t) => !t.consumedAt && t.expiresAt > nowIso);
   }
 
   async countIssuedSince(brandId: string, webSessionId: string, sinceIso: string) {

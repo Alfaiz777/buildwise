@@ -28,7 +28,15 @@ import {
 } from '../../domain/conversationPolicy.js';
 import { buildFallbackDecision } from '../../domain/fallbackDecision.js';
 import type { Logger } from '../../lib/logger.js';
-import { checkIntentToken, extractIntentToken, hashIntentToken } from '../../domain/intentToken.js';
+import {
+  checkIntentToken,
+  extractIntentToken,
+  hashIntentToken,
+  MIN_PREFILL_MATCH_LENGTH,
+  normalizePrefillText,
+  pickPrefillMatch,
+  prefillTextHash,
+} from '../../domain/intentToken.js';
 import { newId, sortableId } from '../../lib/ids.js';
 import { AgentDecisionSchema, type AgentRuntime } from '../../ports/agent.js';
 import { toolDeclarations } from '../../ports/agentTools.js';
@@ -171,7 +179,11 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
     },
   };
 
-  /** 3. HANDSHAKE — START_QWIKSPOT_<token>: strip always; validate + consume + bind in one transaction. */
+  /**
+   * 3. HANDSHAKE — links the chat to the shopper's browsing intent, validate + consume + bind
+   * in one transaction. A START_QWIKSPOT_<token> in the text (older links) is stripped and used;
+   * otherwise (L4 plain prefill) the exact prefilled sentence is recognised by its hash.
+   */
   const handshake: PipelineStage = {
     name: 'HANDSHAKE',
     async run(context) {
@@ -182,11 +194,32 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
       }
       const { token, text } = extractIntentToken(content.text);
       context.data.text = truncateInbound(text);
-      if (!token) return CONTINUE;
-
       const brandId = context.inbound.brandId;
       const customerId = need(context.customerId, 'customerId');
-      const result = await deps.tokens.consumeAndBind(hashIntentToken(token), brandId, customerId, now(), (t) =>
+
+      let tokenHash: string | null = token ? hashIntentToken(token) : null;
+      let boundBy = 'REF';
+      if (!tokenHash) {
+        // L4: the message the shopper sent is exactly a sentence Qwikspot prefilled (no visible code).
+        if (normalizePrefillText(text).length < MIN_PREFILL_MATCH_LENGTH) return CONTINUE;
+        const open = await deps.tokens.listOpenByTextHash(brandId, prefillTextHash(text), now().toISOString());
+        const match = pickPrefillMatch(open, now());
+        if (!match) {
+          if (open.length > 1) {
+            await deps.events.audit(brandId, {
+              action: 'INTENT_TOKEN_REJECTED',
+              targetType: 'CUSTOMER',
+              targetId: customerId,
+              result: 'DENIED',
+              reasonCode: 'PREFILL_TEXT_AMBIGUOUS',
+            });
+          }
+          return CONTINUE; // edited text or no recent prefill: the chat simply goes on
+        }
+        tokenHash = match.tokenHash;
+        boundBy = 'TEXT_MATCH';
+      }
+      const result = await deps.tokens.consumeAndBind(tokenHash, brandId, customerId, now(), (t) =>
         checkIntentToken(t, brandId, now()),
       );
       if (!result.ok) {
@@ -214,6 +247,7 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
           action: 'INTENT_TOKEN_BOUND',
           targetType: 'INTENT',
           targetId: result.intent.intentId,
+          reasonCode: boundBy,
         });
       }
       return CONTINUE;

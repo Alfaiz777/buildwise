@@ -794,3 +794,25 @@ qwikspot-shopify.js     the button and the bubble are links to /api/wa; hidden o
 ### Teach-back
 
 Two layers each did their job — one CORS list for the console, one origin list per brand for storefronts — but the order they ran in meant the first one silently decided for the second. When a public route has its own access rule, it has to run before any general one that could answer for it.
+
+## L4 — a plain WhatsApp message, linked by its sentence
+
+### What changed
+
+```text
+domain/intentToken.ts           readableMessage (no code); normalizePrefillText / prefillTextHash; pickPrefillMatch
+application/intentService.ts    the token record keeps a hash of the sentence; the API returns `ref` separately
+conversation/stages.ts          handshake: a ref first (older links), else the exact sentence
+firestore.indexes.json          intentTokens (text_hash, brand_id)
+```
+
+### What can fail?
+
+- A visible code looks like spam to a shopper, but the sentence that replaces it is guessable. The token stays single-use and the worst case is anonymous intent on the wrong chat for up to 30 minutes — written down in docs/07 §18.
+- WhatsApp or a keyboard can change the end of a message (a space, a full stop) or the quotes: the comparison normalises exactly those and nothing else.
+- Two shoppers can tap the same product within minutes: only the most recent token binds, and only if it is under 2 minutes old.
+- Tests that asked their own question by editing the message now carry the reference separately (`whatsapp.ref`), because an edited sentence no longer binds.
+
+### Teach-back
+
+The link between the website and the chat used to be something the shopper could see. Now it is something only Qwikspot can recognise: the exact words it wrote for them, within a short window, once.
