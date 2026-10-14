@@ -2,10 +2,10 @@
  * Qwikspot for Shopify themes (L4): tracks the shopper's steps for intent, and adds
  * "Need it today? Ask on WhatsApp" under Add to cart plus a WhatsApp bubble on every page.
  *
- * Source of the <script> inside integrations/shopify/qwikspot.liquid — edit this file, then run
+ * Source of the script tag inside integrations/shopify/qwikspot.liquid — edit this file, then run
  * `npm run shopify:snippet` (scripts/build-shopify-snippet.mjs) to rebuild the Liquid snippet.
  *
- * Reads its settings from <script id="qwikspot-config" type="application/json"> (written by the
+ * Reads its settings from the JSON script tag with id "qwikspot-config" (written by the
  * Liquid snippet from Shopify's own objects). Sends only variant GIDs, the search words and
  * event types — never names, emails, phone numbers or cart tokens. Every failure is silent.
  */
@@ -246,7 +246,7 @@
     'c-1-1.6-1.5-3.4-1.5-5.3 0-5.8 4.7-10.5 10.5-10.5s10.5 4.7 10.5 10.5S21.8 26.1 16 26.1zm5.8-7.9c-.3-.2-1.9-.9-2.2-1' +
     '-.3-.1-.5-.2-.7.2-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-.3-.2-1.3-.5-2.6-1.6-1-.9-1.6-1.9-1.8-2.2-.2-.3 0-.5.1-.6l.5-.6' +
     'c.2-.2.2-.3.3-.5.1-.2 0-.4 0-.6l-1-2.4c-.3-.6-.5-.5-.7-.5h-.6c-.2 0-.6.1-.9.4-.3.3-1.2 1.1-1.2 2.8s1.2 3.2 1.4 3.4' +
-    'c.2.2 2.4 3.6 5.7 5 .8.3 1.4.5 1.9.7.8.3 1.5.2 2.1.1.6-.1 1.9-.8 2.2-1.5.3-.7.3-1.4.2-1.5-.1-.1-.3-.2-.6-.4z"/></svg>';
+    'c.2.2 2.4 3.6 5.7 5 .8.3 1.4.5 1.9.7.8.3 1.5.2 2.1.1.6-.1 1.9-.8 2.2-1.5.3-.7.3-1.4.2-1.5-.1-.1-.3-.2-.6-.4z"/><\/svg>';
 
   function addStyle() {
     var style = document.createElement('style');
