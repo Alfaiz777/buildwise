@@ -23,6 +23,7 @@
   var currentVariant = product && product.variant ? String(product.variant) : null;
   var lastSent = {};
   var entryPoints = [];
+  var warned = false;
 
   function readConfig() {
     try {
@@ -60,9 +61,29 @@
       if (lastSent[key] && now - lastSent[key] < 1500) return;
       lastSent[key] = now;
       var result = api().track(type, data || {});
-      if (result && result.catch) result.catch(noop);
+      if (result && result.then) {
+        result.then(function (res) {
+          // Hidden only when Qwikspot says so — never because a request failed.
+          if (res && res.whatsapp_available === false) hideEntryPoints();
+        }, warnOnce);
+      }
     } catch (e) {
-      /* never break the theme */
+      warnOnce(e);
+    }
+  }
+
+  /** Shoppers see nothing; one line in DevTools per page says why events are not arriving. */
+  function warnOnce(err) {
+    if (warned) return;
+    warned = true;
+    try {
+      var why =
+        err && typeof err.status === 'number'
+          ? 'HTTP ' + err.status + (err.error && err.error.code ? ' ' + err.error.code : '')
+          : 'blocked (CORS/network)';
+      console.warn('[Qwikspot] storefront events are not reaching Qwikspot: ' + why);
+    } catch (e) {
+      /* ignore */
     }
   }
 
@@ -86,6 +107,7 @@
     if (next && next !== currentVariant) {
       currentVariant = next;
       send('VARIANT_SELECTED', { variantId: gid(next) });
+      updateLinks();
     }
   }
 
@@ -181,6 +203,10 @@
   }
 
   // ---------- WhatsApp entry points ----------
+  //
+  // Both are plain links to Qwikspot's GET /api/wa redirect, which records the click and answers
+  // with the wa.me link. A tap navigates at once — no waiting for an API answer first — so a phone
+  // keeps the tap's permission to open the WhatsApp app, and a computer's popup blocker allows it.
 
   function hideEntryPoints() {
     entryPoints.forEach(function (el) {
@@ -188,11 +214,35 @@
     });
   }
 
-  function reportToGa4(entry, variant) {
+  /** The /api/wa link for an entry point, with the chosen variant and this browser's two random ids. */
+  function waHref(entry) {
+    var ids = {};
+    try {
+      ids = api().ids() || {};
+    } catch (e) {
+      /* storage blocked: the redirect still opens the brand's chat */
+    }
+    var params = new URLSearchParams();
+    params.set('brand', config.brandId);
+    params.set('entry', entry);
+    var variant = config.template === 'product' ? numeric(selectedVariant()) : null;
+    if (variant) params.set('variant', variant);
+    if (ids.web_session_id) params.set('session', ids.web_session_id);
+    if (ids.visitor_id) params.set('visitor', ids.visitor_id);
+    return config.apiBaseUrl.replace(/\/$/, '') + '/api/wa?' + params.toString();
+  }
+
+  function updateLinks() {
+    entryPoints.forEach(function (el) {
+      if (el.getAttribute('data-qs-entry')) el.href = waHref(el.getAttribute('data-qs-entry'));
+    });
+  }
+
+  function reportToGa4(entry) {
     try {
       if (typeof window.gtag !== 'function') return;
       var data = { entry: entry };
-      var id = numeric(variant);
+      var id = config.template === 'product' ? numeric(selectedVariant()) : null;
       if (id) data.item_id = id;
       if (product && product.title) data.item_name = product.title;
       window.gtag('event', 'qwikspot_whatsapp_click', data);
@@ -201,44 +251,50 @@
     }
   }
 
-  /** Records the click, then opens WhatsApp: the app on a phone, a new tab on a computer. */
-  function openWhatsApp(entry, variant) {
-    reportToGa4(entry, variant);
-    // A computer's popup blocker allows a window opened during the click itself.
-    var pending = isMobile() ? null : window.open('', '_blank');
-    var close = function () {
-      if (pending) pending.close();
-    };
-    try {
-      var result = api().whatsapp(entry, gid(variant) || undefined);
-      result
-        .then(function (res) {
-          var link = res && res.whatsapp && res.whatsapp.wa_link;
-          if (!link) {
-            close();
-            hideEntryPoints(); // no WhatsApp number connected for this brand
-            return;
-          }
-          if (pending) {
-            pending.opener = null;
-            pending.location.href = link;
-          } else {
-            window.location.href = link;
-          }
-        })
-        .catch(close);
-    } catch (e) {
-      close();
+  /** An entry point: a real link (same tab on a phone, so the app opens; a new tab on a computer). */
+  function waLink(entry, className, label) {
+    var a = document.createElement('a');
+    a.className = className;
+    a.setAttribute('data-qs-entry', entry);
+    a.href = waHref(entry);
+    // The redirect checks the store's origin: always send it, whatever the theme's referrer policy.
+    a.referrerPolicy = 'strict-origin-when-cross-origin';
+    if (!isMobile()) {
+      a.target = '_blank';
+      a.rel = 'noopener';
     }
+    a.addEventListener('click', function () {
+      a.href = waHref(entry); // the latest size and ids
+      reportToGa4(entry);
+      if (label) {
+        a.textContent = 'Opening WhatsApp…';
+        setTimeout(function () {
+          a.textContent = label;
+        }, 3000);
+      } else {
+        a.classList.add('qs-opening');
+        setTimeout(function () {
+          a.classList.remove('qs-opening');
+        }, 3000);
+      }
+    });
+    entryPoints.push(a);
+    return a;
   }
 
   var STYLE =
-    '.qs-need{display:block;width:100%;margin:12px 0 4px;padding:14px 16px;border:1px solid #1f7a4d;border-radius:8px;' +
-    'background:#fff;color:#1f7a4d;font:inherit;font-weight:600;cursor:pointer;text-align:center}' +
-    '.qs-need:hover{background:#f1faf5}.qs-powered{margin:0 0 12px;font-size:12px;opacity:.6;text-align:center}' +
-    '.qs-bubble{position:fixed;right:16px;bottom:16px;z-index:2147483000;width:56px;height:56px;border:0;border-radius:50%;' +
-    'background:#25d366;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;display:flex;align-items:center;justify-content:center}' +
-    '.qs-bubble svg{width:30px;height:30px;fill:#fff}@media (max-width:749px){.qs-bubble{right:12px;bottom:12px}}';
+    '.qs-need{display:block;box-sizing:border-box;width:100%;margin:12px 0 4px;padding:14px 16px;border:1px solid #1f7a4d;' +
+    'border-radius:8px;background:#fff;color:#1f7a4d;font:inherit;font-weight:600;text-align:center;text-decoration:none;' +
+    'cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s,transform .1s}' +
+    '.qs-need:hover{background:#f1faf5}.qs-need:active{background:#dff3e8;transform:scale(.98)}' +
+    '.qs-powered{margin:0 0 12px;font-size:12px;opacity:.6;text-align:center}' +
+    '.qs-bubble{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:2147483000;' +
+    'width:56px;height:56px;border-radius:50%;background:#25d366;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;' +
+    'display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;' +
+    'transition:transform .1s,box-shadow .15s,bottom .2s}' +
+    '.qs-bubble:active,.qs-bubble.qs-opening{transform:scale(.92);box-shadow:0 2px 8px rgba(0,0,0,.3)}' +
+    '.qs-bubble svg{width:30px;height:30px;fill:#fff}' +
+    '@media (max-width:749px){.qs-bubble{right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px))}}';
 
   var WHATSAPP_ICON =
     '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3C9 3 3.3 8.6 3.3 15.6c0 2.2.6 4.4 1.7 6.3L3 29l7.3-1.9' +
@@ -260,14 +316,9 @@
     );
     var anchor = submit || document.querySelector('.price, [class*="price"]');
     if (!anchor || !anchor.parentNode) return;
-    var button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'qs-need';
-    button.textContent = 'Need it today? Ask on WhatsApp';
-    button.addEventListener('click', function (event) {
-      event.preventDefault();
-      openWhatsApp('STORE_NEED', selectedVariant());
-    });
+    var label = 'Need it today? Ask on WhatsApp';
+    var button = waLink('STORE_NEED', 'qs-need', label);
+    button.textContent = label;
     var powered = document.createElement('p');
     powered.className = 'qs-powered';
     powered.textContent = 'Powered by Qwikspot';
@@ -275,20 +326,56 @@
     var after = submit && submit.parentNode && submit.parentNode !== submit.form ? submit.parentNode : anchor;
     after.parentNode.insertBefore(powered, after.nextSibling);
     after.parentNode.insertBefore(button, powered);
-    entryPoints.push(button, powered);
+    entryPoints.push(powered);
+  }
+
+  var bubble = null;
+
+  /**
+   * Keeps the bubble above a bar the theme fixes to the bottom of the screen (Savor's sticky
+   * Add to cart, a cookie banner): it never covers the theme's own buttons.
+   */
+  function placeBubble() {
+    if (!bubble) return;
+    var lift = 0;
+    var candidates = document.querySelectorAll(
+      '[class*="sticky"], [id*="sticky"], [class*="Sticky"], sticky-add-to-cart',
+    );
+    for (var i = 0; i < candidates.length; i++) {
+      var el = candidates[i];
+      if (el === bubble || el.contains(bubble)) continue;
+      var style = window.getComputedStyle(el);
+      if (
+        (style.position !== 'fixed' && style.position !== 'sticky') ||
+        style.display === 'none' ||
+        style.visibility === 'hidden'
+      )
+        continue;
+      var rect = el.getBoundingClientRect();
+      if (rect.height > 0 && rect.height < 240 && rect.bottom >= window.innerHeight - 2) {
+        lift = Math.max(lift, window.innerHeight - rect.top);
+      }
+    }
+    bubble.style.bottom = lift > 0 ? 'calc(' + (lift + 12) + 'px + env(safe-area-inset-bottom, 0px))' : '';
   }
 
   function addBubble() {
-    var bubble = document.createElement('button');
-    bubble.type = 'button';
-    bubble.className = 'qs-bubble';
+    bubble = waLink('CHAT', 'qs-bubble', null);
     bubble.setAttribute('aria-label', 'Chat on WhatsApp');
     bubble.innerHTML = WHATSAPP_ICON;
-    bubble.addEventListener('click', function () {
-      openWhatsApp('CHAT', config.template === 'product' ? selectedVariant() : null);
-    });
     document.body.appendChild(bubble);
-    entryPoints.push(bubble);
+    var scheduled = false;
+    var schedule = function () {
+      if (scheduled) return;
+      scheduled = true;
+      setTimeout(function () {
+        scheduled = false;
+        placeBubble();
+      }, 200);
+    };
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    placeBubble();
   }
 
   // ---------- start ----------

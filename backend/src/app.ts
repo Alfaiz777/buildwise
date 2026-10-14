@@ -124,6 +124,10 @@ export function createApp(deps: AppDeps): Express {
 
   app.use(requestContext(logger));
   app.use(helmet());
+  // PUBLIC storefront intent routes (docs/06 §14.1): BEFORE the global CORS block, whose list is
+  // the console's own origins — the storefront (e.g. the brand's Shopify store) is checked per
+  // brand against allowed_storefront_origins inside these routes, which set their own CORS headers.
+  app.use('/api', intentsRouter(services.intents, undefined, logger));
   if (config.corsAllowedOrigins.length > 0) {
     // Only needed when the SPA calls Cloud Run directly. The default path is
     // same-origin via the Firebase Hosting rewrite / Vite proxy. No cookies are used.
@@ -166,8 +170,6 @@ export function createApp(deps: AppDeps): Express {
       : (config.demo?.brandIds[0] ?? null)
     : null;
   app.use('/api', demoRouter(config.demo, shopperDemoBrand));
-  // PUBLIC storefront intent endpoint: origin allowlist + rate limits, no console auth (docs/06 §14.1).
-  app.use('/api', intentsRouter(services.intents));
   if (services.demoStorefront) {
     const allowed = (brandId: string) => services.shopper?.isBrandAllowed(brandId) ?? true;
     app.use(

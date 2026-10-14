@@ -695,6 +695,7 @@ POST  /api/reservations                            (page mutation token)
 
 # Storefront + commerce events
 POST  /api/intents
+GET   /api/wa                                      (L4: a storefront's WhatsApp link — records WHATSAPP_CLICK, 302 to wa.me — §14.1)
 POST  /api/webhooks/shopify                        (L2-Shopify: raw-body HMAC; orders/create, orders/cancelled, products/*, app/uninstalled — §8.1)
 GET   /api/integrations/shopify/callback           (L2-Shopify, public: OAuth callback — §9)
 
@@ -741,7 +742,7 @@ Common error envelope (all endpoints):
 
 Records a storefront behavioral event, updates the deterministic intent and, for `WHATSAPP_CLICK`, issues the handshake token (§10.1).
 
-Auth: `PUBLIC`. The `Origin` must be in `brand.settings.allowed_storefront_origins`.
+Auth: `PUBLIC`. The `Origin` must be in `brand.settings.allowed_storefront_origins`. These routes are mounted **before** the app's global CORS middleware (whose `CORS_ALLOWED_ORIGINS` are the console's own origins), and answer a storefront's preflight and every response — errors included — with `Access-Control-Allow-Origin` for an origin the brand allows (L4 fix).
 
 Request:
 
@@ -775,6 +776,7 @@ Response `202`:
   "intent_stage": "CART",
   "intent_strength": "HIGH_INTENT",
   "intent_type": "CART_ABANDONMENT",
+  "whatsapp_available": true,
   "whatsapp": {
     "prefilled_text": "Hi AquaSkin! I'd like Mineral Sunscreen SPF 50 (50 g) today. Is it available at a store near me? (ref START_QWIKSPOT_7K3M9Q2XH4T8VBN6R1CZ5WJPDA)",
     "wa_link": "https://wa.me/<brand number>?text=Hi%20AquaSkin!%20I'd%20like%20…%20(ref%20START_QWIKSPOT_7K3M9Q2XH4T8VBN6R1CZ5WJPDA)",
@@ -783,9 +785,23 @@ Response `202`:
 }
 ```
 
-`whatsapp` is present only for `WHATSAPP_CLICK`; otherwise `null`. `intent_stage` is the funnel stage and `intent_strength` the former three-level value (`04` §11.2).
+`whatsapp` is present only for `WHATSAPP_CLICK`; otherwise `null`. `whatsapp_available` (L4): the brand can be reached on WhatsApp — with the WhatsApp channel on, through its own connected number; the storefront hides its WhatsApp entry points only when this is `false`. `intent_stage` is the funnel stage and `intent_strength` the former three-level value (`04` §11.2).
 
 Errors: `400 INVALID_EVENT`, `403 ORIGIN_NOT_ALLOWED`, `404 UNKNOWN_VARIANT`, `429 RATE_LIMITED`.
+
+### GET /api/wa (L4) — the storefront's WhatsApp link
+
+The Shopify snippet's "Need it today?" button and WhatsApp bubble are plain links to this redirect, so a tap navigates at once: no API call has to finish first, a phone keeps the tap's permission to open the WhatsApp app, and a computer's popup blocker allows the new tab.
+
+```text
+GET /api/wa?brand=<brand_id>&entry=STORE_NEED|CHAT&variant=<numeric id | gid://shopify/ProductVariant/<id>>&session=<web_session_id>&visitor=<visitor_id>
+```
+
+- Strictly those fields (`variant` and `visitor` optional), with the `IntentEvent` id rules → otherwise `400 INVALID_EVENT`; an unknown or inactive brand → `404`.
+- The storefront is the origin of the `Referer` (a link has no `Origin`; browsers send the referring origin cross-origin under the default `strict-origin-when-cross-origin`, and the snippet sets that policy on its links).
+- Origin allowed and within the `POST /api/intents` limits: the `WHATSAPP_CLICK` is recorded exactly as there (validation, token, readable text) → `302` to the `wa.me` link.
+- The click cannot be recorded (origin not allowed or no `Referer`, unknown variant, rate limited, token limit): `302` to `https://wa.me/<brand number>?text=Hi {brand}! I have a question.` (no reference) when the brand can be reached on WhatsApp; otherwise `302` back to the referring page if its origin is allowed, else `404`. Logged as `intents.wa_redirect_fallback` with the brand id and the reason only.
+- Every answer carries `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. The request logger never logs query strings, so the two random ids in the URL are not logged.
 
 ## 14.2 Simulator channel
 

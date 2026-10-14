@@ -97,10 +97,19 @@
       credentials: 'omit',
       body: JSON.stringify(body),
     }).then(function (res) {
-      return res.json().then(function (json) {
-        if (!res.ok) throw json;
-        return json;
-      });
+      // A failed call rejects with the error body plus the HTTP status (for the caller's diagnostics).
+      return res
+        .json()
+        .catch(function () {
+          return {};
+        })
+        .then(function (json) {
+          if (!res.ok) {
+            json.status = res.status;
+            throw json;
+          }
+          return json;
+        });
     });
   }
 

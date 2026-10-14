@@ -16,6 +16,7 @@ interface Fake {
   init: ReturnType<typeof vi.fn>;
   track: ReturnType<typeof vi.fn>;
   whatsapp: ReturnType<typeof vi.fn>;
+  ids: ReturnType<typeof vi.fn>;
 }
 
 const PRODUCT_PAGE = `
@@ -39,13 +40,13 @@ function config(over: Record<string, unknown> = {}) {
   });
 }
 
-function load(options: { html?: string; config?: Record<string, unknown>; link?: string | null } = {}): Fake {
+function load(options: { html?: string; config?: Record<string, unknown>; available?: boolean } = {}): Fake {
   document.body.innerHTML = `${options.html ?? PRODUCT_PAGE}<script id="qwikspot-config" type="application/json">${config(options.config)}</script>`;
-  const link = options.link === undefined ? 'https://wa.me/910000000001?text=Hi' : options.link;
   const fake: Fake = {
     init: vi.fn(),
-    track: vi.fn(() => Promise.resolve({ accepted: true })),
-    whatsapp: vi.fn(() => Promise.resolve({ whatsapp: link ? { wa_link: link, prefilled_text: 'Hi' } : null })),
+    track: vi.fn(() => Promise.resolve({ accepted: true, whatsapp_available: options.available ?? true })),
+    whatsapp: vi.fn(),
+    ids: vi.fn(() => ({ web_session_id: 'ws_test_session01', visitor_id: 'vis_test_visitor1' })),
   };
   (window as unknown as { QwikspotIntent: Fake }).QwikspotIntent = fake;
   new Function(SNIPPET)();
@@ -146,69 +147,150 @@ describe('Shopify snippet — tracking (only variant GIDs and search words)', ()
   });
 });
 
-describe('Shopify snippet — "Need it today?" and the WhatsApp bubble', () => {
+describe('Shopify snippet — "Need it today?" and the WhatsApp bubble are links to GET /api/wa', () => {
+  const need = () => document.querySelector<HTMLAnchorElement>('a.qs-need')!;
+  const bubble = () => document.querySelector<HTMLAnchorElement>('a.qs-bubble')!;
+  const params = (a: HTMLAnchorElement) => Object.fromEntries(new URL(a.href).searchParams);
+
   it('the button sits under Add to cart, with "Powered by Qwikspot"; the bubble is on the page', () => {
     load();
     const buttons = document.querySelector('.product-form__buttons')!;
-    expect(buttons.nextElementSibling).toHaveTextContent('Need it today? Ask on WhatsApp');
-    expect(buttons.nextElementSibling!.nextElementSibling).toHaveTextContent('Powered by Qwikspot');
-    expect(document.querySelector('[aria-label="Chat on WhatsApp"]')).toBeInTheDocument();
+    expect(buttons.nextElementSibling).toBe(need());
+    expect(need()).toHaveTextContent('Need it today? Ask on WhatsApp');
+    expect(need().nextElementSibling).toHaveTextContent('Powered by Qwikspot');
+    expect(bubble()).toHaveAttribute('aria-label', 'Chat on WhatsApp');
   });
 
-  it('on a computer: opens a tab during the click, then sends it to the wa.me link; GA4 gets the click, no ids or tokens', async () => {
-    const tab = { location: { href: '' }, opener: {} as unknown, close: vi.fn() };
-    const open = vi.spyOn(window, 'open').mockImplementation(() => tab as unknown as Window);
+  it('each link points at the redirect with the brand, the entry, the chosen variant and the two random ids', () => {
+    load();
+    expect(need().href.startsWith('https://app.qwikspot.example/api/wa?')).toBe(true);
+    expect(params(need())).toEqual({
+      brand: 'brd_demo',
+      entry: 'STORE_NEED',
+      variant: '111',
+      session: 'ws_test_session01',
+      visitor: 'vis_test_visitor1',
+    });
+    expect(params(bubble())).toMatchObject({ entry: 'CHAT', variant: '111' });
+    expect(need().referrerPolicy).toBe('strict-origin-when-cross-origin'); // the redirect checks the store's origin
+  });
+
+  it('choosing another size updates both links before the tap', async () => {
+    load();
+    const input = document.querySelector<HTMLInputElement>('[name="id"]')!;
+    input.value = '222';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(params(need()).variant).toBe('222');
+    expect(params(bubble()).variant).toBe('222');
+  });
+
+  it('on a computer: a new tab (target=_blank, rel=noopener); on a phone: the same tab, so the WhatsApp app opens', () => {
+    load();
+    expect(need().target).toBe('_blank');
+    expect(need().rel).toBe('noopener');
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/141.0 Mobile Safari/537.36',
+    );
+    delete (window as { __qwikspotShopify?: boolean }).__qwikspotShopify;
+    load();
+    expect(need().target).toBe('');
+    expect(bubble().target).toBe('');
+  });
+
+  it('a tap navigates at once: no API call first, the default action is kept; GA4 gets the click; "Opening WhatsApp…"', () => {
+    vi.useFakeTimers();
     const gtag = vi.fn();
     (window as unknown as { gtag: typeof gtag }).gtag = gtag;
     const fake = load();
-    const input = document.querySelector<HTMLInputElement>('[name="id"]')!;
-    input.value = '222';
-    (document.querySelector('.qs-need') as HTMLButtonElement).click();
-    expect(open).toHaveBeenCalledWith('', '_blank'); // inside the click: not a blocked popup
-    expect(fake.whatsapp).toHaveBeenCalledWith('STORE_NEED', `${GID}222`);
-    await tick();
-    expect(tab.location.href).toBe('https://wa.me/910000000001?text=Hi');
-    expect(tab.opener).toBeNull();
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    // jsdom does not navigate; the point is that nothing cancels the link's own navigation.
+    need().addEventListener('click', (e) => e.preventDefault());
+    need().dispatchEvent(click);
+    expect(fake.whatsapp).not.toHaveBeenCalled();
     expect(gtag).toHaveBeenCalledWith('event', 'qwikspot_whatsapp_click', {
       entry: 'STORE_NEED',
-      item_id: '222',
+      item_id: '111',
       item_name: 'Mineral Sunscreen SPF 50',
     });
-
-    (document.querySelector('.qs-bubble') as HTMLButtonElement).click();
-    expect(fake.whatsapp).toHaveBeenLastCalledWith('CHAT', `${GID}222`);
+    expect(need()).toHaveTextContent('Opening WhatsApp…');
+    vi.advanceTimersByTime(3000);
+    expect(need()).toHaveTextContent('Need it today? Ask on WhatsApp');
+    vi.useRealTimers();
   });
 
-  it('on a phone: no popup — the page goes to the wa.me link so the WhatsApp app opens', async () => {
-    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
-      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile',
-    );
-    const open = vi.spyOn(window, 'open');
-    vi.spyOn(console, 'error').mockImplementation(() => {}); // jsdom cannot navigate
+  it('hidden only when Qwikspot answers whatsapp_available: false — never because a request failed', async () => {
+    load({ available: false });
+    await tick();
+    expect(need().style.display).toBe('none');
+    expect(bubble().style.display).toBe('none');
+
+    delete (window as { __qwikspotShopify?: boolean }).__qwikspotShopify;
+    window.sessionStorage.clear();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const failing = load();
+    failing.track.mockImplementation(() => Promise.reject(new TypeError('Failed to fetch')));
+    const input = document.querySelector<HTMLInputElement>('[name="id"]')!;
+    input.value = '555';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    await tick();
+    expect(need().style.display).toBe('');
+    expect(bubble().style.display).toBe('');
+    expect(warn).toHaveBeenCalledWith('[Qwikspot] storefront events are not reaching Qwikspot: blocked (CORS/network)');
+  });
+
+  it('one quiet DevTools warning per page with the HTTP status when an event is refused', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const fake = load();
-    (document.querySelector('.qs-need') as HTMLButtonElement).click();
-    await tick();
-    expect(open).not.toHaveBeenCalled();
-    expect(fake.whatsapp).toHaveBeenCalledWith('STORE_NEED', `${GID}111`);
+    fake.track.mockImplementation(() => Promise.reject({ status: 403, error: { code: 'ORIGIN_NOT_ALLOWED' } }));
+    const input = document.querySelector<HTMLInputElement>('[name="id"]')!;
+    for (const id of ['601', '602']) {
+      input.value = id;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await tick();
+      await tick();
+    }
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      '[Qwikspot] storefront events are not reaching Qwikspot: HTTP 403 ORIGIN_NOT_ALLOWED',
+    );
   });
 
-  it('no WhatsApp number connected (no wa_link): both entry points disappear and the blank tab closes', async () => {
-    const tab = { location: { href: '' }, opener: {}, close: vi.fn() };
-    vi.spyOn(window, 'open').mockImplementation(() => tab as unknown as Window);
-    load({ link: null });
-    (document.querySelector('.qs-bubble') as HTMLButtonElement).click();
-    await tick();
-    expect(tab.close).toHaveBeenCalled();
-    expect((document.querySelector('.qs-need') as HTMLElement).style.display).toBe('none');
-    expect((document.querySelector('.qs-bubble') as HTMLElement).style.display).toBe('none');
+  it('the bubble stays above a bar the theme fixes to the bottom (Savor’s sticky Add to cart)', () => {
+    load({
+      html: `${PRODUCT_PAGE}<div class="sticky-add-to-cart" style="position:fixed;bottom:0;left:0;right:0;height:72px"></div>`,
+    });
+    const bar = document.querySelector<HTMLElement>('.sticky-add-to-cart')!;
+    vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue({
+      top: window.innerHeight - 72,
+      bottom: window.innerHeight,
+      height: 72,
+      left: 0,
+      right: 400,
+      width: 400,
+      x: 0,
+      y: window.innerHeight - 72,
+      toJSON: () => ({}),
+    });
+    window.dispatchEvent(new Event('resize'));
+    return new Promise<void>((done) =>
+      setTimeout(() => {
+        expect(bubble().style.bottom).toBe('calc(84px + env(safe-area-inset-bottom, 0px))');
+        done();
+      }, 250),
+    );
   });
 
-  it('pages other than a product: only the bubble, and it asks without a product', () => {
-    vi.spyOn(window, 'open').mockImplementation(() => null);
-    const fake = load({ html: '<main></main>', config: { template: 'index', product: null } });
+  it('pages other than a product: only the bubble, without a variant', () => {
+    load({ html: '<main></main>', config: { template: 'index', product: null } });
     expect(document.querySelector('.qs-need')).toBeNull();
-    (document.querySelector('.qs-bubble') as HTMLButtonElement).click();
-    expect(fake.whatsapp).toHaveBeenCalledWith('CHAT', undefined);
+    expect(params(bubble())).toEqual({
+      brand: 'brd_demo',
+      entry: 'CHAT',
+      session: 'ws_test_session01',
+      visitor: 'vis_test_visitor1',
+    });
   });
 });
 

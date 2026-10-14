@@ -39,10 +39,22 @@ assign qs_brand = 'brd_demo'                           # this store's brand id i
    **Save**.
 4. In Qwikspot: **Brand Console → Settings → Storefronts allowed to send shopper events → Add a storefront**,
    enter the store's address (for AquaSkin: `https://m6ccxz-wk.myshopify.com`) and press **Add**.
-   Until it is on that list, Qwikspot refuses the store's events (and the buttons do nothing).
-   If the store also has its own domain (e.g. `https://aquaskin.in`), add that too.
-5. The brand needs a WhatsApp number in Qwikspot (Settings → Channels: WhatsApp). Without one the two
-   buttons hide themselves after the first tap.
+   Until it is on that list, Qwikspot does not record the store's events; the buttons still open the
+   brand's WhatsApp chat, but without the product and the reference. If the store also has its own domain
+   (e.g. `https://aquaskin.in`), add that too.
+5. The brand needs its own WhatsApp number connected in Qwikspot (Settings → Channels: WhatsApp). Without one,
+   the two buttons hide themselves as soon as Qwikspot answers the first event.
+
+## How a tap opens WhatsApp
+
+Both entry points are ordinary links to Qwikspot's `/api/wa` redirect (with the brand, the entry, the chosen
+size and the two random browser ids). A tap goes there straight away — nothing has to load first — and the
+redirect records the click, creates the one-time reference, and sends the shopper on to `wa.me` with the
+message. On a phone the link opens in the same tab, so Android and iOS hand it to the WhatsApp app; on a
+computer it opens WhatsApp Web in a new tab. The button shows "Opening WhatsApp…" for a few seconds.
+
+The bubble sits at the bottom right, above the phone's home bar, and moves up when the theme shows a bar fixed
+to the bottom of the screen (for example Savor's sticky Add to cart), so it never covers the theme's buttons.
 
 ## GA4 (optional, reporting only)
 
@@ -55,12 +67,26 @@ GA4 does not detect intent — it reports totals hours later. Qwikspot's snippet
 
 ## Test on a phone
 
-1. Open the store on the phone → a product → choose a size.
+1. Open the store in **Chrome on the phone** (or Safari on an iPhone) → a product → choose a size.
 2. Tap **Need it today? Ask on WhatsApp** → the WhatsApp app opens with the message.
 3. Send it → the reply names that product (and size) and the nearest store that has it.
 4. In the Brand Console → Conversations the chat shows the web intent (product, the steps before WhatsApp).
+5. Tap the round WhatsApp bubble on any page → the app opens with "Hi AquaSkin! I have a question about …".
 
 On a computer the button opens WhatsApp Web in a new tab.
+
+## If nothing happens
+
+The snippet never shows errors to shoppers. Open the store on a computer, press **F12 → Console**, and reload:
+
+- `[Qwikspot] storefront events are not reaching Qwikspot: HTTP 403 ORIGIN_NOT_ALLOWED` — the store's address is
+  not in Brand Console → Settings → Storefronts allowed to send shopper events (step 4);
+- `… HTTP 404 UNKNOWN_VARIANT` — the product is not in Qwikspot's catalogue yet: Settings → Shopify → Sync products;
+- `… blocked (CORS/network)` — the browser could not reach Qwikspot (the deployed backend is older than this
+  version, an ad blocker, or no connection).
+
+At most one such line appears per page. To test on the phone itself, Chrome's remote debugging
+(`chrome://inspect` on a computer with the phone connected by USB) shows the same console.
 
 ## What it sends
 

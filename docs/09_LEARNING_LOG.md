@@ -767,3 +767,30 @@ Brand Console Settings            the Brand Admin edits the storefronts allowed 
 ### Teach-back
 
 The storefront knows what the shopper is looking at; WhatsApp knows who they are. The token in the prefilled message is the only bridge, so it has to survive a shopper editing the text, and nothing personal may travel with it.
+
+## L4 fix — the Shopify buttons did nothing
+
+### What happened
+
+On the real store every tap did nothing. The deployed backend runs a global CORS middleware for the console's own origins (`CORS_ALLOWED_ORIGINS`). It sat before the storefront route, answered the Shopify store's preflight without `Access-Control-Allow-Origin`, and the browser blocked the call before our per-brand origin check ever ran. The snippet's silent error handling hid it, and the tests built the app without `corsAllowedOrigins`, so they never met the gcp middleware order.
+
+### What changed
+
+```text
+app.ts                  the storefront routes are mounted before the global CORS block
+routes/intents.ts       CORS headers for an allowed storefront on every answer, errors included;
+                        GET /api/wa: records the click, 302 to wa.me (Referer origin checked)
+qwikspot-shopify.js     the button and the bubble are links to /api/wa; hidden only on
+                        whatsapp_available: false; one [Qwikspot] console warning per page
+```
+
+### What can fail?
+
+- Middleware order is behaviour. A test that builds the app differently from production does not test production: the regression test now sets `corsAllowedOrigins`.
+- "Fails silently" for shoppers must not mean "invisible to us": one console warning per page names the HTTP status or a CORS / network block.
+- A phone opens an app only from a navigation that comes straight from the tap. A link to a redirect does that; `location.href` after an `await` may not.
+- A link sends no `Origin`. The redirect checks the referring origin instead, and never redirects to a page the brand does not allow.
+
+### Teach-back
+
+Two layers each did their job — one CORS list for the console, one origin list per brand for storefronts — but the order they ran in meant the first one silently decided for the second. When a public route has its own access rule, it has to run before any general one that could answer for it.

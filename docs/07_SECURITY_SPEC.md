@@ -592,6 +592,7 @@ The numbers are prototype defaults.
 | Surface | Limit |
 |---|---|
 | `POST /api/intents` | 60 req/min per IP; 600 req/min per brand; `Origin` must be in `allowed_storefront_origins` |
+| `GET /api/wa` (L4, storefront WhatsApp link) | the same limits as `POST /api/intents`; the origin of the `Referer` must be in `allowed_storefront_origins` before a click is recorded. Otherwise nothing is recorded and the shopper is sent to the brand's plain WhatsApp chat (no token); only an allowed referring page is ever a redirect target |
 | Intent token issuance | max 5 tokens per `web_session_id` per hour |
 | Customer-page endpoints (`/api/page/context`, `/api/stores/nearby`, `POST /api/reservations`) | 30 req/min per IP |
 | Invalid page/intent tokens | after 10 invalid attempts per IP in 10 min → `429` for 10 min |
