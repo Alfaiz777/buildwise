@@ -9,7 +9,7 @@
  *
  * Run from the repo root: npm run test:emulator
  */
-import { tokenOf } from '../helpers.js';
+import { refOf, tokenOf } from '../helpers.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -296,7 +296,8 @@ describe('M4 local E2E: intent → follow-up → conversation', () => {
     await chatted.signInShopper(ASHA);
     const click = await chatted.event('WHATSAPP_CLICK', { entry: 'STORE_NEED', shopify_variant_id: SERUM_30 });
     const prefilled: string = click.body.whatsapp.prefilled_text;
-    const res = await say('brandAdmin', 'shopper_3002', `${prefilled} Do you have it in Bandra?`);
+    // Own words with the reference (the older link form; the plain sentence alone binds too — plainPrefill.test.ts).
+    const res = await say('brandAdmin', 'shopper_3002', `Do you have it in Bandra? ${refOf(click.body.whatsapp)}`);
     expect(res.status).toBe(200);
     const intent = await intentOf('brd_m4', chatted.ids.web_session_id);
     expect(intent.token_consumed_at).toBeTruthy();
@@ -308,7 +309,7 @@ describe('M4 local E2E: intent → follow-up → conversation', () => {
 
     // 10. The token never reaches stored text; reusing it elsewhere binds nothing.
     const conversation = await as('brandAdmin').get(`/api/brand/conversations/${res.body.conversation_id}`);
-    const token = tokenOf(prefilled);
+    const token = tokenOf(click.body.whatsapp);
     expect(JSON.stringify(conversation.body)).not.toContain(token);
     const reuse = await say('brandAdmin', 'intruder_01', prefilled);
     expect(reuse.status).toBe(200);

@@ -104,7 +104,7 @@ const customer = (ref: string) => {
           entry: 'STORE_NEED',
           shopify_variant_id: 'gid://shopify/ProductVariant/2001',
         });
-      return send({ type: 'TEXT', text: `${text} ${refOf(click.body.whatsapp.prefilled_text)}` });
+      return send({ type: 'TEXT', text: `${text} ${refOf(click.body.whatsapp)}` });
     },
   };
 };
@@ -226,7 +226,7 @@ describe('M7 full journey — platform → brand → stores → customer → sto
       shopify_variant_id: 'gid://shopify/ProductVariant/2001',
     });
     expect(click.status).toBe(202);
-    const bound = await asha.say(`I need it today ${refOf(click.body.whatsapp.prefilled_text)}`);
+    const bound = await asha.say(`I need it today ${refOf(click.body.whatsapp)}`);
     expect(bound.body.decision.action).toBe('STORE_DISCOVERY');
     expect(
       (await db.collection(`brands/${brandId}/auditEvents`).where('action', '==', 'INTENT_TOKEN_BOUND').get()).size,
@@ -343,7 +343,7 @@ describe('M7 full journey — platform → brand → stores → customer → sto
     let n = 0;
     const say = (content: object) =>
       shopper('post', '/messages').send({ client_message_id: `cm_shopjourney_${++n}`, content });
-    await say({ type: 'TEXT', text: `I need it today ${refOf(click.body.whatsapp.prefilled_text)}` });
+    await say({ type: 'TEXT', text: `I need it today ${refOf(click.body.whatsapp)}` });
     const offer = (await say({ type: 'LOCATION', ...NEAR_POWAI })).body.messages.at(-1);
     expect(offer.parts.header).toMatchObject({ type: 'IMAGE' });
     expect(offer.parts.footer).toBe('Powered by Qwikspot');

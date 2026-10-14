@@ -144,7 +144,7 @@ const customer = (brandKey: string, brandId: string, ref: string) => {
           entry: 'STORE_NEED',
           shopify_variant_id: 'gid://shopify/ProductVariant/2001',
         });
-      return send({ type: 'TEXT', text: `${text} ${refOf(click.body.whatsapp.prefilled_text)}` });
+      return send({ type: 'TEXT', text: `${text} ${refOf(click.body.whatsapp)}` });
     },
   };
 };

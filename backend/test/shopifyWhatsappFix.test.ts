@@ -8,7 +8,7 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createLogger } from '../src/lib/logger.js';
-import { bearer, buildTestWorld, tokenOf } from './helpers.js';
+import { bearer, buildTestWorld } from './helpers.js';
 import { FakeMeta } from './whatsappFakes.js';
 
 type World = ReturnType<typeof buildTestWorld>;
@@ -99,7 +99,7 @@ describe('GET /api/wa — the storefront link that opens WhatsApp', () => {
     expect(res.status).toBe(302);
     expect(res.headers.location).toMatch(/^https:\/\/wa\.me\/910000000000\?text=/);
     expect(textOf(res.headers.location)).toMatch(
-      /^Hi Brand brand_A! I'd like Vitamin C Glow Serum \(30 ml\) today\. Is it available at a store near me\? \(ref START_QWIKSPOT_[0-9A-HJKMNP-TV-Z]{26}\)$/,
+      /^Hi Brand brand_A! I'd like Vitamin C Glow Serum \(30 ml\) today\. Is it available at a store near me\?$/,
     );
     expect(res.headers['cache-control']).toBe('no-store');
     expect(res.headers['referrer-policy']).toBe('no-referrer');
@@ -132,7 +132,9 @@ describe('GET /api/wa — the storefront link that opens WhatsApp', () => {
       });
     expect(sent.status).toBe(200);
     expect(world.intents.intents[0]!.tokenConsumedAt).not.toBeNull();
-    expect(JSON.stringify(world.conversations.messages)).not.toContain(tokenOf(textOf(res.headers.location)));
+    expect(world.audit.brandEvents.find((e) => e.action === 'INTENT_TOKEN_BOUND')).toMatchObject({
+      reasonCode: 'TEXT_MATCH',
+    });
   });
 
   it('a page the brand does not allow (or no Referer): 302 to the plain brand chat, nothing recorded', async () => {
@@ -172,7 +174,7 @@ describe('GET /api/wa — the storefront link that opens WhatsApp', () => {
     const logged = await shopWorld({ logger: createLogger('debug', (l) => lines.push(l)) });
     const results = [];
     for (let i = 0; i < 6; i++) results.push(await wa(logged, { variant: '2001' }));
-    expect(results.slice(0, 5).every((r) => /\(ref /.test(textOf(r.headers.location)))).toBe(true);
+    expect(results.slice(0, 5).every((r) => textOf(r.headers.location).includes('Vitamin C Glow Serum'))).toBe(true);
     expect(results[5]!.status).toBe(302);
     expect(textOf(results[5]!.headers.location)).toBe('Hi Brand brand_A! I have a question.');
     const fallback = lines.map((l) => JSON.parse(l)).filter((l) => l.message === 'intents.wa_redirect_fallback');

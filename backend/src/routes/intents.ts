@@ -125,6 +125,8 @@ export function intentsRouter(
       whatsapp: result.whatsapp
         ? {
             prefilled_text: result.whatsapp.prefilledText,
+            // The reference for clients that can send it invisibly (simulator); not in the wa.me text.
+            ref: result.whatsapp.ref,
             wa_link: result.whatsapp.waLink,
             expires_at: result.whatsapp.expiresAt,
           }

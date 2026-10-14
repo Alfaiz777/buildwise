@@ -162,7 +162,7 @@ const customer = (brandKey: string, brandId: string, ref: string) => {
           ...extra,
         });
       expect(click.status).toBe(202);
-      return send({ type: 'TEXT', text: `${text} ${refOf(click.body.whatsapp.prefilled_text)}` });
+      return send({ type: 'TEXT', text: `${text} ${refOf(click.body.whatsapp)}` });
     },
   };
 };

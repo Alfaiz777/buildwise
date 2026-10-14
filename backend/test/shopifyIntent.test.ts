@@ -56,7 +56,7 @@ describe('"Need it today?" → a readable, URL-encoded WhatsApp message with the
     });
     const needText: string = need.body.whatsapp.prefilled_text;
     expect(needText).toMatch(
-      /^Hi Brand brand_A! I'd like Vitamin C Glow Serum \(30 ml\) today\. Is it available at a store near me\? \(ref START_QWIKSPOT_[0-9A-HJKMNP-TV-Z]{26}\)$/,
+      /^Hi Brand brand_A! I'd like Vitamin C Glow Serum \(30 ml\) today\. Is it available at a store near me\?$/,
     );
     const chat = await event(
       world,
@@ -65,12 +65,10 @@ describe('"Need it today?" → a readable, URL-encoded WhatsApp message with the
       'ws_shopify_00002',
     );
     expect(chat.body.whatsapp.prefilled_text).toMatch(
-      /^Hi Brand brand_A! I have a question about Vitamin C Glow Serum \(30 ml\)\. \(ref /,
+      /^Hi Brand brand_A! I have a question about Vitamin C Glow Serum \(30 ml\)\.$/,
     );
     const none = await event(world, { event_type: 'WHATSAPP_CLICK', entry: 'CHAT' }, TEST_ORIGIN, 'ws_shopify_00003');
-    expect(none.body.whatsapp.prefilled_text).toMatch(
-      /^Hi Brand brand_A! I'd like some help choosing a product\. \(ref /,
-    );
+    expect(none.body.whatsapp.prefilled_text).toMatch(/^Hi Brand brand_A! I'd like some help choosing a product\.$/);
     // The link carries exactly that text, encoded; nothing about the shopper is in it.
     expect(decodeURIComponent(need.body.whatsapp.wa_link.split('?text=')[1])).toBe(needText);
     expect(need.body.whatsapp.wa_link).not.toMatch(/ws_|vis_|int_|var_/);
@@ -90,7 +88,7 @@ describe('"Need it today?" → a readable, URL-encoded WhatsApp message with the
     expect(world.conversations.messages[0]!.text).toBe(
       "Hi Brand brand_A! I'd like Vitamin C Glow Serum (30 ml) today. Is it available at a store near me?",
     );
-    expect(JSON.stringify(world.conversations.messages)).not.toContain(tokenOf(prefilled));
+    expect(JSON.stringify(world.conversations.messages)).not.toContain(tokenOf(click.body.whatsapp));
     // The bound product answers straight away: a store search for that size (no location yet → it asks the area).
     expect(res.body.decision).toMatchObject({ action: 'STORE_DISCOVERY' });
     expect(res.body.outbound_messages[0].text).toContain('Vitamin C Glow Serum');
@@ -98,7 +96,7 @@ describe('"Need it today?" → a readable, URL-encoded WhatsApp message with the
 
   it('a rewritten message that keeps "(ref …)" binds the same way', async () => {
     const click = await event(world, { event_type: 'WHATSAPP_CLICK', entry: 'CHAT', shopify_variant_id: SERUM_30 });
-    await say(world, 'shopper_wa', `Is it good for oily skin? ${refOf(click.body.whatsapp.prefilled_text)}`);
+    await say(world, 'shopper_wa', `Is it good for oily skin? ${refOf(click.body.whatsapp)}`);
     expect(world.intents.intents[0]!.tokenConsumedAt).not.toBeNull();
     expect(world.conversations.messages[0]!.text).toBe('Is it good for oily skin?');
   });

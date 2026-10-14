@@ -24,6 +24,10 @@ const QUERIES: Record<string, Need> = {
   "conversationRepositories.ts 'web_session_id' == | 'issued_at' >=": {
     composite: ['intentTokens', 'web_session_id', 'issued_at'],
   },
+  // L4 plain prefill: the open tokens for a prefilled sentence.
+  "conversationRepositories.ts 'text_hash' == | 'brand_id' ==": {
+    composite: ['intentTokens', 'text_hash', 'brand_id'],
+  },
   "conversationRepositories.ts 'customer_id' == | 'channel' ==": {
     composite: ['conversations', 'customer_id', 'channel'],
   },

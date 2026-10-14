@@ -158,11 +158,15 @@ export interface IntentTokenRecord {
   expiresAt: string;
   consumedAt: string | null;
   consumedByCustomerId: string | null;
+  /** L4: hash of the normalised prefilled sentence (domain/intentToken.ts) — never the text. */
+  textHash?: string | null;
 }
 
 export interface IntentTokenRepository {
   create(token: IntentTokenRecord): Promise<void>;
   countIssuedSince(brandId: string, webSessionId: string, sinceIso: string): Promise<number>;
+  /** L4: this brand's tokens for a prefilled sentence that are neither consumed nor expired at `nowIso`. */
+  listOpenByTextHash(brandId: string, textHash: string, nowIso: string): Promise<IntentTokenRecord[]>;
   /**
    * In ONE transaction: validate the token (`check`), mark it consumed, and bind the
    * intent to the customer (customer_id, token_consumed_at). Returns the bound intent.

@@ -156,6 +156,11 @@ export class MemoryTokens implements IntentTokenRepository {
     return this.tokens.filter((t) => t.brandId === brandId && t.webSessionId === webSessionId && t.issuedAt >= sinceIso)
       .length;
   }
+  async listOpenByTextHash(brandId: string, textHash: string, nowIso: string) {
+    return this.tokens
+      .filter((t) => t.brandId === brandId && t.textHash === textHash && !t.consumedAt && t.expiresAt > nowIso)
+      .map((t) => ({ ...t }));
+  }
   async consumeAndBind(
     tokenHash: string,
     brandId: string,

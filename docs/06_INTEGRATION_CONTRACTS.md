@@ -440,7 +440,7 @@ Cloud Run
    ↓  records CommerceEvent, updates CustomerIntent (customer_id = null)
    ↓  issues IntentToken bound to intent_id
 Storefront
-   ↓  opens wa.me/<brand WhatsApp number>?text=<readable message (ref START_QWIKSPOT_<INTENT_TOKEN>)>  (URL-encoded)
+   ↓  opens wa.me/<brand WhatsApp number>?text=<readable message>  (URL-encoded; L4: no visible code)
 Customer sends the prefilled message
    ↓
 WhatsApp webhook → Cloud Run
@@ -455,7 +455,7 @@ Token rules:
 
 | Rule | Value |
 |---|---|
-| Format | `START_QWIKSPOT_<INTENT_TOKEN>`, carried at the end of a readable message as ` (ref START_QWIKSPOT_<INTENT_TOKEN>)` (L4, below) |
+| Format | `START_QWIKSPOT_<INTENT_TOKEN>`. Since L4 it is not shown in the WhatsApp text; the record also holds a hash of the prefilled sentence, which links the chat (below). Older links carried it as ` (ref START_QWIKSPOT_<INTENT_TOKEN>)` and still work |
 | `INTENT_TOKEN` | 128-bit cryptographically random value, Crockford Base32, uppercase, 26 characters |
 | Contents | Opaque. No PII, no customer, brand, product or intent identifiers encoded. |
 | Storage | Only the SHA-256 hash is stored (`intentTokens/{token_hash}`, `04_DATA_MODEL.md` §18.1) |
@@ -467,12 +467,17 @@ Token rules:
 **The readable prefilled message (L4).** Built by the backend from verified data only — the brand's display name, the intent's product and size from the catalogue, and the entry the shopper tapped — then the token. About 200 characters at most (long names are shortened with "…"):
 
 ```text
-STORE_NEED  Hi AquaSkin! I'd like Mineral Sunscreen SPF 50 (50 g) today. Is it available at a store near me? (ref START_QWIKSPOT_…)
-CHAT        Hi AquaSkin! I have a question about Mineral Sunscreen SPF 50 (50 g). (ref START_QWIKSPOT_…)
-no product  Hi AquaSkin! I'd like some help choosing a product. (ref START_QWIKSPOT_…)
+STORE_NEED  Hi AquaSkin! I'd like Mineral Sunscreen SPF 50 (50 g) today. Is it available at a store near me?
+CHAT        Hi AquaSkin! I have a question about Mineral Sunscreen SPF 50 (50 g).
+no product  Hi AquaSkin! I'd like some help choosing a product.
 ```
 
-The `wa.me` link carries it with `encodeURIComponent`. The shopper may send it as is or rewrite it; as long as the `(ref …)` stays, the chat is bound to the browsing intent.
+The `wa.me` link carries it with `encodeURIComponent`. **Plain prefill (L4):** the shopper sees only that sentence — no code. The single-use, 30-minute token is still issued, and its record also holds `text_hash`, a SHA-256 of the sentence normalised (lower-case, straight quotes, whitespace collapsed, trailing punctuation removed); the text itself is never stored. The handshake links a chat in this order:
+
+1. a `START_QWIKSPOT_<token>` (alone or as `(ref …)`) in the text — older links — is stripped and validated as before;
+2. otherwise, an inbound text of at least 20 characters whose normalised hash matches this brand's open (unconsumed, unexpired) tokens: exactly one → it binds, through the same transaction and audit (`INTENT_TOKEN_BOUND`, reason `TEXT_MATCH`); several (two shoppers sent the same sentence within 30 minutes) → the most recently issued binds only if issued within the last 2 minutes, otherwise none (audited `PREFILL_TEXT_AMBIGUOUS`); none → nothing binds and the conversation goes on (the agent reads the product from the text).
+
+A shopper who edits the sentence gets no binding — the chat works the same, only the browsing history is not attached. The response's `whatsapp.ref` carries the token for clients that can send it invisibly (the simulator, tests); it never appears in the WhatsApp text. Lookup: `intentTokens` where `text_hash` == and `brand_id` == (composite index).
 
 Validation (inside one Firestore transaction):
 
@@ -778,8 +783,9 @@ Response `202`:
   "intent_type": "CART_ABANDONMENT",
   "whatsapp_available": true,
   "whatsapp": {
-    "prefilled_text": "Hi AquaSkin! I'd like Mineral Sunscreen SPF 50 (50 g) today. Is it available at a store near me? (ref START_QWIKSPOT_7K3M9Q2XH4T8VBN6R1CZ5WJPDA)",
-    "wa_link": "https://wa.me/<brand number>?text=Hi%20AquaSkin!%20I'd%20like%20…%20(ref%20START_QWIKSPOT_7K3M9Q2XH4T8VBN6R1CZ5WJPDA)",
+    "prefilled_text": "Hi AquaSkin! I'd like Mineral Sunscreen SPF 50 (50 g) today. Is it available at a store near me?",
+    "ref": "START_QWIKSPOT_7K3M9Q2XH4T8VBN6R1CZ5WJPDA",
+    "wa_link": "https://wa.me/<brand number>?text=Hi%20AquaSkin!%20I'd%20like%20…%20near%20me%3F",
     "expires_at": "2026-10-01T10:30:00Z"
   }
 }

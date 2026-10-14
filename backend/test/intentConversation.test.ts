@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { hashIntentToken } from '../src/domain/intentToken.js';
+import { hashIntentToken, prefillTextHash } from '../src/domain/intentToken.js';
 import { bearer, buildTestWorld, refOf, TEST_ORIGIN, tokenOf } from './helpers.js';
 
 type World = ReturnType<typeof buildTestWorld>;
@@ -131,19 +131,22 @@ describe('POST /api/intents (public storefront endpoint)', () => {
     });
     expect(res.status).toBe(202);
     const prefilled: string = res.body.whatsapp.prefilled_text;
-    const token = tokenOf(prefilled);
+    const token = tokenOf(res.body.whatsapp);
     expect(token).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
-    // L4: a readable message from verified data, URL-encoded in the wa.me link.
+    // L4 plain prefill: only the readable sentence (verified data), URL-encoded in the wa.me link — no code.
     expect(prefilled).toBe(
-      `Hi Brand brand_A! I'd like Vitamin C Glow Serum (30 ml) today. Is it available at a store near me? (ref START_QWIKSPOT_${token})`,
+      "Hi Brand brand_A! I'd like Vitamin C Glow Serum (30 ml) today. Is it available at a store near me?",
     );
+    expect(res.body.whatsapp.wa_link).not.toContain('START_QWIKSPOT');
     expect(res.body.whatsapp.wa_link).toBe(`https://wa.me/910000000000?text=${encodeURIComponent(prefilled)}`);
     // Spaces, '?', '&' and '#' in the message are encoded, so WhatsApp gets the whole text.
     expect(res.body.whatsapp.wa_link.split('?text=')[1]).not.toMatch(/[ ?&#]/);
     expect(res.body.intent_type).toBe('STORE_ORIENTED');
     const stored = world.tokens.tokens[0]!;
     expect(stored.tokenHash).toBe(hashIntentToken(token));
+    expect(stored.textHash).toBe(prefillTextHash(prefilled)); // a hash of the sentence, never the text
     expect(JSON.stringify(world.tokens.tokens)).not.toContain(token);
+    expect(JSON.stringify(world.tokens.tokens)).not.toContain('Vitamin');
     expect(new Date(stored.expiresAt).getTime() - new Date(stored.issuedAt).getTime()).toBe(30 * 60 * 1000);
 
     for (let i = 0; i < 4; i++) {
@@ -229,9 +232,13 @@ describe('simulator channel → ConversationPipeline', () => {
       entry: 'STORE_NEED',
       shopify_variant_id: SERUM_30,
     });
-    const prefilled: string = click.body.whatsapp.prefilled_text;
-    const token = tokenOf(prefilled);
-    const res = await simulate(world, 'admin_a', text('customer_02', `Do you have it today? ${refOf(prefilled)}`));
+    const token = tokenOf(click.body.whatsapp);
+    // An older link's "(ref …)" still binds, whatever the words around it.
+    const res = await simulate(
+      world,
+      'admin_a',
+      text('customer_02', `Do you have it today? ${refOf(click.body.whatsapp)}`),
+    );
     expect(res.status).toBe(200);
 
     const intent = world.intents.intents[0]!;
@@ -255,8 +262,12 @@ describe('simulator channel → ConversationPipeline', () => {
       shopify_variant_id: SERUM_30,
     });
     const prefilled: string = click.body.whatsapp.prefilled_text;
-    await simulate(world, 'admin_a', text('customer_03', prefilled));
-    const reused = await simulate(world, 'admin_a', text('customer_04', prefilled));
+    await simulate(world, 'admin_a', text('customer_03', prefilled)); // binds by the exact sentence
+    // The same sentence again: its token is consumed, so nothing binds — silently.
+    const again = await simulate(world, 'admin_a', text('customer_04', prefilled));
+    expect(again.status).toBe(200);
+    // The old reference again: refused and audited, the customer is never told.
+    const reused = await simulate(world, 'admin_a', text('customer_04', `hi ${refOf(click.body.whatsapp)}`));
     expect(reused.status).toBe(200);
     expect(reused.body.outbound_messages[0].text).not.toMatch(/token|invalid|expired/i);
     const other = world.customers.customers.find((c) => c.displayRef === 'sim:customer_04')!;

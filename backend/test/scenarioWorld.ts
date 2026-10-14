@@ -174,7 +174,7 @@ export async function buildScenarioWorld(
           shopify_variant_id: gid,
         });
       // The shopper's own words, with the reference from the prefilled message kept.
-      return send(ref, { type: 'TEXT', text: `${text} ${refOf(click.body.whatsapp.prefilled_text)}` });
+      return send(ref, { type: 'TEXT', text: `${text} ${refOf(click.body.whatsapp)}` });
     },
     lastRecommendation: () => world.recommendations.recommendations.at(-1)!,
   };

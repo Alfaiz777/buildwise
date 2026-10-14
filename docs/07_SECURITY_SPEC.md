@@ -629,6 +629,14 @@ The full contract is `06_INTEGRATION_CONTRACTS.md` §10.1. Security requirements
 
 The token only carries anonymous web intent (product and stage) into the conversation. If it is forwarded to another person, the recipient gains no customer data.
 
+**Plain prefill (L4) — matching the sentence instead of a code.** The WhatsApp message no longer shows the token; a chat is linked when its text is exactly a sentence the brand prefilled in the last 30 minutes (`06` §10.1). That sentence is guessable: anyone can type "Hi AquaSkin! I'd like Mineral Sunscreen SPF 50 (50 g) today…". The worst case is that a chat receives another visitor's browsing intent — the product, the funnel stage and strength, no personal data, nothing about that visitor — and only while that visitor's token is open (30 minutes) and unused. Limits that keep it small:
+
+- the token stays single-use: once a sentence has bound, it binds nothing again (consumed in the same transaction);
+- only this brand's open tokens are considered; only the stored SHA-256 of the normalised sentence is compared, the text is never stored;
+- two open tokens for the same sentence bind the newest only if it was issued within 2 minutes; otherwise none (audited `PREFILL_TEXT_AMBIGUOUS`);
+- messages shorter than 20 characters are never looked up;
+- the older `(ref START_QWIKSPOT_…)` form still binds and is unguessable (128-bit).
+
 ---
 
 # 19. Execution-profile security

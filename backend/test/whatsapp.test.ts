@@ -324,9 +324,8 @@ describe('channel routing: WhatsApp per brand, the simulator for everyone else',
       entry: 'STORE_NEED',
     });
     expect(after.body.whatsapp.wa_link).toMatch(/^https:\/\/wa\.me\/919876543210\?text=Hi%20/);
-    expect(decodeURIComponent(after.body.whatsapp.wa_link.split('?text=')[1])).toMatch(
-      /\(ref START_QWIKSPOT_[0-9A-Z]{26}\)$/,
-    );
+    // L4 plain prefill: the readable sentence only, no code in the WhatsApp text.
+    expect(decodeURIComponent(after.body.whatsapp.wa_link.split('?text=')[1])).not.toContain('START_QWIKSPOT');
     const settings = await as('admin_a').get('/api/brand/settings');
     expect(settings.body.channel).toEqual({
       mode: 'WHATSAPP',

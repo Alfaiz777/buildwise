@@ -451,16 +451,19 @@ export class FakeIdentity implements IdentityAdmin {
 
 /** Storefront origin allowed for every test brand (docs/04 §3). */
 /**
- * L4: the prefilled WhatsApp message is readable ("Hi …! I'd like … (ref START_QWIKSPOT_…)").
- * Tests that ask their own question send `<their words> <refOf(prefilled)>`, like a shopper who
- * rewrites the message but keeps the reference.
+ * L4: the prefilled WhatsApp message is a plain sentence; the API returns the reference
+ * separately (`whatsapp.ref`). Tests that ask their own question send `<their words> <refOf(...)>`
+ * — the older "(ref …)" form, which still binds. A message containing "(ref …)" works too.
  */
-export const refOf = (prefilled: string) => {
-  const ref = /\(ref START_QWIKSPOT_[0-9A-HJKMNP-TV-Z]{26}\)/.exec(prefilled)?.[0];
-  if (!ref) throw new Error(`no (ref …) in the prefilled message: ${prefilled}`);
+type WithRef = string | { ref: string };
+export const refOf = (w: WithRef) => {
+  if (typeof w !== 'string') return `(ref ${w.ref})`;
+  const ref = /\(ref START_QWIKSPOT_[0-9A-HJKMNP-TV-Z]{26}\)/.exec(w)?.[0];
+  if (!ref) throw new Error(`no (ref …) in: ${w}`);
   return ref;
 };
-export const tokenOf = (prefilled: string) => /START_QWIKSPOT_([0-9A-HJKMNP-TV-Z]{26})/.exec(prefilled)![1]!;
+export const tokenOf = (w: WithRef) =>
+  /START_QWIKSPOT_([0-9A-HJKMNP-TV-Z]{26})/.exec(typeof w === 'string' ? w : w.ref)![1]!;
 
 export const TEST_ORIGIN = 'http://shop.test';
 

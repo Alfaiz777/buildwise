@@ -59,6 +59,19 @@ export function readablePrefilledText(input: {
   entry: 'STORE_NEED' | 'CHAT';
   token: string;
 }): string {
+  return `${readableMessage(input)} ${intentRef(input.token)}`;
+}
+
+/**
+ * L4 (plain prefill): the sentence alone — what the shopper now sees in WhatsApp. The chat is
+ * linked by recognising this exact sentence (prefillTextHash), not by a visible code.
+ */
+export function readableMessage(input: {
+  brandName: string;
+  productTitle: string | null;
+  size: string | null;
+  entry: 'STORE_NEED' | 'CHAT';
+}): string {
   const brand = clip(input.brandName, MAX_BRAND);
   const hi = brand ? `Hi ${brand}!` : 'Hi!';
   const product = input.productTitle
@@ -69,7 +82,46 @@ export function readablePrefilledText(input: {
     : input.entry === 'STORE_NEED'
       ? `${hi} I'd like ${product} today. Is it available at a store near me?`
       : `${hi} I have a question about ${product}.`;
-  return `${body} ${intentRef(input.token)}`;
+  return body;
+}
+
+/** A prefilled sentence is long; anything shorter is never matched by text. */
+export const MIN_PREFILL_MATCH_LENGTH = 20;
+
+/**
+ * The prefilled sentence in the form it is compared in: lower-case, curly quotes made straight,
+ * whitespace collapsed, trailing punctuation and spaces removed. WhatsApp may add or drop a
+ * trailing space or full stop; any other change means the shopper edited the message.
+ */
+export function normalizePrefillText(text: string): string {
+  return text
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u201b\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u2033]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[\s.!?…,;:]+$/u, '');
+}
+
+/** What is stored on the token record and looked up: a hash, never the text itself. */
+export const prefillTextHash = (text: string) =>
+  createHash('sha256')
+    .update(`prefill:${normalizePrefillText(text)}`, 'utf8')
+    .digest('hex');
+
+/** Two identical sentences within 30 minutes: the newest binds only if it is this recent. */
+export const PREFILL_AMBIGUITY_WINDOW_MS = 2 * 60 * 1000;
+
+/**
+ * Which open token a matching sentence binds: the only one; of several, the newest if it was
+ * issued within the last 2 minutes (it is almost certainly this shopper's); otherwise none.
+ */
+export function pickPrefillMatch<T extends { issuedAt: string }>(open: T[], now: Date): T | null {
+  if (open.length === 0) return null;
+  if (open.length === 1) return open[0]!;
+  const newest = [...open].sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))[0]!;
+  return now.getTime() - new Date(newest.issuedAt).getTime() <= PREFILL_AMBIGUITY_WINDOW_MS ? newest : null;
 }
 
 /** "(ref START_QWIKSPOT_<token>)", or the bare token, anywhere in the text. */
