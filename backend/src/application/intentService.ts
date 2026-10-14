@@ -44,6 +44,8 @@ export interface StorefrontEventResult {
   replay: boolean;
   intent: IntentRecord;
   whatsapp: { prefilledText: string; waLink: string | null; expiresAt: string } | null;
+  /** L4: whether the brand can be reached on WhatsApp (the storefront hides its WhatsApp entry points otherwise). */
+  whatsappAvailable: boolean;
 }
 
 export interface IntentServiceDeps {
@@ -77,6 +79,47 @@ export class IntentService {
 
   constructor(private readonly deps: IntentServiceDeps) {
     this.now = deps.now ?? (() => new Date());
+  }
+
+  /** The brand if it exists and is active (no origin check). */
+  async activeBrand(brandId: string): Promise<BrandRecord | null> {
+    const brand = await this.deps.brands.getById(brandId);
+    return brand && brand.status === 'ACTIVE' ? brand : null;
+  }
+
+  /** Whether this storefront origin may send events for the brand (never throws). */
+  async isOriginAllowed(brandId: string, origin: string | null | undefined): Promise<boolean> {
+    if (!origin) return false;
+    const brand = await this.activeBrand(brandId);
+    return Boolean(brand && allowedStorefrontOrigins(brand.settings).includes(origin));
+  }
+
+  /**
+   * The brand's WhatsApp number (digits): its own connected number (L2-WhatsApp); otherwise the
+   * configured settings number (the simulator / demo number).
+   */
+  async whatsappTarget(brand: BrandRecord): Promise<{ number: string | null; connected: boolean }> {
+    const connected = (await this.deps.whatsappNumberFor?.(brand.brandId))?.replace(/\D/g, '') || null;
+    if (connected) return { number: connected, connected: true };
+    const configured = resolveMessagingSettings(brand.settings, brand.name).whatsappNumber?.replace(/\D/g, '') || null;
+    return { number: configured, connected: false };
+  }
+
+  /**
+   * L4: can a shopper reach the brand on WhatsApp from its storefront? With the WhatsApp channel on,
+   * only through the brand's own connected number; without it (local / simulator) the configured one.
+   */
+  async whatsappAvailable(brand: BrandRecord): Promise<boolean> {
+    const target = await this.whatsappTarget(brand);
+    return this.deps.whatsappNumberFor ? target.connected : target.number !== null;
+  }
+
+  /** A plain chat link without a reference, for when a click could not be recorded (L4, GET /api/wa). */
+  async plainWhatsappLink(brand: BrandRecord): Promise<string | null> {
+    if (!(await this.whatsappAvailable(brand))) return null;
+    const { number } = await this.whatsappTarget(brand);
+    const name = resolveMessagingSettings(brand.settings, brand.name).displayName;
+    return number ? `https://wa.me/${number}?text=${encodeURIComponent(`Hi ${name}! I have a question.`)}` : null;
   }
 
   /** The brand, if it exists, is active, and allows this storefront origin. */
@@ -186,7 +229,8 @@ export class IntentService {
       at,
     });
 
-    if (replay) return { accepted: true, replay, intent: stored, whatsapp: null };
+    const whatsappAvailable = await this.whatsappAvailable(brand);
+    if (replay) return { accepted: true, replay, intent: stored, whatsapp: null, whatsappAvailable };
     await this.deps.events.audit(brandId, {
       action: 'INTENT_EVENT_RECORDED',
       targetType: 'INTENT',
@@ -198,7 +242,13 @@ export class IntentService {
     const whatsapp =
       input.eventType === 'WHATSAPP_CLICK' ? await this.issueToken(brand, stored, input.entry ?? 'CHAT', now) : null;
     await this.deps.onIntentUpdated?.(stored);
-    return { accepted: true, replay, intent: (await this.deps.intents.get(brandId, intentId)) ?? stored, whatsapp };
+    return {
+      accepted: true,
+      replay,
+      intent: (await this.deps.intents.get(brandId, intentId)) ?? stored,
+      whatsapp,
+      whatsappAvailable,
+    };
   }
 
   private async issueToken(brand: BrandRecord, intent: IntentRecord, entry: WhatsAppEntry, now: Date) {
@@ -238,8 +288,7 @@ export class IntentService {
       token,
     });
     // L2-WhatsApp: the brand's own connected number; otherwise the configured (simulator) number.
-    const connected = (await this.deps.whatsappNumberFor?.(brand.brandId))?.replace(/\D/g, '') || null;
-    const number = connected ?? resolveMessagingSettings(brand.settings, brand.name).whatsappNumber;
+    const { number } = await this.whatsappTarget(brand);
     return {
       prefilledText: text,
       waLink: number ? `https://wa.me/${number}?text=${encodeURIComponent(text)}` : null,

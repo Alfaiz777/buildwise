@@ -49,6 +49,7 @@ describe('POST /api/intents (public storefront endpoint)', () => {
       intent_stage: 'CART',
       intent_strength: 'HIGH_INTENT',
       intent_type: 'CART_ABANDONMENT',
+      whatsapp_available: true, // L4: the storefront shows its WhatsApp entry points
       whatsapp: null,
     });
     expect(res.headers['access-control-allow-origin']).toBe(TEST_ORIGIN);
