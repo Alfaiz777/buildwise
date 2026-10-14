@@ -743,3 +743,27 @@ test/eval/gemini.eval.test.ts    opt-in live evaluation (RUN_GEMINI_EVAL=1)
 ### Teach-back
 
 Swapping the brain was small because nothing else trusted it: the port, the tool executor, the guardrail and the reply composer were built for a runtime that can be wrong or absent. The model proposes; the application remains the authority.
+
+## L4 — the real Shopify store sends intent; "Need it today?" opens WhatsApp
+
+### What changed
+
+```text
+domain/intentToken.ts             readable prefilled message + "(ref START_QWIKSPOT_…)"; extraction strips the wrapper
+application/intentService.ts      the message from the catalogue and the brand name; wa.me link URL-encoded
+integrations/shopify/             qwikspot-shopify.js → qwikspot.liquid (npm run shopify:snippet): tracking,
+                                  "Need it today?" under Add to cart, a WhatsApp bubble, a GA4 click event
+Brand Console Settings            the Brand Admin edits the storefronts allowed to send shopper events
+```
+
+### What can fail?
+
+- A bare `START_QWIKSPOT_…` looks like spam to a shopper; a sentence about their product does not. But the sentence also changes what the agent reads ("today… near me" is a store search), so tests that ask their own question now keep only the `(ref …)`.
+- Text in a `wa.me` link must be URL-encoded: a raw `?` or `&` cuts the message short.
+- A browser blocks a window opened after an `await`. On a computer the snippet opens the tab during the click and points it at the link once the backend answers; on a phone it navigates, so the WhatsApp app opens.
+- Shopify themes differ. The snippet watches the product form's `id` input, `?variant=` changes and `fetch` calls to `/cart/add`, never replaces anything, and fails silently.
+- GA4 cannot drive the button: it reports totals hours later. Intent stays Qwikspot's own, in real time; GA4 only counts `qwikspot_whatsapp_click`.
+
+### Teach-back
+
+The storefront knows what the shopper is looking at; WhatsApp knows who they are. The token in the prefilled message is the only bridge, so it has to survive a shopper editing the text, and nothing personal may travel with it.

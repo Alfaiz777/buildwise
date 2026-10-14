@@ -9,6 +9,7 @@
  *
  * Run from the repo root: npm run test:emulator
  */
+import { tokenOf } from '../helpers.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -307,12 +308,16 @@ describe('M4 local E2E: intent → follow-up → conversation', () => {
 
     // 10. The token never reaches stored text; reusing it elsewhere binds nothing.
     const conversation = await as('brandAdmin').get(`/api/brand/conversations/${res.body.conversation_id}`);
-    const token = prefilled.replace('START_QWIKSPOT_', '');
+    const token = tokenOf(prefilled);
     expect(JSON.stringify(conversation.body)).not.toContain(token);
     const reuse = await say('brandAdmin', 'intruder_01', prefilled);
     expect(reuse.status).toBe(200);
     const intruderConversation = await as('brandAdmin').get(`/api/brand/conversations/${reuse.body.conversation_id}`);
-    expect(intruderConversation.body.intent).toBeNull();
+    // The reused token binds nothing: the shopper's browsing intent stays theirs. (The readable
+    // message itself names the product, so the agent may record a chat intent of its own — L2.)
+    expect(intruderConversation.body.intent?.intent_id ?? null).not.toBe(intent.intent_id);
+    expect(intruderConversation.body.intent?.last_event ?? 'CONVERSATION_MESSAGE').toBe('CONVERSATION_MESSAGE');
+    expect((await intentOf('brd_m4', chatted.ids.web_session_id)).customer_id).toBe(intent.customer_id);
     const tokenSnap = await db.collection('intentTokens').where('intent_id', '==', intent.intent_id).get();
     expect(tokenSnap.docs[0]!.id).not.toContain(token); // only the hash is stored
 

@@ -1,0 +1,377 @@
+{%- comment -%}
+  Qwikspot for Shopify (L4). Paste this whole file into Online Store → Themes → Edit code →
+  Snippets → "qwikspot", then add {% render 'qwikspot' %} just before </body> in layout/theme.liquid.
+  Generated from integrations/shopify/qwikspot-shopify.js by `npm run shopify:snippet` — edit
+  that file and rebuild rather than changing the script below by hand.
+
+  The two settings: where Qwikspot runs, and this store's brand id in Qwikspot.
+{%- endcomment -%}
+{%- liquid
+  assign qs_api = 'https://app.qwikspot.urbanlyfe.in'
+  assign qs_brand = 'brd_demo'
+-%}
+<script id="qwikspot-config" type="application/json">
+  {
+    "apiBaseUrl": {{ qs_api | json }},
+    "brandId": {{ qs_brand | json }},
+    "template": {{ template.name | json }},
+    "product": {%- if template.name == 'product' and product -%}
+      {
+        "title": {{ product.title | json }},
+        "variant": {{ product.selected_or_first_available_variant.id | json }}
+      }
+    {%- else -%}null{%- endif -%},
+    "searchTerms": {%- if search.performed -%}{{ search.terms | json }}{%- else -%}null{%- endif -%},
+    "cartVariant": {%- if cart.item_count > 0 -%}{{ cart.items.first.variant_id | json }}{%- else -%}null{%- endif %}
+  }
+</script>
+<script>
+/*
+ * Qwikspot for Shopify themes (L4): tracks the shopper's steps for intent, and adds
+ * "Need it today? Ask on WhatsApp" under Add to cart plus a WhatsApp bubble on every page.
+ *
+ * Source of the <script> inside integrations/shopify/qwikspot.liquid — edit this file, then run
+ * `npm run shopify:snippet` (scripts/build-shopify-snippet.mjs) to rebuild the Liquid snippet.
+ *
+ * Reads its settings from <script id="qwikspot-config" type="application/json"> (written by the
+ * Liquid snippet from Shopify's own objects). Sends only variant GIDs, the search words and
+ * event types — never names, emails, phone numbers or cart tokens. Every failure is silent.
+ */
+(function () {
+  'use strict';
+  if (window.__qwikspotShopify) return; // the theme rendered the snippet twice
+  window.__qwikspotShopify = true;
+
+  var VISIT_KEY = 'qs_visit_sent';
+  var GID = 'gid://shopify/ProductVariant/';
+  var config = readConfig();
+  if (!config || !config.apiBaseUrl || !config.brandId) return;
+
+  var product = config.product || null;
+  var currentVariant = product && product.variant ? String(product.variant) : null;
+  var lastSent = {};
+  var entryPoints = [];
+
+  function readConfig() {
+    try {
+      var el = document.getElementById('qwikspot-config');
+      return el ? JSON.parse(el.textContent || '{}') : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function noop() {}
+
+  /** "12345" or "gid://shopify/ProductVariant/12345" → the GID the backend stores; null otherwise. */
+  function gid(id) {
+    var digits = id === null || id === undefined ? '' : String(id).replace(/^gid:\/\/shopify\/ProductVariant\//, '');
+    return /^\d+$/.test(digits) ? GID + digits : null;
+  }
+
+  function numeric(id) {
+    var g = gid(id);
+    return g ? g.slice(GID.length) : null;
+  }
+
+  var intent = null;
+  /** QwikspotIntent as it was when this snippet started (later replacements are ignored). */
+  function api() {
+    return intent || window.QwikspotIntent;
+  }
+
+  /** Sends one event; the same event for the same variant at most once per 1.5 s (submit + fetch). */
+  function send(type, data) {
+    try {
+      var key = type + ':' + ((data && (data.variantId || data.searchTerm)) || '');
+      var now = Date.now();
+      if (lastSent[key] && now - lastSent[key] < 1500) return;
+      lastSent[key] = now;
+      var result = api().track(type, data || {});
+      if (result && result.catch) result.catch(noop);
+    } catch (e) {
+      /* never break the theme */
+    }
+  }
+
+  function isMobile() {
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+  }
+
+  // ---------- variants ----------
+
+  /** The variant the shopper has chosen: the product form's id input, else ?variant=, else the first. */
+  function selectedVariant() {
+    var input = document.querySelector('form[action*="/cart/add"] [name="id"]');
+    if (input && input.value && gid(input.value)) return String(input.value);
+    var fromUrl = new URLSearchParams(window.location.search).get('variant');
+    if (fromUrl && gid(fromUrl)) return fromUrl;
+    return currentVariant;
+  }
+
+  function checkVariant() {
+    var next = selectedVariant();
+    if (next && next !== currentVariant) {
+      currentVariant = next;
+      send('VARIANT_SELECTED', { variantId: gid(next) });
+    }
+  }
+
+  function watchVariants() {
+    // Savor / Dawn-style themes change the hidden id input and replace ?variant= in the URL.
+    document.addEventListener('change', function () {
+      setTimeout(checkVariant, 0);
+    });
+    ['pushState', 'replaceState'].forEach(function (name) {
+      var original = window.history[name];
+      if (typeof original !== 'function') return;
+      window.history[name] = function () {
+        var result = original.apply(this, arguments);
+        setTimeout(checkVariant, 0);
+        return result;
+      };
+    });
+    window.addEventListener('popstate', checkVariant);
+  }
+
+  // ---------- cart and checkout ----------
+
+  function variantFromBody(body) {
+    try {
+      if (!body) return null;
+      if (typeof FormData !== 'undefined' && body instanceof FormData) return body.get('id');
+      if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) return body.get('id');
+      if (typeof body === 'string') {
+        if (body.charAt(0) === '{') {
+          var json = JSON.parse(body);
+          return json.id || (json.items && json.items[0] && json.items[0].id) || null;
+        }
+        return new URLSearchParams(body).get('id');
+      }
+    } catch (e) {
+      /* unknown body */
+    }
+    return null;
+  }
+
+  function watchCart() {
+    // A plain product form submit (themes without AJAX cart).
+    document.addEventListener(
+      'submit',
+      function (event) {
+        var form = event.target;
+        if (!form || !form.getAttribute || (form.getAttribute('action') || '').indexOf('/cart/add') === -1) return;
+        var input = form.querySelector('[name="id"]');
+        var id = gid(input && input.value);
+        if (id) send('ADD_TO_CART', { variantId: id });
+      },
+      true,
+    );
+    // AJAX carts call /cart/add with fetch: wrapped, never changed.
+    if (typeof window.fetch === 'function') {
+      var originalFetch = window.fetch;
+      window.fetch = function (resource, init) {
+        try {
+          var url = typeof resource === 'string' ? resource : (resource && resource.url) || '';
+          if (url.indexOf('/cart/add') !== -1) {
+            var id = gid(variantFromBody(init && init.body));
+            if (id) send('ADD_TO_CART', { variantId: id });
+          }
+        } catch (e) {
+          /* ignore */
+        }
+        return originalFetch.apply(this, arguments);
+      };
+    }
+    // The cart page's or the cart drawer's checkout button.
+    document.addEventListener(
+      'click',
+      function (event) {
+        var target =
+          event.target && event.target.closest ? event.target.closest('[name="checkout"], a[href*="/checkout"]') : null;
+        if (!target) return;
+        var fromLiquid = gid(config.cartVariant);
+        if (fromLiquid) return send('CHECKOUT_STARTED', { variantId: fromLiquid });
+        if (typeof window.fetch !== 'function') return;
+        window
+          .fetch('/cart.js', { credentials: 'same-origin' })
+          .then(function (res) {
+            return res.json();
+          })
+          .then(function (cart) {
+            var id = gid(cart && cart.items && cart.items[0] && cart.items[0].variant_id);
+            if (id) send('CHECKOUT_STARTED', { variantId: id });
+          })
+          .catch(noop);
+      },
+      true,
+    );
+  }
+
+  // ---------- WhatsApp entry points ----------
+
+  function hideEntryPoints() {
+    entryPoints.forEach(function (el) {
+      el.style.display = 'none';
+    });
+  }
+
+  function reportToGa4(entry, variant) {
+    try {
+      if (typeof window.gtag !== 'function') return;
+      var data = { entry: entry };
+      var id = numeric(variant);
+      if (id) data.item_id = id;
+      if (product && product.title) data.item_name = product.title;
+      window.gtag('event', 'qwikspot_whatsapp_click', data);
+    } catch (e) {
+      /* reporting only */
+    }
+  }
+
+  /** Records the click, then opens WhatsApp: the app on a phone, a new tab on a computer. */
+  function openWhatsApp(entry, variant) {
+    reportToGa4(entry, variant);
+    // A computer's popup blocker allows a window opened during the click itself.
+    var pending = isMobile() ? null : window.open('', '_blank');
+    var close = function () {
+      if (pending) pending.close();
+    };
+    try {
+      var result = api().whatsapp(entry, gid(variant) || undefined);
+      result
+        .then(function (res) {
+          var link = res && res.whatsapp && res.whatsapp.wa_link;
+          if (!link) {
+            close();
+            hideEntryPoints(); // no WhatsApp number connected for this brand
+            return;
+          }
+          if (pending) {
+            pending.opener = null;
+            pending.location.href = link;
+          } else {
+            window.location.href = link;
+          }
+        })
+        .catch(close);
+    } catch (e) {
+      close();
+    }
+  }
+
+  var STYLE =
+    '.qs-need{display:block;width:100%;margin:12px 0 4px;padding:14px 16px;border:1px solid #1f7a4d;border-radius:8px;' +
+    'background:#fff;color:#1f7a4d;font:inherit;font-weight:600;cursor:pointer;text-align:center}' +
+    '.qs-need:hover{background:#f1faf5}.qs-powered{margin:0 0 12px;font-size:12px;opacity:.6;text-align:center}' +
+    '.qs-bubble{position:fixed;right:16px;bottom:16px;z-index:2147483000;width:56px;height:56px;border:0;border-radius:50%;' +
+    'background:#25d366;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;display:flex;align-items:center;justify-content:center}' +
+    '.qs-bubble svg{width:30px;height:30px;fill:#fff}@media (max-width:749px){.qs-bubble{right:12px;bottom:12px}}';
+
+  var WHATSAPP_ICON =
+    '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3C9 3 3.3 8.6 3.3 15.6c0 2.2.6 4.4 1.7 6.3L3 29l7.3-1.9' +
+    'c1.8 1 3.8 1.5 5.8 1.5 7 0 12.7-5.7 12.7-12.6S23 3 16 3zm0 23.1c-1.8 0-3.6-.5-5.1-1.4l-.4-.2-4.3 1.1 1.2-4.2-.3-.4' +
+    'c-1-1.6-1.5-3.4-1.5-5.3 0-5.8 4.7-10.5 10.5-10.5s10.5 4.7 10.5 10.5S21.8 26.1 16 26.1zm5.8-7.9c-.3-.2-1.9-.9-2.2-1' +
+    '-.3-.1-.5-.2-.7.2-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-.3-.2-1.3-.5-2.6-1.6-1-.9-1.6-1.9-1.8-2.2-.2-.3 0-.5.1-.6l.5-.6' +
+    'c.2-.2.2-.3.3-.5.1-.2 0-.4 0-.6l-1-2.4c-.3-.6-.5-.5-.7-.5h-.6c-.2 0-.6.1-.9.4-.3.3-1.2 1.1-1.2 2.8s1.2 3.2 1.4 3.4' +
+    'c.2.2 2.4 3.6 5.7 5 .8.3 1.4.5 1.9.7.8.3 1.5.2 2.1.1.6-.1 1.9-.8 2.2-1.5.3-.7.3-1.4.2-1.5-.1-.1-.3-.2-.6-.4z"/></svg>';
+
+  function addStyle() {
+    var style = document.createElement('style');
+    style.textContent = STYLE;
+    document.head.appendChild(style);
+  }
+
+  function addProductButton() {
+    var submit = document.querySelector(
+      'form[action*="/cart/add"] [type="submit"], form[action*="/cart/add"] button[name="add"]',
+    );
+    var anchor = submit || document.querySelector('.price, [class*="price"]');
+    if (!anchor || !anchor.parentNode) return;
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'qs-need';
+    button.textContent = 'Need it today? Ask on WhatsApp';
+    button.addEventListener('click', function (event) {
+      event.preventDefault();
+      openWhatsApp('STORE_NEED', selectedVariant());
+    });
+    var powered = document.createElement('p');
+    powered.className = 'qs-powered';
+    powered.textContent = 'Powered by Qwikspot';
+    // After the submit button's own row (its parent), so the theme's button layout is untouched.
+    var after = submit && submit.parentNode && submit.parentNode !== submit.form ? submit.parentNode : anchor;
+    after.parentNode.insertBefore(powered, after.nextSibling);
+    after.parentNode.insertBefore(button, powered);
+    entryPoints.push(button, powered);
+  }
+
+  function addBubble() {
+    var bubble = document.createElement('button');
+    bubble.type = 'button';
+    bubble.className = 'qs-bubble';
+    bubble.setAttribute('aria-label', 'Chat on WhatsApp');
+    bubble.innerHTML = WHATSAPP_ICON;
+    bubble.addEventListener('click', function () {
+      openWhatsApp('CHAT', config.template === 'product' ? selectedVariant() : null);
+    });
+    document.body.appendChild(bubble);
+    entryPoints.push(bubble);
+  }
+
+  // ---------- start ----------
+
+  function trackPage() {
+    try {
+      if (!window.sessionStorage.getItem(VISIT_KEY)) {
+        window.sessionStorage.setItem(VISIT_KEY, '1');
+        send('STOREFRONT_VISIT');
+      }
+    } catch (e) {
+      send('STOREFRONT_VISIT');
+    }
+    var template = String(config.template || '');
+    if (template.indexOf('search') === 0 && config.searchTerms)
+      send('SEARCH', { searchTerm: String(config.searchTerms) });
+    if (template === 'product' && gid(selectedVariant())) {
+      currentVariant = selectedVariant();
+      send('PRODUCT_DETAIL_VIEW', { variantId: gid(currentVariant) });
+    }
+  }
+
+  function start() {
+    try {
+      intent = window.QwikspotIntent;
+      intent.init({ apiBaseUrl: config.apiBaseUrl, brandId: config.brandId, openLink: noop });
+      addStyle();
+      if (config.template === 'product') addProductButton();
+      addBubble();
+      watchVariants();
+      watchCart();
+      trackPage();
+    } catch (e) {
+      /* never break the theme */
+    }
+  }
+
+  function whenReady(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+    else fn();
+  }
+
+  if (api()) {
+    whenReady(start);
+  } else {
+    var script = document.createElement('script');
+    script.src = config.apiBaseUrl.replace(/\/$/, '') + '/qwikspot-intent.js';
+    script.async = true;
+    script.onload = function () {
+      if (api()) whenReady(start);
+    };
+    document.head.appendChild(script);
+  }
+
+  // For tests: the pure helpers.
+  window.__qwikspotShopifyHelpers = { gid: gid, numeric: numeric, variantFromBody: variantFromBody };
+})();
+</script>

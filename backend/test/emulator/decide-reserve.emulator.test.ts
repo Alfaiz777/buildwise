@@ -7,6 +7,7 @@
  * MockAgentRuntime results verify pipeline, tools, guardrail and persistence — never AI
  * quality. Run from the repo root: npm run test:emulator
  */
+import { refOf } from '../helpers.js';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -161,7 +162,7 @@ const customer = (brandKey: string, brandId: string, ref: string) => {
           ...extra,
         });
       expect(click.status).toBe(202);
-      return send({ type: 'TEXT', text: `${click.body.whatsapp.prefilled_text} ${text}` });
+      return send({ type: 'TEXT', text: `${text} ${refOf(click.body.whatsapp.prefilled_text)}` });
     },
   };
 };

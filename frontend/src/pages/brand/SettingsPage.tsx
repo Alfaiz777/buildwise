@@ -4,6 +4,7 @@ import { ConsoleShell, useLoad } from '../../components/ConsoleShell';
 import { Badge, Card, ErrorState, Skeleton } from '../../components/ui';
 import { label } from '../../lib/labels';
 import { ShopifyCard } from './ShopifyCard';
+import { StorefrontOrigins } from './StorefrontOrigins';
 import { WhatsAppCard } from './WhatsAppCard';
 
 export interface BrandSettings {
@@ -145,17 +146,7 @@ export function SettingsPage() {
             <dl className="settings-list">
               <dt>Storefronts allowed to send shopper events</dt>
               <dd>
-                {s.allowed_storefront_origins.length ? (
-                  <ul className="plain">
-                    {s.allowed_storefront_origins.map((o) => (
-                      <li key={o} className="mono small">
-                        {o}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  'None yet'
-                )}
+                <StorefrontOrigins origins={s.allowed_storefront_origins} onSaved={settings.reload} />
               </dd>
               <dt>Customer channel</dt>
               <dd>
@@ -165,7 +156,7 @@ export function SettingsPage() {
               </dd>
             </dl>
           </Card>
-          <p className="muted small">Settings are read-only in this prototype.</p>
+          <p className="muted small">Apart from the storefronts above, settings are read-only in this prototype.</p>
         </>
       )}
     </ConsoleShell>

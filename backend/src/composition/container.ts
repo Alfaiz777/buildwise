@@ -56,6 +56,7 @@ import {
 } from '../adapters/firestore/conversationRepositories.js';
 import { createConversationModule } from '../application/conversationModule.js';
 import { BrandSettingsQuery, type ChannelMode } from '../application/brandSettingsQuery.js';
+import { StorefrontOriginsService } from '../application/storefrontOrigins.js';
 import { InsightsService } from '../application/insightsService.js';
 import { FirestoreInsightsReader } from '../adapters/firestore/insightsReader.js';
 import { LocalFileStorageProvider } from '../adapters/storage/localFileStorageProvider.js';
@@ -418,6 +419,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         reservations: conversation.reservations,
         fulfilment: conversation.fulfilment,
         handoff: conversation.handoff,
+        storefrontOrigins: new StorefrontOriginsService({ brands, audit }),
         brandSettings: new BrandSettingsQuery({
           whatsappStatus: whatsapp ? (brandId) => whatsapp!.status(brandId) : undefined,
           brands,

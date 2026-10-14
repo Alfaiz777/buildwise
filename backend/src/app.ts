@@ -18,6 +18,7 @@ import type { ReservationService } from './application/reservationService.js';
 import type { FulfilmentService } from './application/fulfilmentService.js';
 import type { HandoffService } from './application/handoffService.js';
 import type { BrandSettingsQuery } from './application/brandSettingsQuery.js';
+import type { StorefrontOriginsService } from './application/storefrontOrigins.js';
 import type { InsightsService } from './application/insightsService.js';
 import { insightsRouter } from './routes/insights.js';
 import { brandSettingsRouter } from './routes/brandSettings.js';
@@ -84,6 +85,8 @@ export interface AppDeps {
     insights: InsightsService;
     /** UI-3: the read-only Settings page. */
     brandSettings: BrandSettingsQuery;
+    /** L4: the editable list of storefronts allowed to send shopper events. */
+    storefrontOrigins?: StorefrontOriginsService;
     /** LOCAL PROFILE ONLY: the demo storefront (never wired in gcp). */
     demoStorefront?: DemoStorefrontService;
     /** Reset demo; refuses unless DEMO_MODE is on and the brand is allowlisted. */
@@ -215,7 +218,7 @@ export function createApp(deps: AppDeps): Express {
     brandConversationsRouter(services.conversations, services.followUps, services.handoff),
   );
   tenant.use('/brand', requireScope('BRAND'), insightsRouter(services.insights));
-  tenant.use('/brand', requireScope('BRAND'), brandSettingsRouter(services.brandSettings));
+  tenant.use('/brand', requireScope('BRAND'), brandSettingsRouter(services.brandSettings, services.storefrontOrigins));
   if (services.demoReset) tenant.use('/brand', requireScope('BRAND'), brandDemoRouter(services.demoReset));
   tenant.use('/channels/simulator', requireScope('BRAND'), simulatorRouter(services.simulator, services.conversations));
   if (localUploads) tenant.use('/local-files', requireScope('BRAND'), localFilesRouter(localUploads));

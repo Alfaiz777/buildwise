@@ -530,7 +530,7 @@ describe('synthetic history on lists', () => {
   });
 });
 
-describe('Settings (read-only)', () => {
+describe('Settings', () => {
   it('shows the follow-up policy in words, conversation settings and the channel, with no edit controls', async () => {
     renderAt(
       '/brand/settings',
@@ -553,9 +553,45 @@ describe('Settings (read-only)', () => {
     expect(screen.getByText('In 4–5 days')).toBeInTheDocument();
     expect(screen.getByText(/nearest one within 25 km is still offered/)).toBeInTheDocument();
     expect(screen.getByText(/Simulator — WhatsApp once your number is connected/)).toBeInTheDocument();
-    expect(screen.getByText('Settings are read-only in this prototype.')).toBeInTheDocument();
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Apart from the storefronts above, settings are read-only in this prototype.'),
+    ).toBeInTheDocument();
+    // L4: the storefront list is the one editable setting; nothing else has an input or a save.
+    expect(screen.getAllByRole('textbox')).toEqual([screen.getByLabelText('Add a storefront')]);
     expect(screen.queryByRole('button', { name: /save|edit/i })).not.toBeInTheDocument();
+  });
+
+  it('L4: the Brand Admin adds the Shopify store as an allowed storefront; a non-address is refused before saving', async () => {
+    const api = apiWith({
+      '/api/brand/settings': SETTINGS,
+      '/api/brand/demo': { reset_available: false },
+      '/api/brand/conversations': { conversations: [] },
+      '/api/integrations/whatsapp': {
+        enabled: false,
+        status: 'NOT_CONNECTED',
+        display_phone_number: null,
+        verified_name: null,
+      },
+      '/api/brand/connections': { connections: [] },
+    });
+    renderAt('/brand/settings', api);
+    const input = await screen.findByLabelText('Add a storefront');
+    fireEvent.change(input, { target: { value: 'my store' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Enter the store address');
+    expect(api.patch).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: 'https://M6CCXZ-WK.myshopify.com/' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith('/api/brand/settings/storefront-origins', {
+        origins: ['http://localhost:5173', 'https://m6ccxz-wk.myshopify.com'],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove http://localhost:5173' }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenLastCalledWith('/api/brand/settings/storefront-origins', { origins: [] }),
+    );
   });
 });
 

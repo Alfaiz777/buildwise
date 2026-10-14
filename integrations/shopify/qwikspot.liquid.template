@@ -1,0 +1,30 @@
+{%- comment -%}
+  Qwikspot for Shopify (L4). Paste this whole file into Online Store → Themes → Edit code →
+  Snippets → "qwikspot", then add {% render 'qwikspot' %} just before </body> in layout/theme.liquid.
+  Generated from integrations/shopify/qwikspot-shopify.js by `npm run shopify:snippet` — edit
+  that file and rebuild rather than changing the script below by hand.
+
+  The two settings: where Qwikspot runs, and this store's brand id in Qwikspot.
+{%- endcomment -%}
+{%- liquid
+  assign qs_api = 'https://app.qwikspot.urbanlyfe.in'
+  assign qs_brand = 'brd_demo'
+-%}
+<script id="qwikspot-config" type="application/json">
+  {
+    "apiBaseUrl": {{ qs_api | json }},
+    "brandId": {{ qs_brand | json }},
+    "template": {{ template.name | json }},
+    "product": {%- if template.name == 'product' and product -%}
+      {
+        "title": {{ product.title | json }},
+        "variant": {{ product.selected_or_first_available_variant.id | json }}
+      }
+    {%- else -%}null{%- endif -%},
+    "searchTerms": {%- if search.performed -%}{{ search.terms | json }}{%- else -%}null{%- endif -%},
+    "cartVariant": {%- if cart.item_count > 0 -%}{{ cart.items.first.variant_id | json }}{%- else -%}null{%- endif %}
+  }
+</script>
+<script>
+/*__QWIKSPOT_SHOPIFY_JS__*/
+</script>

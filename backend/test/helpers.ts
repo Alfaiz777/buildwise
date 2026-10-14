@@ -23,6 +23,7 @@ import type { DemoConfig } from '../src/config/env.js';
 import { MemoryReservations } from './memoryReservations.js';
 import { MemoryInsightsReader } from './memoryInsights.js';
 import { BrandSettingsQuery } from '../src/application/brandSettingsQuery.js';
+import { StorefrontOriginsService } from '../src/application/storefrontOrigins.js';
 import { InsightsService } from '../src/application/insightsService.js';
 import { CsvRetailFileParser } from '../src/adapters/retail/csvRetailFileParser.js';
 import { SimulatorMessagingProvider } from '../src/adapters/messaging/simulatorMessagingProvider.js';
@@ -163,6 +164,10 @@ export class MemoryBrands implements BrandRepository {
   async setStatus(brandId: string, status: 'ACTIVE' | 'SUSPENDED') {
     const brand = this.brands.find((b) => b.brandId === brandId);
     if (brand) brand.status = status;
+  }
+  async setAllowedStorefrontOrigins(brandId: string, origins: string[]) {
+    const brand = this.brands.find((b) => b.brandId === brandId);
+    if (brand) brand.settings = { ...brand.settings, allowed_storefront_origins: [...origins] };
   }
   adminSlot(brandId: string) {
     return memorySlot(() => {
@@ -445,6 +450,18 @@ export class FakeIdentity implements IdentityAdmin {
 }
 
 /** Storefront origin allowed for every test brand (docs/04 §3). */
+/**
+ * L4: the prefilled WhatsApp message is readable ("Hi …! I'd like … (ref START_QWIKSPOT_…)").
+ * Tests that ask their own question send `<their words> <refOf(prefilled)>`, like a shopper who
+ * rewrites the message but keeps the reference.
+ */
+export const refOf = (prefilled: string) => {
+  const ref = /\(ref START_QWIKSPOT_[0-9A-HJKMNP-TV-Z]{26}\)/.exec(prefilled)?.[0];
+  if (!ref) throw new Error(`no (ref …) in the prefilled message: ${prefilled}`);
+  return ref;
+};
+export const tokenOf = (prefilled: string) => /START_QWIKSPOT_([0-9A-HJKMNP-TV-Z]{26})/.exec(prefilled)![1]!;
+
 export const TEST_ORIGIN = 'http://shop.test';
 
 /** Follow-up policy with the local demo delays (docs/04 §3). */
@@ -849,6 +866,7 @@ export function buildTestWorld(
       reservations: conversation.reservations,
       fulfilment: conversation.fulfilment,
       handoff: conversation.handoff,
+      storefrontOrigins: new StorefrontOriginsService({ brands, audit }),
       brandSettings: new BrandSettingsQuery({
         whatsappStatus: whatsapp ? (brandId) => whatsapp.status(brandId) : undefined,
         brands,

@@ -14,7 +14,7 @@ import {
   encodeIntentToken,
   hashIntentToken,
   MAX_TOKENS_PER_SESSION_PER_HOUR,
-  prefilledText,
+  readablePrefilledText,
   TOKEN_TTL_MS,
 } from '../domain/intentToken.js';
 import { AppError } from '../lib/errors.js';
@@ -195,12 +195,13 @@ export class IntentService {
       actor: { type: 'SYSTEM', id: 'storefront' },
     });
 
-    const whatsapp = input.eventType === 'WHATSAPP_CLICK' ? await this.issueToken(brand, stored, now) : null;
+    const whatsapp =
+      input.eventType === 'WHATSAPP_CLICK' ? await this.issueToken(brand, stored, input.entry ?? 'CHAT', now) : null;
     await this.deps.onIntentUpdated?.(stored);
     return { accepted: true, replay, intent: (await this.deps.intents.get(brandId, intentId)) ?? stored, whatsapp };
   }
 
-  private async issueToken(brand: BrandRecord, intent: IntentRecord, now: Date) {
+  private async issueToken(brand: BrandRecord, intent: IntentRecord, entry: WhatsAppEntry, now: Date) {
     const since = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
     if (
       (await this.deps.tokens.countIssuedSince(brand.brandId, intent.webSessionId, since)) >=
@@ -220,11 +221,30 @@ export class IntentService {
       consumedAt: null,
       consumedByCustomerId: null,
     });
-    const text = prefilledText(token);
+    // The readable message names the product and size from the catalogue (verified data only).
+    const [products, variants] = intent.productId
+      ? await Promise.all([
+          this.deps.products.listProducts(brand.brandId),
+          this.deps.products.listVariants(brand.brandId),
+        ])
+      : [[], []];
+    const product = products.find((p) => p.productId === intent.productId) ?? null;
+    const variant = variants.find((v) => v.variantId === intent.variantId) ?? null;
+    const text = readablePrefilledText({
+      brandName: resolveMessagingSettings(brand.settings, brand.name).displayName,
+      productTitle: product?.title ?? null,
+      size: variant?.title ?? null,
+      entry,
+      token,
+    });
     // L2-WhatsApp: the brand's own connected number; otherwise the configured (simulator) number.
     const connected = (await this.deps.whatsappNumberFor?.(brand.brandId))?.replace(/\D/g, '') || null;
     const number = connected ?? resolveMessagingSettings(brand.settings, brand.name).whatsappNumber;
-    return { prefilledText: text, waLink: number ? `https://wa.me/${number}?text=${text}` : null, expiresAt };
+    return {
+      prefilledText: text,
+      waLink: number ? `https://wa.me/${number}?text=${encodeURIComponent(text)}` : null,
+      expiresAt,
+    };
   }
 }
 

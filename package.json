@@ -18,6 +18,7 @@
     "demo:check": "npm run demo:check --workspace backend",
     "seed:live": "npm run seed:live --workspace backend --",
     "secrets:scan": "node scripts/secrets-scan.mjs",
+    "shopify:snippet": "node scripts/build-shopify-snippet.mjs",
     "build": "npm run build --workspaces",
     "typecheck": "npm run typecheck --workspaces",
     "format": "prettier --write .",

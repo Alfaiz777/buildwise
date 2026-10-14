@@ -24,6 +24,7 @@ import {
   extractIntentToken,
   hashIntentToken,
   prefilledText,
+  readablePrefilledText,
   TOKEN_PATTERN,
 } from '../src/domain/intentToken.js';
 import { AgentDecisionSchema } from '../src/ports/agent.js';
@@ -258,5 +259,65 @@ describe('deterministic fallback decision (docs/03 §16.2)', () => {
     expect(on.next_best_action.action).toBe('HUMAN_HANDOFF');
     expect(on.required_tools).toEqual(['request_human_handoff']);
     expect(AgentDecisionSchema.parse(on).intent.intent_type).toBe('UNKNOWN');
+  });
+});
+
+describe('L4: the readable prefilled message (docs/06 §10.1)', () => {
+  const token = '0123456789ABCDEFGHJKMNPQRS';
+  const base = { brandName: 'AquaSkin', productTitle: 'Mineral Sunscreen SPF 50', size: '50 g', token };
+
+  it('one sentence per entry, from verified data, then "(ref START_QWIKSPOT_…)"', () => {
+    expect(readablePrefilledText({ ...base, entry: 'STORE_NEED' })).toBe(
+      `Hi AquaSkin! I'd like Mineral Sunscreen SPF 50 (50 g) today. Is it available at a store near me? (ref START_QWIKSPOT_${token})`,
+    );
+    expect(readablePrefilledText({ ...base, entry: 'CHAT' })).toBe(
+      `Hi AquaSkin! I have a question about Mineral Sunscreen SPF 50 (50 g). (ref START_QWIKSPOT_${token})`,
+    );
+    for (const entry of ['STORE_NEED', 'CHAT'] as const) {
+      expect(readablePrefilledText({ ...base, productTitle: null, size: null, entry })).toBe(
+        `Hi AquaSkin! I'd like some help choosing a product. (ref START_QWIKSPOT_${token})`,
+      );
+    }
+    expect(readablePrefilledText({ ...base, size: null, entry: 'CHAT' })).toBe(
+      `Hi AquaSkin! I have a question about Mineral Sunscreen SPF 50. (ref START_QWIKSPOT_${token})`,
+    );
+  });
+
+  it('stays around 200 characters even with long names', () => {
+    const long = readablePrefilledText({
+      brandName: 'The Extremely Long Brand Name Skincare Company of India',
+      productTitle: 'Ultra-Light Gel Sunscreen SPF 50 PA++++ With Niacinamide And Hyaluronic Acid For Oily Skin',
+      size: '50 g travel size pack',
+      entry: 'STORE_NEED',
+      token,
+    });
+    expect(long.length).toBeLessThanOrEqual(205);
+    expect(long).toContain('…');
+    expect(long.endsWith(`(ref START_QWIKSPOT_${token})`)).toBe(true);
+  });
+
+  it('the token is found anywhere; the agent sees the words without "(ref …)" or its empty leftovers', () => {
+    const message = readablePrefilledText({ ...base, entry: 'STORE_NEED' });
+    expect(extractIntentToken(message)).toEqual({
+      token,
+      text: "Hi AquaSkin! I'd like Mineral Sunscreen SPF 50 (50 g) today. Is it available at a store near me?",
+    });
+    expect(extractIntentToken(`(ref START_QWIKSPOT_${token}) is it in Bandra?`)).toEqual({
+      token,
+      text: 'is it in Bandra?',
+    });
+    expect(extractIntentToken(`Need it today (REF: START_QWIKSPOT_${token} )`)).toEqual({
+      token,
+      text: 'Need it today',
+    });
+    // The shopper deleted the token but left the brackets: no token, and no "(ref )" for the agent.
+    expect(extractIntentToken("Hi AquaSkin! I'd like it today. (ref )")).toEqual({
+      token: null,
+      text: "Hi AquaSkin! I'd like it today.",
+    });
+    expect(extractIntentToken('a normal message (with brackets)')).toEqual({
+      token: null,
+      text: 'a normal message (with brackets)',
+    });
   });
 });
