@@ -48,9 +48,11 @@ const SIMPLE: Record<string, string> = {
 export function whySentence(r: Recommendation): string {
   const t = r.trace;
   const fallback =
-    r.decision_source !== 'AGENT' && t?.fallback_reason
-      ? " (The assistant couldn't decide, so a safe fixed reply was sent.)"
-      : '';
+    r.decision_source === 'AGENT_BACKUP'
+      ? ' (Gemini could not answer this message in time, so the rule-based assistant decided.)'
+      : r.decision_source !== 'AGENT' && t?.fallback_reason
+        ? " (The assistant couldn't decide, so a safe fixed reply was sent.)"
+        : '';
   const variantId = r.target_variant_id ?? null;
   const eligible: StoreFact[] = t ? uniqueStores(t.eligible, variantId) : [];
   const excluded: StoreFact[] = t ? uniqueStores(t.excluded, variantId) : [];

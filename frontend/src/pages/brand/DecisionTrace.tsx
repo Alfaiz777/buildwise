@@ -4,7 +4,17 @@ import { EXCLUSION_TEXT, GUARDRAIL_TEXT, humanize, type Recommendation } from '.
 import { formatDateTime } from './types';
 import { safetyLabel, whySentence } from './whySentence';
 
-const RUNTIME_TEXT: Record<string, string> = { MOCK: 'Mock AI · deterministic', ADK_GEMINI: 'Gemini' };
+const RUNTIME_TEXT: Record<string, string> = { MOCK: 'Mock AI · deterministic', ADK_GEMINI: 'Gemini (Vertex AI)' };
+
+const BACKUP_CAUSE: Record<string, string> = {
+  TIMEOUT: 'Gemini timeout',
+  RUNTIME_ERROR: 'Gemini error',
+  INVALID_OUTPUT: 'an invalid Gemini answer',
+};
+
+/** L3: Gemini failed for this message and the deterministic mock answered instead. */
+export const backupLabel = (reason: string | null | undefined) =>
+  `Mock AI (backup after ${BACKUP_CAUSE[reason ?? ''] ?? 'a Gemini failure'})`;
 
 /**
  * "Why Qwikspot did this" (docs/11 §4; Change 16, UI-3): for each decision, newest first,
@@ -23,8 +33,16 @@ export function DecisionTrace({ recommendations }: { recommendations: Recommenda
           <article key={r.recommendation_id} className="trace-card" aria-label={label(r.action)}>
             <header className="trace-card__head">
               <strong>{label(r.action)}</strong> <Badge tone={safety.tone}>{safety.text}</Badge>{' '}
-              <Badge>{RUNTIME_TEXT[r.runtime] ?? r.runtime}</Badge>
-              {r.decision_source !== 'AGENT' && <Badge tone="warning">Safe fallback reply</Badge>}
+              {r.decision_source === 'RULES_TAP' ? (
+                <Badge>Rules (button tap)</Badge>
+              ) : r.decision_source === 'AGENT_BACKUP' ? (
+                <Badge tone="warning">{backupLabel(r.trace?.fallback_reason)}</Badge>
+              ) : (
+                <>
+                  <Badge>{RUNTIME_TEXT[r.runtime] ?? r.runtime}</Badge>
+                  {r.decision_source !== 'AGENT' && <Badge tone="warning">Safe fallback reply</Badge>}
+                </>
+              )}
               <span className="muted small"> {formatDateTime(r.proposed_at)}</span>
             </header>
             <p className="why-sentence">{whySentence(r)}</p>

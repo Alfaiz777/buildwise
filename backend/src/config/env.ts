@@ -27,6 +27,10 @@ const EnvSchema = z.object({
   COMMERCE_PROVIDER: optionalEnum(['mock', 'shopify'] as const),
   MESSAGING_CHANNELS: z.string().optional(),
   AGENT_RUNTIME: optionalEnum(['mock', 'adk_gemini'] as const),
+  // L3-Gemini (AGENT_RUNTIME=adk_gemini): all optional, see parseVertexConfig.
+  VERTEX_MODEL: z.string().trim().optional(),
+  VERTEX_LOCATION: z.string().trim().optional(),
+  VERTEX_PROJECT: z.string().trim().optional(),
   FILE_STORAGE: optionalEnum(['local', 'gcs'] as const),
   EVENT_SINK: optionalEnum(['local', 'bigquery'] as const),
   // Read by the Firebase Admin SDK.
@@ -89,8 +93,44 @@ export const GCP_REQUIRED_SETTINGS = [
   'SCHEDULER_SERVICE_ACCOUNT',
 ] as const;
 
-/** Required in gcp only when AGENT_RUNTIME=adk_gemini. */
-export const GCP_AGENT_SETTINGS = ['VERTEX_MODEL', 'VERTEX_LOCATION'] as const;
+/**
+ * Required in gcp only when AGENT_RUNTIME=adk_gemini: nothing. VERTEX_MODEL and VERTEX_LOCATION
+ * have defaults (below), the project is GOOGLE_CLOUD_PROJECT and the credentials are the
+ * service account's (ADC) — there is no key to configure.
+ */
+export const GCP_AGENT_SETTINGS: readonly string[] = [];
+
+/**
+ * L3-Gemini defaults, checked against Google's model pages on 2026-10-13 (docs/05 §16):
+ * gemini-3.8-flash is the current GA Flash model (gemini-2.5-flash retires on 2026-10-20) and
+ * is served on the `global`, `us` and `eu` endpoints only — not in asia-south1.
+ */
+export const DEFAULT_VERTEX_MODEL = 'gemini-3.8-flash';
+export const DEFAULT_VERTEX_LOCATION = 'global';
+
+/** Gemini on Vertex AI (L3-Gemini). Credentials are ADC; there is no API key. */
+export interface VertexConfig {
+  project: string;
+  model: string;
+  location: string;
+}
+
+/**
+ * AGENT_RUNTIME=adk_gemini settings. One error naming every invalid variable. Locally the
+ * emulators use a `demo-` project, which Vertex AI cannot bill: VERTEX_PROJECT names the real one.
+ */
+export function parseVertexConfig(env: NodeJS.ProcessEnv, projectId: string): VertexConfig {
+  const v = (name: string) => String(env[name] ?? '').trim();
+  const model = v('VERTEX_MODEL') || DEFAULT_VERTEX_MODEL;
+  const location = v('VERTEX_LOCATION') || DEFAULT_VERTEX_LOCATION;
+  const project = v('VERTEX_PROJECT') || projectId;
+  const invalid: string[] = [];
+  if (!/^[a-z0-9][a-z0-9.-]{2,80}$/.test(model)) invalid.push('VERTEX_MODEL');
+  if (!/^[a-z][a-z0-9-]{1,30}$/.test(location)) invalid.push('VERTEX_LOCATION');
+  if (!/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(project) || project.startsWith('demo-')) invalid.push('VERTEX_PROJECT');
+  if (invalid.length > 0) throw new Error(`AGENT_RUNTIME=adk_gemini needs valid settings: ${invalid.join(', ')}`);
+  return { project, model, location };
+}
 /**
  * Required in gcp only when the whatsapp channel is selected (L2-WhatsApp): the Meta app.
  * Each brand's own token and number come from Embedded Signup, never from the environment.
@@ -326,6 +366,8 @@ export interface Config {
   shopify: ShopifyAppConfig | null;
   /** L2-WhatsApp: present only when the whatsapp channel is selected. */
   whatsapp: WhatsAppAppConfig | null;
+  /** L3-Gemini: present only with AGENT_RUNTIME=adk_gemini. */
+  vertex: VertexConfig | null;
   /** AES-256-GCM key for stored third-party tokens; set when Shopify or WhatsApp needs it. */
   tokenEncryptionKey: Buffer | null;
 }
@@ -393,7 +435,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       region: v('GCP_REGION'),
       firestoreDatabase: String(env.FIRESTORE_DATABASE ?? '').trim() || '(default)',
       vertex:
-        adapters.agentRuntime === 'adk_gemini' ? { model: v('VERTEX_MODEL'), location: v('VERTEX_LOCATION') } : null,
+        adapters.agentRuntime === 'adk_gemini'
+          ? {
+              model: String(env.VERTEX_MODEL ?? '').trim() || DEFAULT_VERTEX_MODEL,
+              location: String(env.VERTEX_LOCATION ?? '').trim() || DEFAULT_VERTEX_LOCATION,
+            }
+          : null,
       bigQueryDataset: v('BIGQUERY_DATASET'),
       gcsBucket: v('GCS_BUCKET'),
     };
@@ -412,6 +459,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   const projectId = e.GOOGLE_CLOUD_PROJECT || (profile === 'local' ? LOCAL_PROJECT_ID : '');
   if (!projectId) throw new Error('Invalid environment configuration: GOOGLE_CLOUD_PROJECT');
+  const vertex = adapters.agentRuntime === 'adk_gemini' ? parseVertexConfig(env, projectId) : null;
 
   const demoEnabled = e.DEMO_MODE === 'true';
   let logins: DemoLogin[] = [];
@@ -479,6 +527,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     gcp,
     shopify,
     whatsapp,
+    vertex,
     tokenEncryptionKey,
     staged: stagedAdapters(profile, adapters, stagedRollout),
     scheduler,

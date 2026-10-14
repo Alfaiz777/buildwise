@@ -5,7 +5,8 @@ import { ApiContext, type MeResponse } from '../api/apiContext';
 import type { ApiClient } from '../api/client';
 import { AppRoutes } from '../AppRoutes';
 import { AuthContext, type AuthState } from '../auth/authContext';
-import { countdown } from '../pages/brand/conversationTypes';
+import { countdown, type Recommendation } from '../pages/brand/conversationTypes';
+import { DecisionTrace } from '../pages/brand/DecisionTrace';
 
 const ME: MeResponse = {
   scope: 'BRAND',
@@ -346,6 +347,43 @@ describe('Brand Console — M5 decision trace and reservations', () => {
     });
     return { ...api, get: get as ApiClient['get'] };
   }
+
+  it('a Gemini decision is labelled "Gemini (Vertex AI)", never as the mock (L3-Gemini)', () => {
+    const gemini = (TRACED.recommendations as unknown as Recommendation[]).map((r) => ({
+      ...r,
+      runtime: 'ADK_GEMINI',
+    }));
+    render(<DecisionTrace recommendations={gemini} />);
+    expect(screen.getAllByText('Gemini (Vertex AI)')).toHaveLength(gemini.length);
+    expect(screen.queryByText('Mock AI · deterministic')).not.toBeInTheDocument();
+  });
+
+  it('a button tap decided by the rules is labelled "Rules (button tap)" (L3)', () => {
+    const [first] = TRACED.recommendations as unknown as Recommendation[];
+    render(<DecisionTrace recommendations={[{ ...first!, runtime: 'MOCK', decision_source: 'RULES_TAP' }]} />);
+    expect(screen.getByText('Rules (button tap)')).toBeInTheDocument();
+    expect(screen.queryByText('Mock AI · deterministic')).not.toBeInTheDocument();
+    expect(screen.queryByText('Safe fallback reply')).not.toBeInTheDocument();
+  });
+
+  it('a backup decision says so: "Mock AI (backup after Gemini timeout)", not a fallback and not Gemini (L3)', () => {
+    const [first] = TRACED.recommendations as unknown as Recommendation[];
+    const backup = (reason: string) =>
+      ({
+        ...first!,
+        runtime: 'MOCK',
+        decision_source: 'AGENT_BACKUP',
+        trace: { ...first!.trace!, fallback_reason: reason },
+      }) as Recommendation;
+    const view = render(<DecisionTrace recommendations={[backup('TIMEOUT')]} />);
+    expect(screen.getByText('Mock AI (backup after Gemini timeout)')).toBeInTheDocument();
+    expect(screen.queryByText('Safe fallback reply')).not.toBeInTheDocument();
+    expect(screen.queryByText('Gemini (Vertex AI)')).not.toBeInTheDocument();
+    expect(screen.getByText(/so the rule-based assistant decided/)).toBeInTheDocument();
+    view.unmount();
+    render(<DecisionTrace recommendations={[backup('RUNTIME_ERROR')]} />);
+    expect(screen.getByText('Mock AI (backup after Gemini error)')).toBeInTheDocument();
+  });
 
   it('"Why Qwikspot did this": a plain sentence per decision, safety check in words, technical details collapsed', async () => {
     renderAt('/brand/conversations', api5());

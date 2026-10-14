@@ -6,7 +6,7 @@ import { SimulatorMessagingProvider } from '../src/adapters/messaging/simulatorM
 import { LocalFileStorageProvider } from '../src/adapters/storage/localFileStorageProvider.js';
 import { AdapterNotAvailableError, createProviders, describeProviders } from '../src/composition/container.js';
 import { loadConfig } from '../src/config/env.js';
-import type { AdapterSelection } from '../src/config/profile.js';
+import type { AdapterSelection, MessagingChannelSelection } from '../src/config/profile.js';
 
 const LOCAL: AdapterSelection = loadConfig({}).adapters;
 
@@ -35,10 +35,18 @@ describe('composition root — adapter selection', () => {
     expect(describeProviders(providers, adapters).commerce).toBe('SHOPIFY');
   });
 
-  it.each([
-    [{ agentRuntime: 'adk_gemini' }, /AdkGeminiAgentRuntime/],
-    [{ messagingChannels: ['whatsapp'] }, /WhatsAppMessagingProvider/],
-  ] as const)(
+  it('L3-Gemini: AGENT_RUNTIME=adk_gemini builds the Gemini runtime from the Vertex settings; without them it fails loudly', () => {
+    const adapters = { ...LOCAL, agentRuntime: 'adk_gemini' } as AdapterSelection;
+    const providers = createProviders({
+      adapters,
+      localDataDir: '.d',
+      vertex: { project: 'qwikspot-test', model: 'gemini-test-model', location: 'global' },
+    });
+    expect(providers.agent.runtime).toBe('ADK_GEMINI'); // nothing is contacted until the first decision
+    expect(() => createProviders({ adapters, localDataDir: '.d' })).toThrow(/needs the Vertex settings/);
+  });
+
+  it.each([[{ messagingChannels: ['whatsapp'] as MessagingChannelSelection[] }, /WhatsAppMessagingProvider/]])(
     'a real adapter that does not exist yet fails loudly (%o), never silently falls back',
     (override, name) => {
       const build = () =>

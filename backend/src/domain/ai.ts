@@ -16,7 +16,13 @@ export type AiAction = (typeof AI_ACTIONS)[number];
 export const AGENT_RUNTIMES = ['MOCK', 'ADK_GEMINI'] as const;
 export type AgentRuntimeName = (typeof AGENT_RUNTIMES)[number];
 
-export const DECISION_SOURCES = ['AGENT', 'DETERMINISTIC_FALLBACK'] as const;
+/**
+ * AGENT: the configured runtime decided. AGENT_BACKUP: it failed and the backup runtime (the
+ * deterministic mock) decided instead. RULES_TAP: the message was a button tap, an unambiguous
+ * command, decided by the deterministic rules without calling the model.
+ * DETERMINISTIC_FALLBACK: the fixed safe reply.
+ */
+export const DECISION_SOURCES = ['AGENT', 'AGENT_BACKUP', 'RULES_TAP', 'DETERMINISTIC_FALLBACK'] as const;
 export type DecisionSource = (typeof DECISION_SOURCES)[number];
 
 export const GUARDRAIL_STATUSES = ['ALLOWED', 'BLOCKED', 'HUMAN_APPROVAL_REQUIRED'] as const;

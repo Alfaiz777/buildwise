@@ -311,7 +311,8 @@ export function PlatformSystem() {
             <dd>
               {a?.agent_runtime === 'GEMINI' ? (
                 <>
-                  <strong>Gemini</strong> — the agent decides with Gemini; the deterministic safety checks still run.
+                  <strong>Gemini (Vertex AI)</strong> — the agent decides with Gemini; the deterministic safety checks
+                  still run.
                 </>
               ) : (
                 <>

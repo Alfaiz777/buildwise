@@ -719,3 +719,27 @@ shopper pages                  the brand name comes from the API, never from the
 ### Teach-back
 
 The first real WhatsApp test showed what the simulator hid: the storefront always bound a product before the chat began. An agent that only works with a bound product is not a shop assistant; it has to keep track of what the conversation is about from what the customer said and did, and still take every fact from verified data.
+
+## L3-Gemini — the real AI behind the same port
+
+### What changed
+
+```text
+domain/agentPrompt.ts            QWIKSPOT_AGENT_PROMPT_V1 and the small proposal the model fills
+adapters/agent/geminiClient.ts   the only file that imports @google/genai (Vertex AI, ADC, no API key)
+adapters/agent/adkGemini…        the loop: read tools through the ToolExecutor → proposal → AgentDecision
+config/env.ts                    VERTEX_MODEL (gemini-3.8-flash), VERTEX_LOCATION (global), VERTEX_PROJECT (local)
+test/eval/gemini.eval.test.ts    opt-in live evaluation (RUN_GEMINI_EVAL=1)
+```
+
+### What can fail?
+
+- The model named in the plan (`gemini-2.5-flash`) retires a week after this was built. Model ids are checked against the lifecycle page, never taken from memory.
+- The current Flash model is not served in `asia-south1`; the default location is `global`.
+- A model asked for the whole decision can claim a tool call it never made or name a write tool. So it fills a small proposal, and the backend adds what actually ran and which write the action needs.
+- An invented store or reservation id: ids the backend did not show the model in this turn are dropped before the guardrail sees them.
+- Latency is the real risk, not accuracy: most requests take a few seconds, some stall, and busy shared capacity answers 429 / 504. A timeout with one retry helps; the fallback has to be acceptable, because it will be used.
+
+### Teach-back
+
+Swapping the brain was small because nothing else trusted it: the port, the tool executor, the guardrail and the reply composer were built for a runtime that can be wrong or absent. The model proposes; the application remains the authority.

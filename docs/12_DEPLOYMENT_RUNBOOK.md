@@ -12,6 +12,8 @@ Conventions: project id `qwikspot` (written `PROJECT_ID` below), region `asia-so
 
 **L2-WhatsApp under the staged rollout.** `MESSAGING_CHANNELS=simulator,whatsapp` is also allowed with `GCP_STAGED_ROLLOUT=true` and `AGENT_RUNTIME=mock`: brands that connect their own WhatsApp Business number (Settings → Channels: WhatsApp) are answered on WhatsApp by the mock agent; every other brand, the shopper demo (`/chat`) and `demo:check` stay on the simulator. `/api/health` then shows `"staged": ["AGENT_RUNTIME=mock"]`. ✅ (`config.test.ts`)
 
+**L3-Gemini.** `AGENT_RUNTIME=adk_gemini` runs Gemini on Vertex AI (§6) with `MESSAGING_CHANNELS=simulator,whatsapp`, with or without `GCP_STAGED_ROLLOUT`. Keep `GCP_STAGED_ROLLOUT=true` for now: it is what allows `AGENT_RUNTIME=mock` in gcp, the one-command rollback. ✅ (`config.test.ts`)
+
 ---
 
 ## 1. Project, budget and APIs — UNVERIFIED
@@ -38,7 +40,7 @@ Runtime identity `qwikspot-api@PROJECT_ID.iam.gserviceaccount.com`:
 |---|---|---|
 | `roles/datastore.user` | project | Firestore reads/writes (all tenant data) |
 | `roles/firebaseauth.admin` | project | Provisioning users (Platform / Brand Admin flows create Auth users and setup links) |
-| `roles/aiplatform.user` | project | Gemini on Vertex AI (`AdkGeminiAgentRuntime`, when it ships) |
+| `roles/aiplatform.user` | project | Gemini on Vertex AI (`AdkGeminiAgentRuntime`, `AGENT_RUNTIME=adk_gemini`) |
 | `roles/iam.serviceAccountTokenCreator` | **on itself only** | Signs the browser's upload URLs (IAM signBlob; no key file) |
 | `roles/storage.objectAdmin` | **the upload bucket only** | Retail import uploads and row reports (`GCSFileStorageProvider`) |
 | `roles/bigquery.dataEditor` | **the `qwikspot` dataset only** | Streaming inserts (`BigQueryEventSink`) |
@@ -74,8 +76,8 @@ The `gcp` profile checks every required setting at startup and stops with one me
 | `QWIKSPOT_PROFILE` | `gcp` (set by `deploy-backend.sh`) |
 | `GOOGLE_CLOUD_PROJECT` | `PROJECT_ID` (set by `deploy-backend.sh`) |
 | `GCP_REGION` | `asia-south1` |
-| `GCP_STAGED_ROLLOUT` | `true` until Gemini and WhatsApp ship (then remove it) |
-| `AGENT_RUNTIME` | `mock` during the staged rollout (later `adk_gemini`) |
+| `GCP_STAGED_ROLLOUT` | `true` while the mock agent must stay available as the rollback switch (§6); remove it once Gemini is settled |
+| `AGENT_RUNTIME` | `adk_gemini` (Gemini on Vertex AI), or `mock` with `GCP_STAGED_ROLLOUT=true` |
 | `MESSAGING_CHANNELS` | `simulator`, or `simulator,whatsapp` once the Meta app is set up (§7b) |
 | `COMMERCE_PROVIDER` | `shopify` (the gcp default; set it explicitly) |
 | `PUBLIC_BACKEND_URL` | The API's public https origin, e.g. `https://PROJECT_ID.web.app` (Hosting rewrites `/api/**`) — the Shopify callback and the Scheduler audience are built from it |
@@ -89,7 +91,9 @@ The `gcp` profile checks every required setting at startup and stops with one me
 | `DEMO_BRAND_IDS` | `brd_demo` |
 | `DEMO_HOLD_MINUTES` | `20` |
 | `SHOPIFY_SCOPES`, `SHOPIFY_API_VERSION` | optional; default the four read scopes and `2026-10` |
-| `VERTEX_MODEL`, `VERTEX_LOCATION` | later, with `AGENT_RUNTIME=adk_gemini` (§6) |
+| `VERTEX_MODEL` | optional with `AGENT_RUNTIME=adk_gemini`; default `gemini-3.8-flash` (§6) |
+| `VERTEX_LOCATION` | optional; default `global` — `gemini-3.8-flash` is not served in `asia-south1` (§6) |
+| `VERTEX_PROJECT` | local development only: the real project for Vertex AI while Firestore runs on the emulators |
 | `META_APP_ID` | The Meta app id (public; the Facebook SDK uses it) — with the `whatsapp` channel |
 | `META_ES_CONFIG_ID` | The Facebook Login for Business configuration id for WhatsApp Embedded Signup (public) — with the `whatsapp` channel |
 | `META_GRAPH_VERSION` | optional; default `v26.0` (format `vNN.0`) |
@@ -137,14 +141,39 @@ curl http://localhost:8080/api/health   # {"status":"ok","version":"…","commit
 ```
 The image runs as the unprivileged `node` user, so in the local profile `LOCAL_DATA_DIR` must point at a writable path (`/tmp/…`); in `gcp` files go to Cloud Storage.
 
-The gcp profile never falls back to a mock or local adapter. The adapter that does not exist yet (`AdkGeminiAgentRuntime`) is only reachable without `GCP_STAGED_ROLLOUT`, where they fail at start with `AdapterNotAvailableError` — by design.
+The gcp profile never falls back to a mock or local adapter by itself. The mock agent runs in gcp only when it is asked for (`AGENT_RUNTIME=mock`) together with `GCP_STAGED_ROLLOUT=true`.
 
-## 6. Vertex AI model access — UNVERIFIED (after the staged rollout)
+## 6. Gemini on Vertex AI (L3-Gemini) — UNVERIFIED on Cloud Run (runtime ✅, live eval from a laptop ✅)
 
-1. Vertex AI → Model Garden: confirm the chosen Gemini model is available in `VERTEX_LOCATION` for this project.
-2. Smoke-call it with the service account (the exact command lands next to `AdkGeminiAgentRuntime`).
-3. Run the AI scenario suite against the real runtime: `runAgentScenarioSuite({ runtime: 'ADK_GEMINI', runs: 5, … })` — scenarios 8–12 must pass 5/5, 1–7 at least 4/5 (`08_TEST_PLAN.md` §7.3).
-4. Then set `AGENT_RUNTIME=adk_gemini`, `VERTEX_MODEL`, `VERTEX_LOCATION` and drop `GCP_STAGED_ROLLOUT`.
+`AGENT_RUNTIME=adk_gemini` switches the replies from the mock rules to Gemini. Everything else is unchanged: the same tools, guardrail, reservations and reply cards (`05_AI_AGENT_SPEC.md` §9.2, §16).
+
+1. One-time setup (`setup-project.sh` already does both):
+   ```bash
+   gcloud services enable aiplatform.googleapis.com --project PROJECT_ID
+   gcloud projects add-iam-policy-binding PROJECT_ID \
+     --member serviceAccount:qwikspot-api@PROJECT_ID.iam.gserviceaccount.com --role roles/aiplatform.user
+   ```
+   Credentials are the service account's (ADC). There is no API key and no secret to add.
+2. Model and location: the defaults are `VERTEX_MODEL=gemini-3.8-flash` and `VERTEX_LOCATION=global`. `gemini-3.8-flash` is served on `global`, `us` and `eu` only, not in `asia-south1`; on `global` Google chooses the processing region. `gemini-2.5-flash` retires on 2026-10-20 — do not use it.
+3. Check from a laptop before switching (uses your own login, writes nothing to the project):
+   ```bash
+   gcloud auth application-default login
+   gcloud auth application-default set-quota-project PROJECT_ID
+   RUN_GEMINI_EVAL=1 VERTEX_PROJECT=PROJECT_ID npm run eval:gemini --workspace backend
+   ```
+   It prints action, reply and pass / fail for the 12 scenarios (`08_TEST_PLAN.md` §7.2) and the WhatsApp conversation. `EVAL_RUNS=5` is the final-evaluation count: scenarios 8–12 must pass 5/5, 1–7 at least 4/5.
+4. Switch the live service to Gemini (keep `GCP_STAGED_ROLLOUT=true`, so the mock stays one command away):
+   ```bash
+   gcloud run services update qwikspot-api --region asia-south1 --project PROJECT_ID \
+     --update-env-vars AGENT_RUNTIME=adk_gemini,VERTEX_MODEL=gemini-3.8-flash,VERTEX_LOCATION=global
+   ```
+   `/api/health` then shows `"agent_runtime": "GEMINI"`, and the console labels each decision "Gemini (Vertex AI)".
+5. **Rollback to the mock** (one command, no deploy):
+   ```bash
+   gcloud run services update qwikspot-api --region asia-south1 --project PROJECT_ID \
+     --update-env-vars AGENT_RUNTIME=mock
+   ```
+6. Watch: Cloud Logging `jsonPayload.message="agent.gemini_decision"` (latency, retries, tools, tokens, action — never message text). When a Gemini turn is slow or fails, the mock agent decides that message instead (`agent.backup` in the log; the console shows "Mock AI (backup after Gemini timeout)"), so the customer still gets an automatic answer and the conversation is not handed to a person (`03_TECH_ARCHITECTURE.md` §16.2). Many backups in a row mean Gemini is not really answering: roll back, or move to Provisioned Throughput.
 
 ## 7. Web app on Firebase Hosting — UNVERIFIED
 
@@ -225,7 +254,8 @@ Data: Firestore is not rolled back with code. For the demo brand, **Reset demo**
 |---|---|
 | Service exits at start: "The gcp profile is missing required settings: …" | A variable or secret from §3 is not attached |
 | Service exits: "The gcp profile refuses local/mock infrastructure" | A selector (`COMMERCE_PROVIDER`, …) or an emulator host is set — or `AGENT_RUNTIME=mock` without `GCP_STAGED_ROLLOUT=true` |
-| Service exits: `AdapterNotAvailableError` | `AGENT_RUNTIME=adk_gemini` before that adapter exists — use the staged rollout |
+| Service exits: "AGENT_RUNTIME=adk_gemini needs valid settings: …" | `VERTEX_MODEL` / `VERTEX_LOCATION` is malformed (or, locally, `VERTEX_PROJECT` is missing) |
+| Many decisions labelled "Mock AI (backup after Gemini …)" | Gemini is failing or too slow and the mock is answering. Look at `agent.gemini_decision` (`action: ERROR`, high `latency_ms`, `retries`): `403` = the service account lacks `roles/aiplatform.user` or the API is off; `404` = the model is not served in `VERTEX_LOCATION`; `429` / `504` = shared capacity. Roll back with `AGENT_RUNTIME=mock` (§6) |
 | Service exits: "MESSAGING_CHANNELS=whatsapp needs valid settings: …" | A `META_*` variable or `WHATSAPP_VERIFY_TOKEN` is missing, or `META_GRAPH_VERSION` is not `vNN.0` |
 | Meta: "The callback URL or verify token couldn't be validated" | `WHATSAPP_VERIFY_TOKEN` differs from the dashboard, or the service is not running with the `whatsapp` channel yet |
 | WhatsApp messages arrive but nobody answers | Webhook `401` (wrong `META_APP_SECRET`), or `whatsapp.webhook_unknown_number` in the log: that number is not connected to any brand |

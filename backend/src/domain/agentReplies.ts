@@ -79,6 +79,10 @@ export function parseOption(optionId: string): ParsedOption {
   return { kind: 'UNKNOWN' };
 }
 
+/** Taps that are complete commands by themselves: decided by rules, never sent to a model. */
+const RULE_TAPS: readonly ParsedOption['kind'][] = ['HOLD', 'CANCEL', 'OTHER_STORES', 'BUY_ONLINE', 'HANDOFF'];
+export const isRuleTap = (optionId: string) => RULE_TAPS.includes(parseOption(optionId).kind);
+
 export const formatKm = (km: number) => `${km.toFixed(1)} km`;
 export const formatPrice = (price: number, currency: string) =>
   currency === 'INR' ? `₹${price}` : `${currency} ${price}`;

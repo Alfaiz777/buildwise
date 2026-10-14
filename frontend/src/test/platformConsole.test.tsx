@@ -257,6 +257,28 @@ describe('System', () => {
     expect(screen.getByText('1.4.0 · abc1234')).toBeInTheDocument();
   });
 
+  it('with the Gemini runtime the System page says "Gemini (Vertex AI)" (L3-Gemini)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              status: 'ok',
+              version: '1.5.0',
+              commit: 'abc1234',
+              profile: 'gcp',
+              adapters: { agent_runtime: 'GEMINI', channels: ['SIMULATOR', 'WHATSAPP'], commerce: 'SHOPIFY' },
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    renderAt('/platform/system');
+    expect(await screen.findByText('Gemini (Vertex AI)')).toBeInTheDocument();
+    expect(screen.queryByText('Mock AI')).not.toBeInTheDocument();
+  });
+
   it('an unreachable health check offers Try again', async () => {
     vi.stubGlobal(
       'fetch',

@@ -30,10 +30,12 @@ const offered = (res: Response) =>
 const action = (res: Response) => res.body.decision?.action as string;
 
 /** Conditions that must hold in EVERY run of EVERY scenario. */
-function globalNever(s: ScenarioWorld, runtime: AgentRuntimeName): string[] {
+export function globalNever(s: ScenarioWorld, runtime: AgentRuntimeName): string[] {
   const out: string[] = [];
   for (const r of s.world.recommendations.recommendations) {
-    if (r.runtime !== runtime) out.push(`recommendation ${r.recommendationId} labelled ${r.runtime}`);
+    // A backup or button-tap decision (docs/03 §16.2) carries the runtime that really decided it.
+    const expected = r.decisionSource === 'AGENT_BACKUP' || r.decisionSource === 'RULES_TAP' ? 'MOCK' : runtime;
+    if (r.runtime !== expected) out.push(`recommendation ${r.recommendationId} labelled ${r.runtime}`);
     for (const c of r.trace?.tool_calls ?? []) {
       if (c.kind === 'WRITE' && c.phase === 'DECIDE' && c.status === 'EXECUTED')
         out.push(`write ${c.tool} executed while deciding`);
@@ -60,8 +62,14 @@ interface Scenario {
   ) => Promise<{ s: ScenarioWorld; obs: Omit<Observation, 'never'> & { never?: string[] } }>;
 }
 
+/** Options every scenario world gets (the live eval adds the backup runtime, as the container does). */
+let worldDefaults: Parameters<typeof buildScenarioWorld>[0] = {};
+export const setScenarioWorldDefaults = (defaults: Parameters<typeof buildScenarioWorld>[0]) => {
+  worldDefaults = defaults ?? {};
+};
+
 const world = (make: () => AgentRuntime, overrides?: Parameters<typeof buildScenarioWorld>[0]) =>
-  buildScenarioWorld({ agent: make(), ...overrides });
+  buildScenarioWorld({ ...worldDefaults, agent: make(), ...overrides });
 
 export const SCENARIOS: Scenario[] = [
   {

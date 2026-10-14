@@ -64,6 +64,8 @@ export interface ConversationModuleDeps {
   reservations: ReservationRepository;
   /** The configured AgentRuntime (its name is recorded on every decision). */
   agent: AgentRuntime;
+  /** The backup brain behind the configured runtime (docs/03 §16.2); set by the composition root. */
+  backupAgent?: AgentRuntime;
   /** Test hook: the per-message AI budget (docs/03 §16.1). */
   aiBudgetMs?: number;
   /** Test hook: outbound retry backoff (docs/03 §16.2). */
