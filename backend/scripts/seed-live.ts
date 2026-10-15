@@ -15,6 +15,7 @@
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import { FieldValue } from 'firebase-admin/firestore';
+import { DEMO_RETAILER } from '../src/application/demoResetService.js';
 import { buildContainer } from '../src/composition/container.js';
 import { loadConfig } from '../src/config/env.js';
 import { initFirebase } from '../src/firebase/admin.js';
@@ -93,10 +94,10 @@ const platform = {
   email: plan.emails.platform,
 } as const;
 
-// 2. The demo brand and its retailer (fixed id: the judge stock fixture names rtl_north). A project
-// seeded before L5 keeps its retailer's old name and its old stores (Reset demo sets them INACTIVE).
+// 2. The demo brand and its retailer (fixed id: the judge stock fixture names rtl_north). For a
+// project seeded before L5, rebuild() below renames it and removes the old stores and retailers.
 if (!(await brands.getById(plan.brandId))) await brands.create({ brandId: plan.brandId, name: 'Demo Beauty Co' });
-for (const [retailerId, name] of [['rtl_north', 'Ahmedabad Retail Partners']] as const) {
+for (const [retailerId, name] of [[DEMO_RETAILER.id, DEMO_RETAILER.name]] as const) {
   if (!(await retailers.get(plan.brandId, retailerId)))
     await retailers.create({ brandId: plan.brandId, retailerId, name });
 }

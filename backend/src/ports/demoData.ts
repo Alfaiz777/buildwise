@@ -37,7 +37,8 @@ export interface DemoHistory {
  * intents, conversations (with messages), recommendations, reservations, outcomes,
  * commerce events, attribution refs, stock, imports, the catalogue, mappings and
  * connections — plus that brand's intent tokens and webhook receipts.
- * Kept: the brand document, retailers, stores (and their Retail Admin), users, audit.
+ * Kept: the brand document, retailers, stores (and their Retail Admin), users, audit. After the
+ * import, DemoResetService.cleanUpNetwork removes stores and retailers outside the demo network.
  */
 export const DEMO_RESET_COLLECTIONS = [
   'customers',

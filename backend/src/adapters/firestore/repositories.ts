@@ -245,6 +245,33 @@ export class FirestoreRetailerRepository implements RetailerRepository {
     return this.db.collection('brands').doc(brandId).collection('retailers');
   }
 
+  async rename(brandId: string, retailerId: string, name: string): Promise<boolean> {
+    const ref = this.col(brandId).doc(retailerId);
+    try {
+      await ref.update({ name, updated_at: FieldValue.serverTimestamp() });
+      return true;
+    } catch (err) {
+      if ((err as { code?: unknown }).code === 5) return false; // NOT_FOUND
+      throw err;
+    }
+  }
+
+  async deleteIfEmpty(brandId: string, retailerId: string): Promise<boolean> {
+    const ref = this.col(brandId).doc(retailerId);
+    const stores = this.db
+      .collection('brands')
+      .doc(brandId)
+      .collection('stores')
+      .where('retailer_id', '==', retailerId)
+      .limit(1);
+    return this.db.runTransaction(async (tx) => {
+      const [snap, owned] = [await tx.get(ref), await tx.get(stores)];
+      if (!snap.exists || !owned.empty) return false;
+      tx.delete(ref);
+      return true;
+    });
+  }
+
   async get(brandId: string, retailerId: string): Promise<RetailerRecord | null> {
     const ref = this.col(brandId).doc(retailerId);
     const snap = await ref.get();
@@ -363,6 +390,16 @@ export class FirestoreStoreRepository implements StoreRepository {
         else batch.create(refs[i]!, { ...fields, retailer_id: null, retail_admin_user_id: null });
       }),
     );
+  }
+
+  async deleteIfUnclaimed(brandId: string, storeId: string): Promise<boolean> {
+    const ref = this.col(brandId).doc(storeId);
+    return this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists || snap.get('retail_admin_user_id')) return false;
+      tx.delete(ref);
+      return true;
+    });
   }
 
   adminSlot(brandId: string, storeId: string): AdminSlot {
@@ -736,6 +773,15 @@ export class FirestoreInventoryRepository implements InventoryRepository {
 
   listByVariant(brandId: string, variantId: string) {
     return this.query(brandId, 'variant_id', variantId);
+  }
+
+  async deleteByStore(brandId: string, storeId: string): Promise<number> {
+    const snap = await this.col(brandId).where('store_id', '==', storeId).get();
+    await commitInChunks(
+      this.db,
+      snap.docs.map((doc) => (batch: WriteBatch) => batch.delete(doc.ref)),
+    );
+    return snap.size;
   }
 
   async upsertStock(

@@ -27,13 +27,13 @@ const ME: Record<'platform' | 'brandAdmin' | 'retailAdmin', MeResponse> = {
     brand_id: 'brand_A',
     brand_name: 'Brand A',
     retailer_id: 'rtl_north',
-    retailer_name: 'North Retail',
+    retailer_name: 'Ahmedabad Retail Partners',
     store_id: 'st_1',
     store: {
       store_id: 'st_1',
-      store_name: 'Bandra Store',
-      city: 'Mumbai',
-      address: 'Hill Road, Bandra',
+      store_name: 'Wellness Mart',
+      city: 'Ahmedabad',
+      address: 'Satellite Road, Satellite',
       store_status: 'ACTIVE',
       store_hours: { timezone: 'Asia/Kolkata', monday: '10:00-21:00' },
     },
@@ -71,16 +71,16 @@ const BRAND_USERS = [
     status: 'ACTIVE',
   },
 ];
-/** North Retail owns two stores (one with its Retail Admin, one without); New Retail has none yet. */
+/** Ahmedabad Retail Partners owns two stores (one with its Retail Admin, one without); New Retail has none yet. */
 const RETAILERS = [
-  { retailer_id: 'rtl_north', name: 'North Retail', status: 'ACTIVE' },
+  { retailer_id: 'rtl_north', name: 'Ahmedabad Retail Partners', status: 'ACTIVE' },
   { retailer_id: 'rtl_new', name: 'New Retail', status: 'ACTIVE' },
 ];
 const STORES = [
   {
     store_id: 'st_1',
-    store_name: 'Bandra Store',
-    city: 'Mumbai',
+    store_name: 'Wellness Mart',
+    city: 'Ahmedabad',
     store_status: 'ACTIVE',
     retailer_id: 'rtl_north',
     retail_admin_user_id: 'r',
@@ -89,8 +89,8 @@ const STORES = [
   },
   {
     store_id: 'st_2',
-    store_name: 'Andheri Store',
-    city: 'Mumbai',
+    store_name: 'HealthPlus Chemist',
+    city: 'Ahmedabad',
     store_status: 'ACTIVE',
     retailer_id: 'rtl_north',
     retail_admin_user_id: null,
@@ -357,9 +357,9 @@ describe('scope routing — each of the three roles lands in its own console are
     renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin));
     expect(await screen.findByText('Brand Console')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create retailer' })).toBeInTheDocument();
-    expect(await screen.findByText('Bandra Store')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'North Retail' })).toBeInTheDocument();
-    expect(screen.getByText('Andheri Store')).toBeInTheDocument();
+    expect(await screen.findByText('Wellness Mart')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ahmedabad Retail Partners' })).toBeInTheDocument();
+    expect(screen.getByText('HealthPlus Chemist')).toBeInTheDocument();
     expect(screen.getByText('No stores yet. Stores arrive through the retail CSV import.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /brand admin/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /assign store/i })).not.toBeInTheDocument();
@@ -369,14 +369,14 @@ describe('scope routing — each of the three roles lands in its own console are
 
   it('a store with a Retail Admin shows it and offers no provisioning; a store without one offers it', async () => {
     renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin));
-    const bandra = (await screen.findByText('Bandra Store')).closest('tr')!;
-    expect(within(bandra).getByText('owner@north.test')).toBeInTheDocument();
-    expect(within(bandra).queryByRole('button')).not.toBeInTheDocument();
+    const wellness = (await screen.findByText('Wellness Mart')).closest('tr')!;
+    expect(within(wellness).getByText('owner@north.test')).toBeInTheDocument();
+    expect(within(wellness).queryByRole('button')).not.toBeInTheDocument();
 
-    const andheri = screen.getByText('Andheri Store').closest('tr')!;
-    expect(within(andheri).getByText('Not provisioned')).toBeInTheDocument();
+    const healthPlus = screen.getByText('HealthPlus Chemist').closest('tr')!;
+    expect(within(healthPlus).getByText('Not provisioned')).toBeInTheDocument();
     expect(
-      within(andheri).getByRole('button', { name: 'Provision Retail Admin for Andheri Store' }),
+      within(healthPlus).getByRole('button', { name: 'Provision Retail Admin for HealthPlus Chemist' }),
     ).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /Provision Retail Admin/ })).toHaveLength(1);
   });
@@ -384,29 +384,31 @@ describe('scope routing — each of the three roles lands in its own console are
   it('provisioning is store-based and shows the local password-setup link with a Copy button', async () => {
     const api = apiFor(ME.brandAdmin);
     renderAt('/brand/network', signedIn, api);
-    fireEvent.click(await screen.findByRole('button', { name: 'Provision Retail Admin for Andheri Store' }));
-    fireEvent.change(screen.getByLabelText('Retail admin email for Andheri Store'), {
-      target: { value: 'owner-andheri@north.test' },
+    fireEvent.click(await screen.findByRole('button', { name: 'Provision Retail Admin for HealthPlus Chemist' }));
+    fireEvent.change(screen.getByLabelText('Retail admin email for HealthPlus Chemist'), {
+      target: { value: 'owner-healthplus@north.test' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Provision' }));
 
     expect(await screen.findByText(/oobCode=abc/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument();
-    expect(api.post).toHaveBeenCalledWith('/api/brand/stores/st_2/admins', { email: 'owner-andheri@north.test' });
+    expect(api.post).toHaveBeenCalledWith('/api/brand/stores/st_2/admins', { email: 'owner-healthplus@north.test' });
   });
 
   it('RETAIL_ADMIN → Store Console with exactly its one store and no store picker', async () => {
     renderAt('/store/stock', signedIn, apiFor(ME.retailAdmin));
     expect(await screen.findByText('Your store')).toBeInTheDocument();
-    expect(screen.getByText('Bandra Store · for Brand A via North Retail')).toBeInTheDocument();
-    expect(screen.getByRole('note')).toHaveTextContent('You run Bandra Store for Brand A via North Retail.');
-    expect(screen.getByText('Bandra Store', { selector: 'dd' })).toBeInTheDocument();
-    expect(screen.getByText('North Retail', { selector: 'dd' })).toBeInTheDocument();
-    expect(screen.getByText('Hill Road, Bandra')).toBeInTheDocument();
+    expect(screen.getByText('Wellness Mart · for Brand A via Ahmedabad Retail Partners')).toBeInTheDocument();
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'You run Wellness Mart for Brand A via Ahmedabad Retail Partners.',
+    );
+    expect(screen.getByText('Wellness Mart', { selector: 'dd' })).toBeInTheDocument();
+    expect(screen.getByText('Ahmedabad Retail Partners', { selector: 'dd' })).toBeInTheDocument();
+    expect(screen.getByText('Satellite Road, Satellite')).toBeInTheDocument();
     expect(screen.getByText('mon 10:00-21:00 (Asia/Kolkata)')).toBeInTheDocument();
     expect(screen.getByText(/Reserved = units held for customers at this store/)).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
-    expect(screen.queryByText('Andheri Store')).not.toBeInTheDocument();
+    expect(screen.queryByText('HealthPlus Chemist')).not.toBeInTheDocument();
   });
 
   it('RETAIL_ADMIN → Store stock shows only its own store (read-only)', async () => {
@@ -531,7 +533,7 @@ describe('Brand Console — M3 catalog & store truth', () => {
     renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin));
     fireEvent.click(await screen.findByRole('button', { name: 'View report' }));
     expect(await screen.findByLabelText('Import report')).toBeInTheDocument();
-    const bandra = screen.getByText('Bandra Store').closest('tr')!;
-    expect(within(bandra).getByText('10')).toBeInTheDocument();
+    const wellness = screen.getByText('Wellness Mart').closest('tr')!;
+    expect(within(wellness).getByText('10')).toBeInTheDocument();
   });
 });

@@ -190,6 +190,19 @@ export class MemoryRetailers implements RetailerRepository {
     this.retailers.push(record);
     return record;
   }
+  async rename(brandId: string, retailerId: string, name: string) {
+    const r = await this.get(brandId, retailerId);
+    if (r) r.name = name;
+    return !!r;
+  }
+  /** Set by buildTestWorld: the stores, to check that none belongs to the retailer. */
+  storesOf: () => StoreRecord[] = () => [];
+  async deleteIfEmpty(brandId: string, retailerId: string) {
+    const i = this.retailers.findIndex((r) => r.brandId === brandId && r.retailerId === retailerId);
+    if (i < 0 || this.storesOf().some((s) => s.brandId === brandId && s.retailerId === retailerId)) return false;
+    this.retailers.splice(i, 1);
+    return true;
+  }
 }
 
 /** Mirrors the Firestore transaction: read state, ask the domain rule, apply to the store. */
@@ -206,6 +219,12 @@ export class MemoryStores implements StoreRepository {
   }
   async list(brandId: string) {
     return this.stores.filter((s) => s.brandId === brandId);
+  }
+  async deleteIfUnclaimed(brandId: string, storeId: string) {
+    const i = this.stores.findIndex((s) => s.brandId === brandId && s.storeId === storeId);
+    if (i < 0 || this.stores[i]!.retailAdminUserId) return false;
+    this.stores.splice(i, 1);
+    return true;
   }
   async upsertFromImport(brandId: string, stores: StoreImportFields[]) {
     for (const fields of stores) {
@@ -291,6 +310,12 @@ export class MemoryInventory implements InventoryRepository {
   }
   async listByVariant(brandId: string, variantId: string) {
     return this.rows.filter((r) => r.brandId === brandId && r.variantId === variantId);
+  }
+  async deleteByStore(brandId: string, storeId: string) {
+    const before = this.rows.length;
+    for (let i = this.rows.length - 1; i >= 0; i--)
+      if (this.rows[i]!.brandId === brandId && this.rows[i]!.storeId === storeId) this.rows.splice(i, 1);
+    return before - this.rows.length;
   }
   async upsertStock(brandId: string, rows: InventoryUpsert[], availabilityOf: (q: number, r: number) => string) {
     for (const row of rows) {
@@ -642,6 +667,7 @@ export function buildTestWorld(
   const brands = new MemoryBrands(world.brands);
   const retailers = new MemoryRetailers(world.retailers);
   const stores = new MemoryStores(world.stores, world.retailers);
+  retailers.storesOf = () => stores.stores;
   const audit = new MemoryAudit();
   const identity = new FakeIdentity();
   for (const u of world.users) if (u.email) identity.byEmail.set(u.email, u.userId);
@@ -825,6 +851,8 @@ export function buildTestWorld(
     files,
     brands,
     stores,
+    retailers,
+    inventory,
     products,
     customers,
     commerceSync,

@@ -33,9 +33,9 @@ const parts = (over: Partial<NonNullable<ChatMessage['parts']>>): NonNullable<Ch
 });
 
 const STORE_FOUND = base({
-  text: '*Vitamin C Glow Serum 30 ml* · ₹795\nAvailable today at *Andheri Store*\n2.1 km · open until 21:00',
+  text: '*Vitamin C Glow Serum 30 ml* · ₹795\nAvailable today at *HealthPlus Chemist*\n2.1 km · open until 21:00',
   options: [
-    { option_id: 'hold:st_north_2', label: 'Hold at Andheri' },
+    { option_id: 'hold:st_north_2', label: 'Hold at HealthPlus' },
     { option_id: 'other_stores', label: 'Other stores' },
     { option_id: 'buy_online', label: 'Buy online' },
   ],
@@ -50,7 +50,7 @@ const OTHER_STORES = base({
   options: [
     {
       option_id: 'hold:st_north_1',
-      label: 'Bandra Store',
+      label: 'Wellness Mart',
       description: '7.1 km · open until 21:00',
       section: 'Stores near you',
     },
@@ -63,7 +63,7 @@ const PICKUP_PASS = base({
   text: '✅ *On hold for you*\n1 × Vitamin C Glow Serum 30 ml\nPickup code: *482913*',
   options: [{ option_id: 'cancel:res_1', label: 'Cancel reservation' }],
   parts: parts({
-    location: { name: 'Andheri Store', address: 'Andheri West, Mumbai', latitude: 19.13, longitude: 72.83 },
+    location: { name: 'HealthPlus Chemist', address: 'C.G. Road, Ahmedabad', latitude: 23.034, longitude: 72.5595 },
     footer: 'Powered by Qwikspot',
   }),
 });
@@ -73,10 +73,10 @@ describe('ChatBubble — only what WhatsApp can render', () => {
     const onChoose = vi.fn();
     render(<ChatBubble message={STORE_FOUND} mode="customer" choicesEnabled onChoose={onChoose} />);
     expect(screen.getByRole('img', { name: 'Serum' })).toHaveAttribute('src', expect.stringContaining('serum.png'));
-    expect(screen.getByText('Andheri Store', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByText('HealthPlus Chemist', { selector: 'strong' })).toBeInTheDocument();
     expect(screen.getByText('Powered by Qwikspot')).toBeInTheDocument();
     const buttons = within(screen.getByRole('group', { name: 'Reply buttons' })).getAllByRole('button');
-    expect(buttons.map((b) => b.textContent)).toEqual(['Hold at Andheri', 'Other stores', 'Buy online']);
+    expect(buttons.map((b) => b.textContent)).toEqual(['Hold at HealthPlus', 'Other stores', 'Buy online']);
     fireEvent.click(buttons[0]!);
     expect(onChoose).toHaveBeenCalledWith(expect.objectContaining({ option_id: 'hold:st_north_2' }));
   });
@@ -90,7 +90,7 @@ describe('ChatBubble — only what WhatsApp can render', () => {
     expect(within(sheet).getByText('Stores near you')).toBeInTheDocument();
     expect(within(sheet).getByText('Or')).toBeInTheDocument();
     expect(within(sheet).getByText('7.1 km · open until 21:00')).toBeInTheDocument();
-    fireEvent.click(within(sheet).getByRole('button', { name: /Bandra Store/ }));
+    fireEvent.click(within(sheet).getByRole('button', { name: /Wellness Mart/ }));
     expect(onChoose).toHaveBeenCalledWith(expect.objectContaining({ option_id: 'hold:st_north_1' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
@@ -98,8 +98,8 @@ describe('ChatBubble — only what WhatsApp can render', () => {
   it('pickup pass: body plus a location message that opens in Maps', () => {
     render(<ChatBubble message={PICKUP_PASS} mode="customer" />);
     expect(screen.getByText('482913', { selector: 'strong' })).toBeInTheDocument();
-    const map = screen.getByRole('link', { name: /Andheri Store.*Open in Maps/ });
-    expect(map).toHaveAttribute('href', 'https://www.google.com/maps/search/?api=1&query=19.13,72.83');
+    const map = screen.getByRole('link', { name: /HealthPlus Chemist.*Open in Maps/ });
+    expect(map).toHaveAttribute('href', 'https://www.google.com/maps/search/?api=1&query=23.034,72.5595');
     expect(map).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
@@ -150,7 +150,7 @@ describe('ChatBubble — only what WhatsApp can render', () => {
 describe('ChatThread', () => {
   it('only the latest brand message is tappable, and never in the brand transcript', () => {
     const { unmount } = render(<ChatThread messages={[STORE_FOUND, PICKUP_PASS]} mode="customer" onChoose={vi.fn()} />);
-    expect(screen.getByRole('button', { name: 'Hold at Andheri' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Hold at HealthPlus' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel reservation' })).toBeEnabled();
     unmount();
     render(<ChatThread messages={[STORE_FOUND, PICKUP_PASS]} mode="brand" />);
@@ -166,7 +166,7 @@ describe('ShopperPhone — live store updates', () => {
     const update: ShopperMessage = {
       ...base({
         message_id: 'msg_0009',
-        text: '✅ *Andheri Store confirmed your hold*\n1 × Vitamin C Glow Serum 30 ml',
+        text: '✅ *HealthPlus Chemist confirmed your hold*\n1 × Vitamin C Glow Serum 30 ml',
       }),
       from: 'BRAND',
     };
@@ -183,7 +183,9 @@ describe('ShopperPhone — live store updates', () => {
 
     batch = [update];
     await act(() => vi.advanceTimersByTimeAsync(3_000));
-    expect(await screen.findByText('Andheri Store confirmed your hold', { selector: 'strong' })).toBeInTheDocument();
+    expect(
+      await screen.findByText('HealthPlus Chemist confirmed your hold', { selector: 'strong' }),
+    ).toBeInTheDocument();
     // The shopper never sees internal labels.
     expect(screen.queryByText('Store update')).not.toBeInTheDocument();
   });

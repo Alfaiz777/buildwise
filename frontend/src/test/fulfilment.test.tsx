@@ -16,12 +16,12 @@ const RETAIL: MeResponse = {
   brand_id: 'brand_A',
   brand_name: 'Brand A',
   retailer_id: 'rtl_north',
-  retailer_name: 'North Retail',
+  retailer_name: 'Ahmedabad Retail Partners',
   store_id: 'st_2',
   store: {
     store_id: 'st_2',
-    store_name: 'Andheri Store',
-    city: 'Mumbai',
+    store_name: 'HealthPlus Chemist',
+    city: 'Ahmedabad',
     address: 'Lokhandwala Complex',
     store_status: 'ACTIVE',
     store_hours: { timezone: 'Asia/Kolkata', monday: '10:00-21:00' },
@@ -38,7 +38,7 @@ const BRAND: MeResponse = {
 const in40 = () => new Date(Date.now() + 40 * 60_000).toISOString();
 const reservation = (over: Record<string, unknown> = {}) => ({
   reservation_id: 'res_1',
-  store_name: 'Andheri Store',
+  store_name: 'HealthPlus Chemist',
   store_timezone: 'Asia/Kolkata',
   product_title: 'Vitamin C Glow Serum',
   variant_title: '30 ml',
@@ -267,7 +267,7 @@ const INSIGHTS = {
     {
       sku: 'DBC-VCSERUM-50',
       label: 'Vitamin C Glow Serum 50 ml',
-      area: 'andheri',
+      area: 'navrangpura',
       weekday: 'saturday',
       count: 4,
       reasons: { OUT_OF_STOCK: 4 },
@@ -291,7 +291,7 @@ const INSIGHTS = {
   suggestions: [
     {
       rule: 'STOCK_UNMET_AREA',
-      text: 'Vitamin C Glow Serum 50 ml was requested 4 times in Andheri in the last 7 days with no store in stock. Suggested: ask North Retail to stock Andheri Store.',
+      text: 'Vitamin C Glow Serum 50 ml was requested 4 times in Navrangpura in the last 7 days with no store in stock. Suggested: ask Ahmedabad Retail Partners to stock HealthPlus Chemist.',
       evidence: { kind: 'EVENTS', ids: ['evt_1', 'evt_2', 'evt_3', 'evt_4'] },
     },
   ],
@@ -316,7 +316,7 @@ describe('Brand Console — Outcomes & insights (M6)', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Show as table' })[0]!);
     const funnel = screen.getByRole('table', { name: 'Journey funnel' });
     expect(within(funnel).getByText('Pickups').closest('tr')).toHaveTextContent('7');
-    expect(screen.getByText(/ask North Retail to stock Andheri Store/)).toBeInTheDocument();
+    expect(screen.getByText(/ask Ahmedabad Retail Partners to stock HealthPlus Chemist/)).toBeInTheDocument();
     expect(screen.getByText('Based on 4 store lookups')).toBeInTheDocument();
     expect(screen.getByRole('table', { name: 'Conversion by action' })).toHaveTextContent('7 (70%)');
     fireEvent.click(screen.getByLabelText('Include synthetic demo history'));

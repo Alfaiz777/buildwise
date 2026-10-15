@@ -314,6 +314,8 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     files: providers.files,
     brands,
     stores,
+    retailers,
+    inventory,
     products,
     customers,
     commerceSync,

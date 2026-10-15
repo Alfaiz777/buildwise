@@ -798,7 +798,13 @@ The demo brand's stores are now six synthetic stores in Ahmedabad, in two areas,
 - **Other stores.** A list of every store in the area (titles at most 24 characters), **Buy online** and **Check another area**.
 - **Refusals.** A store's refusal re-offers the next store with stock in the same area, never the refusing store. When none is left in the area, the customer gets the verified alternative or home delivery; the extended-radius offer does not cross into the other area.
 - **Typed store names.** A store name typed after a card ("I'll go to GlowUp"), matched only among the stores just shown, gets that store's own card with its Pick up button. It never holds by itself, so a vague or mistyped message never reserves the wrong store. This is a deterministic rule, like button taps; typing the other area's name switches area.
-- **Reset demo / seed:live** rebuild the network from the fixture. Stores of an older network are kept with their retailer and Retail Admin, but set INACTIVE and ignored by the area search. A retailer created before L5 keeps its old name ("North Retail").
+- **Reset demo / seed:live** rebuild the network from the fixture. After the stock import, the old network is removed (`demoResetService.cleanUpNetwork`):
+  - a store without an area and without a Retail Admin is deleted, together with its stock rows (Powai Store, Koregaon Park Store);
+  - a store without an area that has a Retail Admin is kept, set INACTIVE and ignored by the area search, so no login is orphaned;
+  - a retailer left with no store is deleted (Pune Retail);
+  - `rtl_north` is renamed "Ahmedabad Retail Partners"; its id, stores and Retail Admins never change.
+  
+  The deletes are guarded in a Firestore transaction: a store that gained a Retail Admin, or a retailer that still owns a store, is never deleted. Stock rows are deleted in batches. Conversations, reservations and history were already wiped by Reset, so nothing refers to a deleted store. The `DEMO_RESET` audit entry lists `stores_deleted`, `stores_inactive`, `retailers_deleted` and `retailer_renamed`; the reset response adds a `network` summary. A second reset changes nothing.
 - **Consoles.** Store names show with their area ("Wellness Mart, Satellite"); the store APIs add `area`. The demo login titles, demo guide, landing page, README and demo scripts follow the new story.
 - **Unchanged:** the guardrail, reservation rules, outcomes, tenant isolation and every other rule.
 

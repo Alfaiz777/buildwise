@@ -56,6 +56,7 @@ import { buildContainer } from '../src/composition/container.js';
 import { loadConfig, LOCAL_DEMO_PASSWORD } from '../src/config/env.js';
 import { initFirebase } from '../src/firebase/admin.js';
 import { silentLogger } from '../src/lib/logger.js';
+import { DEMO_RETAILER } from '../src/application/demoResetService.js';
 import { demoBrandSettings } from '../src/application/demoSetup.js';
 
 const PASSWORD = LOCAL_DEMO_PASSWORD;
@@ -154,7 +155,7 @@ await db.recursiveDelete(db.doc('brands/brd_other'));
 
 await brand(db, 'brd_demo', 'Demo Beauty Co');
 await brand(db, 'brd_other', 'Other Brand Ltd');
-await retailer(db, 'brd_demo', 'rtl_north', 'Ahmedabad Retail Partners');
+await retailer(db, 'brd_demo', DEMO_RETAILER.id, DEMO_RETAILER.name);
 await retailer(db, 'brd_other', 'rtl_other', 'Other Brand Retail');
 
 // brd_demo: exactly what "Reset demo" rebuilds — sync, judge stock fixture, synthetic history.
