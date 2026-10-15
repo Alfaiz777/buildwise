@@ -5,6 +5,7 @@
  * 8 TOOLS (guardrail-approved writes, then the reply from verified results). The fixed
  * order is enforced by ConversationPipeline.
  */
+import { performance } from 'node:perf_hooks';
 import { whatsappDisplayRef } from '../../domain/whatsappNumbers.js';
 import { isWriteTool, type NearbyStoresOutput } from '../../domain/agentTools.js';
 import { isRuleTap, parseOption, toOutboundOptions, type Reply } from '../../domain/agentReplies.js';
@@ -72,6 +73,7 @@ import {
   ConversationPipeline,
   type PipelineContext,
   type PipelineData,
+  type PipelineResult,
   type PipelineStage,
 } from './pipeline.js';
 
@@ -418,6 +420,7 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
       });
       context.data.contextHash = pkg.hash;
       context.data.contextSummary = pkg.summary;
+      context.data.agentContext = pkg.context;
 
       const input = {
         brandId: brand.brandId,
@@ -443,14 +446,22 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
         content.type === 'TEXT' && shownStores.length > 0 && namedShownStore(input.text ?? '', shownStores) !== null;
       const ruleTap =
         Boolean(backupAgent) && ((content.type === 'INTERACTIVE_REPLY' && isRuleTap(content.optionId)) || typedStore);
+      const agentStarted = performance.now();
       const result = ruleTap
         ? await runAgentRuntime(backupAgent!, input, tools, budget)
         : await runAgentRuntime(deps.agent, input, tools, budget - backupBudget);
+      const agentMs = Math.round(performance.now() - agentStarted);
       context.data.repaired = result.repaired;
       // The configured runtime failed: the backup runtime answers the same message with the
       // same tools, so a slow model still gets the customer a useful automatic reply.
+      const backupStarted = performance.now();
       const backup =
         !result.ok && backupAgent && !ruleTap ? await runAgentRuntime(backupAgent, input, tools, backupBudget) : null;
+      context.data.timing = {
+        // A rule tap never reaches the configured runtime: its time is the rules' time.
+        agentMs: ruleTap ? null : agentMs,
+        backupMs: ruleTap ? agentMs : backup ? Math.round(performance.now() - backupStarted) : null,
+      };
       if (!result.ok && backupAgent && !ruleTap) {
         deps.logger?.warn('agent.backup', {
           brand_id: brand.brandId,
@@ -632,12 +643,21 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
         }
       }
       context.data.executedAction = executed;
+      const agentContext = context.data.agentContext;
       context.data.reply = await composeReply({
         decision,
         guardrail: outcome,
         tools,
         canHold: resolveReservationPolicy(brand.settings).reservationsEnabled,
         now: now(),
+        ...(agentContext ? { conversation: { text: context.data.text ?? null, context: agentContext } } : {}),
+        onRejected: (reason, turn) =>
+          deps.logger?.warn('agent.reply_rejected', {
+            brand_id: brand.brandId,
+            runtime: decision.runtime,
+            reason,
+            turn_type: turn,
+          }),
       });
       return CONTINUE;
     },
@@ -904,17 +924,56 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
     },
   };
 
-  return new ConversationPipeline([
-    idempotency,
-    identity,
-    handshake,
-    conversationState,
-    policy,
-    agent,
-    guardrail,
-    toolsStage,
-    persistence,
-    outbound,
-    outcome,
-  ]);
+  return new ConversationPipeline(
+    [
+      idempotency,
+      identity,
+      handshake,
+      conversationState,
+      policy,
+      agent,
+      guardrail,
+      toolsStage,
+      persistence,
+      outbound,
+      outcome,
+    ],
+    (result, totalMs) => deps.logger?.info('conversation.reply_timing', replyTiming(result, totalMs, deps.runtimeName)),
+  );
+}
+
+/**
+ * L5: one line per inbound message, without PII — how long the reply took and where the time
+ * went: the model (gemini_ms), the rules / backup runtime (rules_ms), the tool calls, and which
+ * path answered (RULES_TAP, GEMINI, MOCK, BACKUP, FALLBACK, or NONE when no decision was needed).
+ */
+export function replyTiming(result: PipelineResult, totalMs: number, runtimeName: string) {
+  const { context } = result;
+  const source = context.decisionSource;
+  const path =
+    source === 'RULES_TAP'
+      ? 'RULES_TAP'
+      : source === 'AGENT'
+        ? runtimeName === 'ADK_GEMINI'
+          ? 'GEMINI'
+          : 'MOCK'
+        : source === 'AGENT_BACKUP'
+          ? 'BACKUP'
+          : source === 'DETERMINISTIC_FALLBACK'
+            ? 'FALLBACK'
+            : 'NONE';
+  const timing = context.data.timing;
+  return {
+    brand_id: context.inbound.brandId,
+    channel: context.inbound.channel,
+    message_type: context.inbound.content.type,
+    path,
+    backup_used: source === 'AGENT_BACKUP' || (source === 'DETERMINISTIC_FALLBACK' && timing?.backupMs != null),
+    total_ms: totalMs,
+    gemini_ms: runtimeName === 'ADK_GEMINI' ? (timing?.agentMs ?? null) : null,
+    rules_ms: runtimeName === 'ADK_GEMINI' ? (timing?.backupMs ?? null) : (timing?.agentMs ?? null),
+    tool_calls: context.data.tools?.calls.length ?? 0,
+    action: context.decision?.next_best_action.action ?? null,
+    stopped_at: result.stoppedAt?.stage ?? null,
+  };
 }

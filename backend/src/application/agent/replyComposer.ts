@@ -5,7 +5,18 @@
  */
 import type { NearbyStoresOutput, ProductContextOutput, ReservationToolOutput } from '../../domain/agentTools.js';
 import {
+  checkConversationalText,
+  classifyTurn,
+  detectLanguage,
+  finishConversationalReply,
+  SOCIAL_TURNS,
+  socialReply,
+  type TextRejection,
+  type TurnType,
+} from '../../domain/conversationalReplies.js';
+import {
   blockedPrefix,
+  clarifyReply,
   cancelNotFoundReply,
   cancelledReply,
   confirmationReply,
@@ -16,7 +27,7 @@ import {
   refusalReply,
   type Reply,
 } from '../../domain/agentReplies.js';
-import type { AgentDecision } from '../../ports/agent.js';
+import type { AgentContext, AgentDecision } from '../../ports/agent.js';
 import type { AgentToolExecutor } from './toolExecutor.js';
 
 export interface GuardrailOutcome {
@@ -35,6 +46,10 @@ export async function composeReply(input: {
   tools: AgentToolExecutor;
   canHold: boolean;
   now: Date;
+  /** L5: what a NO_ACTION reply is checked against — the customer's words and the context package. */
+  conversation?: { text: string | null; context: AgentContext };
+  /** L5: a model-written conversational text was rejected (reason code only, never the text). */
+  onRejected?: (reason: TextRejection, turn: TurnType | null) => void;
 }): Promise<Reply> {
   const { decision, guardrail, tools } = input;
   const executed = tools.calls.filter((c) => c.phase === 'EXECUTE');
@@ -97,7 +112,55 @@ export async function composeReply(input: {
       if (product) return onlinePurchaseReply({ title: product.title, url: product.online_url });
     }
   }
+  if (action === 'NO_ACTION' && input.conversation) return conversationalReply(input, input.conversation);
   return decision.reply;
+}
+
+/**
+ * L5: a NO_ACTION reply (greeting, thanks, later, ok, bye, complaint, off-topic, a clarifying
+ * question). A model-written text is checked: on a social turn it must be short and free of
+ * commerce facts; on any other it must still name no price, stock, store or promise. A text that
+ * fails is replaced by the deterministic one. Then the turn rules: no buttons after a closing,
+ * "Talk to a person" after a complaint.
+ */
+function conversationalReply(
+  input: { decision: AgentDecision; onRejected?: (reason: TextRejection, turn: TurnType | null) => void },
+  conversation: { text: string | null; context: AgentContext },
+): Reply {
+  const { decision } = input;
+  const ctx = conversation.context;
+  const declared = decision.next_best_action.turn_type ?? null;
+  const turn: TurnType | null =
+    (declared && SOCIAL_TURNS.includes(declared) ? declared : null) ?? classifyTurn(conversation.text) ?? declared;
+  const social = turn !== null && SOCIAL_TURNS.includes(turn);
+  let reply = decision.reply;
+  if (decision.runtime !== 'MOCK') {
+    const rejected = checkConversationalText(reply.text, {
+      storeNames: ctx.brand.store_names ?? [],
+      customerText: conversation.text,
+      limits: social,
+    });
+    if (rejected) {
+      input.onRejected?.(rejected, turn);
+      const productTitle = ctx.products[0]?.title ?? null;
+      const first = !ctx.history.some((m) => m.direction === 'OUTBOUND');
+      reply =
+        social && !(turn === 'GREETING' && first)
+          ? socialReply({
+              turn: turn!,
+              language: detectLanguage(conversation.text ?? ''),
+              productTitle,
+              brandName: ctx.brand.display_name,
+              handoffEnabled: ctx.brand.handoff_enabled,
+            })
+          : clarifyReply(productTitle, {
+              brandName: ctx.brand.display_name,
+              examples: ctx.catalog.slice(0, 3).map((c) => c.title),
+              welcome: first,
+            });
+    }
+  }
+  return finishConversationalReply(reply, turn, ctx.brand.handoff_enabled);
 }
 
 /** A fresh store search excluding the blocked store: another eligible store, else online. */

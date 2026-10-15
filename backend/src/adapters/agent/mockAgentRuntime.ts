@@ -24,6 +24,7 @@ import {
 import { matchProducts, matchSize } from '../../domain/catalogMatch.js';
 import { namedShownStore } from '../../domain/locality.js';
 import { classifyMessage } from '../../domain/mockAgentRules.js';
+import { detectLanguage, socialReply, type TurnType } from '../../domain/conversationalReplies.js';
 import type { AgentDecision, AgentRuntime, DecisionInput, ToolExecutor, ToolResult } from '../../ports/agent.js';
 
 /**
@@ -102,6 +103,8 @@ class MockRun {
     askForConfirmation?: boolean;
     /** L5: the card of one store the customer named. */
     show?: 'ONE_STORE' | 'ALL_STORES';
+    /** L5: the conversational turn a NO_ACTION answers. */
+    turnType?: TurnType;
   }): AgentDecision {
     const intentType = d.intentType ?? this.ctx.intent?.intent_type ?? 'UNKNOWN';
     return {
@@ -115,6 +118,7 @@ class MockRun {
         ...(d.quantity ? { quantity: d.quantity } : {}),
         ...(d.reservationId ? { reservation_id: d.reservationId } : {}),
         ...(d.show ? { show: d.show } : {}),
+        ...(d.turnType ? { turn_type: d.turnType } : {}),
         reason: d.reason,
       },
       response_strategy: {
@@ -207,6 +211,8 @@ class MockRun {
           reply: askLocationReply(null, this.ctx.brand.areas ?? []),
           reason: 'The customer wants another area: ask which.',
         });
+      case 'SOCIAL':
+        return this.social(rule.turn);
       case 'EDUCATE':
         return this.educate();
       case 'COMPARE':
@@ -246,6 +252,37 @@ class MockRun {
       reply: clarifyReply(named.entry.title),
       reason: 'The customer named a product: ask what they need for it.',
       confidence: 0.6,
+    });
+  }
+
+  /**
+   * L5: thanks, later, ok, bye, a compliment, a complaint, off-topic — a short natural answer in
+   * the customer's language (no sales question after a closing; a person offered after a
+   * complaint). A first hello still gets the welcome with example products.
+   */
+  private social(turn: TurnType): AgentDecision {
+    const first = !this.ctx.history.some((m) => m.direction === 'OUTBOUND');
+    if (turn === 'GREETING' && first) {
+      return this.decision({
+        action: 'NO_ACTION',
+        reply: this.clarifyText(),
+        reason: 'First hello: welcome and what the assistant can do.',
+        confidence: 0.9,
+        turnType: 'GREETING',
+      });
+    }
+    return this.decision({
+      action: 'NO_ACTION',
+      reply: socialReply({
+        turn,
+        language: detectLanguage(this.text),
+        productTitle: this.boundProduct()?.title ?? null,
+        brandName: this.ctx.brand.display_name,
+        handoffEnabled: this.ctx.brand.handoff_enabled,
+      }),
+      reason: `Conversational turn (${turn.toLowerCase().replace('_', ' ')}): a short reply, no action.`,
+      confidence: 0.9,
+      turnType: turn,
     });
   }
 
@@ -618,6 +655,28 @@ class MockRun {
   }
 
   private async compare(): Promise<AgentDecision> {
+    // "Which is better, Hyaluronic Hydra Serum or Niacinamide Clarifying Serum?" — the two named.
+    const named = matchProducts(this.text, this.ctx.catalog);
+    if (named.length === 2) {
+      const sheets = await Promise.all(
+        named.map(async (entry) => {
+          const { output } = await this.call<ProductContextOutput>('get_product_context', {
+            product_id: entry.product_id,
+          });
+          return output?.product ?? null;
+        }),
+      );
+      if (sheets[0] && sheets[1]) {
+        return this.decision({
+          action: 'COMPARE',
+          reply: compareReply(sheets[0], sheets[1]),
+          reason: `Compared the two products the customer named.`,
+          intentType: 'COMPARISON',
+          confidence: 0.8,
+          requiredTools: this.refine('COMPARISON'),
+        });
+      }
+    }
     const ctx = await this.productForQuestion();
     const other = ctx?.alternatives[0];
     if (!ctx?.product || !other) {

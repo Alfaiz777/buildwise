@@ -5,7 +5,6 @@
  * store's card (a hold needs one more tap); an area the brand does not serve gets the two areas.
  * Built on the real fixture (fixtures/retail/demo-retail.csv), through the real pipeline.
  */
-import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { pickUpLabel } from '../src/domain/agentReplies.js';
@@ -17,44 +16,11 @@ import {
   type LocalityStore,
 } from '../src/domain/locality.js';
 import { WHATSAPP_LIMITS } from '../src/domain/whatsappLimits.js';
-import { bearer, buildTestWorld } from './helpers.js';
+import { ahmedabadWorld, type SimulatorResponse } from './ahmedabadWorld.js';
+import { bearer } from './helpers.js';
 
-const SYSTEM = { type: 'SYSTEM' as const, id: 'test' };
-const DEMO_CSV = readFileSync(new URL('../fixtures/retail/demo-retail.csv', import.meta.url));
-const WEDNESDAY_NOON_IST = new Date('2026-10-14T06:30:00.000Z');
-let n = 0;
-
-async function ahmedabad() {
-  const world = buildTestWorld({ now: () => WEDNESDAY_NOON_IST });
-  world.retailers.retailers.push({
-    brandId: 'brand_A',
-    retailerId: 'rtl_north',
-    name: 'Ahmedabad Retail Partners',
-    status: 'ACTIVE',
-  });
-  await world.commerceSync.sync('brand_A', SYSTEM);
-  const brand = world.brands.brands.find((b) => b.brandId === 'brand_A')!;
-  brand.settings = {
-    ...brand.settings,
-    reservation_policy: { reservations_enabled: true, hold_minutes: 120, max_quantity_per_reservation: 2 },
-    online_store: { product_url_template: 'http://shop.test/products/{product_id}' },
-  };
-  const { record } = await world.retailImports.create('brand_A', SYSTEM, 'demo-retail.csv');
-  await world.files.write(record.fileKey, DEMO_CSV, 'text/csv');
-  await world.retailImports.process('brand_A', SYSTEM, record.importId);
-  const send = (ref: string, content: Record<string, unknown>) =>
-    request(world.app)
-      .post('/api/channels/simulator/messages')
-      .set('Authorization', bearer('admin_a'))
-      .send({ simulator_customer_ref: ref, client_message_id: `cm_${++n}`, content });
-  return {
-    world,
-    say: (ref: string, text: string) => send(ref, { type: 'TEXT', text }),
-    tap: (ref: string, optionId: string) => send(ref, { type: 'INTERACTIVE_REPLY', option_id: optionId }),
-    share: (ref: string, latitude: number, longitude: number) => send(ref, { type: 'LOCATION', latitude, longitude }),
-  };
-}
-type Res = Awaited<ReturnType<Awaited<ReturnType<typeof ahmedabad>>['say']>>;
+const ahmedabad = () => ahmedabadWorld();
+type Res = SimulatorResponse;
 const text = (res: Res) => res.body.outbound_messages[0].text as string;
 const options = (res: Res) =>
   (res.body.outbound_messages[0].options ?? []) as { option_id: string; label: string; description?: string }[];

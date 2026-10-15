@@ -647,10 +647,13 @@ export function questionAttributes(question: string): string[] {
   return [...new Set(TOPICS.filter((t) => t.pattern.test(question)).flatMap((t) => t.keys))];
 }
 
-/** EDUCATE: quotes only attributes the catalogue has; otherwise says so. */
+const PRICE_QUESTION = /\b(price|prices|cost|costs|how much|kitne|kitna|mrp|rate)\b|₹/i;
+
+/** EDUCATE: quotes only attributes the catalogue has (and its prices when asked); otherwise says so. */
 export function educateReply(product: ProductSheet, question: string): { reply: Reply; grounded: boolean } {
   const keys = questionAttributes(question).filter((k) => product.attributes[k]);
-  if (keys.length === 0) {
+  const prices = PRICE_QUESTION.test(question) && product.variants.length > 0;
+  if (keys.length === 0 && !prices) {
     return {
       grounded: false,
       reply: {
@@ -660,6 +663,10 @@ export function educateReply(product: ProductSheet, question: string): { reply: 
     };
   }
   const facts = keys.map((k) => `• ${attrLabel(k)}: ${product.attributes[k]}`);
+  if (prices)
+    facts.unshift(
+      `• Price: ${product.variants.map((v) => `${v.title} ${formatPrice(v.price, v.currency)}`).join(', ')}`,
+    );
   return {
     grounded: true,
     reply: {

@@ -89,7 +89,14 @@ describe('MockAgentRuntime message rules (docs/05 §9.2)', () => {
     ['can I buy it online', 'BUY_ONLINE'],
     ['Pick up today', 'HOLD'],
     ['Home delivery please', 'BUY_ONLINE'],
-    ['hello', 'CLARIFY'],
+    ['hello', 'SOCIAL'],
+    ['Thanks for the response, I will buy it later! 😊👍', 'SOCIAL'],
+    ['good night', 'SOCIAL'],
+    ['kal tak milega?', 'STORE_SEARCH'],
+    ['kitne ka hai', 'EDUCATE'],
+    ['is it original?', 'EDUCATE'],
+    ['thanks, is it good for oily skin?', 'EDUCATE'],
+    ['what is this', 'CLARIFY'],
   ])('%s → %s', (text, expected) => expect(rule(text)).toBe(expected));
 
   it('taps and shared locations map to rules without reading free text', () => {

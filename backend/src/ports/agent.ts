@@ -17,6 +17,7 @@ import {
   type IntentType,
 } from '../domain/ai.js';
 import type { CatalogEntry, ProductSheet } from '../domain/agentTools.js';
+import { TURN_TYPES } from '../domain/conversationalReplies.js';
 import type { InboundMessage } from './messaging.js';
 
 export const AgentDecisionSchema = z.object({
@@ -38,6 +39,8 @@ export const AgentDecisionSchema = z.object({
     reservation_id: z.string().optional(),
     /** L5: STORE_DISCOVERY for one store the customer named (ONE_STORE), or every store of the area ("Other stores", ALL_STORES). */
     show: z.enum(['ONE_STORE', 'ALL_STORES']).optional(),
+    /** L5: for NO_ACTION, the kind of turn (THANKS, LATER, BYE, COMPLAINT, …) — sets the reply rules. */
+    turn_type: z.enum(TURN_TYPES).optional(),
     reason: z.string(),
   }),
   response_strategy: z.object({
@@ -83,6 +86,8 @@ export interface AgentContext {
     online_purchase_available: boolean;
     /** L5: the areas the brand's stores serve ("Satellite", "Navrangpura"); empty when none. */
     areas?: string[];
+    /** L5: the brand's active store names (full and short), which a conversational reply must not name. */
+    store_names?: string[];
   };
   customer: {
     channel: string;

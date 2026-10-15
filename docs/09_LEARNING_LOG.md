@@ -843,3 +843,29 @@ demoResetService.ts             stores outside the new network become INACTIVE
 ### Teach-back
 
 A store list is only useful if the customer recognises the place. Asking for an area the customer knows, then showing that area's stores by name and street, replaces a distance from a point they never chose.
+
+## L5 — natural replies to thanks, later and goodbye
+
+### What changed
+
+```text
+domain/conversationalReplies.ts   turn types, classifyTurn, detectLanguage, fixed replies (EN / Hinglish / Hindi),
+                                  checkConversationalText (the validator), finishConversationalReply (turn rules)
+domain/agentPrompt.ts             prompt V2: conversational turns with tone examples; turn_type in the proposal
+replyComposer.ts                  NO_ACTION text: validated (Gemini), replaced if it fails; closings lose buttons
+mockAgentRules / mockAgentRuntime  a SOCIAL rule; Hinglish store words; price questions; two named products compared
+pipeline.ts / stages.ts           conversation.reply_timing: one line per inbound message
+test/eval/conversations.fixtures  43 shopper messages, run on the mock in npm test and on Gemini in the live eval
+```
+
+### What can fail?
+
+- The robotic reply came from the rules side. "Thanks… I'll buy it later" with a product in play fell through every rule into the "bare area name" branch and then the generic template. A rule that recognises a social turn has to run before the catch-all, and it has to be strict: "thanks, is it good for oily skin?" is a question, not a goodbye.
+- A model writing freely will sooner or later write a fact: "only 2 left", "it's ₹649", "GlowUp has it". The validator is deliberately blunt (any ₹, "in stock", a store name, "free", a number of days). The cost of a false positive is only a fixed, still-friendly reply. "Feel free to message me" is allowed, "free delivery" is not.
+- JavaScript's `\b` does not work after Devanagari letters, so "ठीक है" never matched an "ok" rule until the patterns stopped relying on it.
+- Language checks on short texts are guesses. The validator only enforces the script (Devanagari in, Devanagari out); Hinglish vs English is left to the model and checked in the test set.
+- The fixture set found two older gaps in the rules runtime. "Mineral Sunscreen … near prahlad nagar" was not a store search, because only "near me" was. "Which is better, A or B?" with two named products could not be compared.
+
+### Teach-back
+
+A shop assistant who answers "thanks, maybe later" with three options and a question sounds like a machine. Let the model sound human only where nothing can go wrong, check what it wrote, and keep every fact on the rails the backend builds.
