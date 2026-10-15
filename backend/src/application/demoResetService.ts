@@ -7,8 +7,8 @@
  * and the brand's own top-level tokens and receipts only.
  *
  * Steps: wipe → demo settings → catalogue sync → judge stock fixture import → synthetic
- * history → audit DEMO_RESET. Kept: the brand, retailers, stores and their Retail Admins,
- * users and the audit trail. Idempotent: running it twice leaves the same state.
+ * history → audit DEMO_RESET. Kept: the brand, the demo retailer, the fixture's stores and their
+ * Retail Admins, users and the audit trail. L5: the old store network is removed (cleanUpNetwork). Idempotent: running it twice leaves the same state.
  * `seed:demo` and `seed:live` call rebuild() so all three produce the same demo.
  */
 import { DEMO_HISTORY_SEED, generateDemoHistory, type HistoryStore, type HistoryVariant } from './demoHistory.js';
@@ -20,9 +20,28 @@ import { AppError, Errors } from '../lib/errors.js';
 import type { CustomerRepository } from '../ports/conversationRepositories.js';
 import type { DemoDataStore, FixtureSource } from '../ports/demoData.js';
 import type { FileStorageProvider } from '../ports/fileStorage.js';
-import type { AuditRepository, BrandRepository, ProductRepository, StoreRepository } from '../ports/repositories.js';
+import type {
+  AuditRepository,
+  BrandRepository,
+  InventoryRepository,
+  ProductRepository,
+  RetailerRepository,
+  StoreRepository,
+} from '../ports/repositories.js';
 
 export const DEMO_RETAIL_FIXTURE = 'retail/demo-judge-retail.csv';
+/** L5: the demo brand's one retailer — the id the stock fixture names, and its name everywhere. */
+export const DEMO_RETAILER = { id: 'rtl_north', name: 'Ahmedabad Retail Partners' } as const;
+
+/** What Reset demo removed or changed in the store network (L5). */
+export interface NetworkCleanup {
+  storesDeleted: string[];
+  /** Old stores kept INACTIVE because they have a Retail Admin. */
+  storesRetired: string[];
+  retailersDeleted: string[];
+  retailerRenamed: { retailerId: string; from: string; to: string } | null;
+  stockRowsDeleted?: number;
+}
 
 export interface DemoResetDeps {
   demo: { enabled: boolean; brandIds: string[]; holdMinutes: number };
@@ -31,6 +50,8 @@ export interface DemoResetDeps {
   files: FileStorageProvider;
   brands: BrandRepository;
   stores: StoreRepository;
+  retailers: RetailerRepository;
+  inventory: InventoryRepository;
   products: ProductRepository;
   customers: CustomerRepository;
   commerceSync: CommerceSyncService;
@@ -50,6 +71,8 @@ export interface DemoResetResult {
   catalog: { products: number; variants: number };
   stock: { status: string; rowsValid: number; rowsInvalid: number };
   history: Record<string, number>;
+  /** L5: the old network removed (stores, retailers) and the retailer renamed. */
+  network: NetworkCleanup;
   /**
    * L1: SHOPIFY_NOT_CONNECTED when the brand's Shopify store is not connected yet — the brand,
    * its settings and stores are rebuilt, the catalogue and synthetic history are not. Connect
@@ -103,14 +126,25 @@ export class DemoResetService {
     const { record } = await this.deps.retailImports.create(brandId, actor, 'demo-judge-retail.csv');
     await this.deps.files.write(record.fileKey, await this.deps.fixtures.read(DEMO_RETAIL_FIXTURE), 'text/csv');
     const report = await this.deps.retailImports.process(brandId, actor, record.importId);
-    await this.retireStoresOutsideNetwork(brandId);
+    const network = await this.cleanUpNetwork(brandId);
+    if (network.storesDeleted.length) deleted.stores = network.storesDeleted.length;
+    if (network.retailersDeleted.length) deleted.retailers = network.retailersDeleted.length;
+    if (network.stockRowsDeleted) deleted.retailInventory = (deleted.retailInventory ?? 0) + network.stockRowsDeleted;
 
     const history = connection ? await this.writeHistory(brandId) : {};
     const total = Object.values(deleted).reduce((a, b) => a + b, 0);
-    await this.audit(brandId, actor, 'SUCCESS', connection ? `DELETED_${total}` : `DELETED_${total}_NO_CATALOG`);
+    const reason = [
+      connection ? `DELETED_${total}` : `DELETED_${total}_NO_CATALOG`,
+      ...(network.storesDeleted.length ? [`stores_deleted=${network.storesDeleted.join(',')}`] : []),
+      ...(network.storesRetired.length ? [`stores_inactive=${network.storesRetired.join(',')}`] : []),
+      ...(network.retailersDeleted.length ? [`retailers_deleted=${network.retailersDeleted.join(',')}`] : []),
+      ...(network.retailerRenamed ? [`retailer_renamed=${network.retailerRenamed.retailerId}`] : []),
+    ].join(';');
+    await this.audit(brandId, actor, 'SUCCESS', reason);
     return {
       brandId,
       deleted,
+      network,
       pending: connection ? null : 'SHOPIFY_NOT_CONNECTED',
       catalog: { products: connection?.productCount ?? 0, variants: connection?.variantCount ?? 0 },
       stock: {
@@ -123,32 +157,66 @@ export class DemoResetService {
   }
 
   /**
-   * L5: the demo network is the fixture's area stores (Satellite, Navrangpura). A store from an
-   * older network (a Mumbai store, Koregaon Park) is kept — with its retailer, Retail Admin and
-   * history — but set INACTIVE, so it is never offered or held again.
+   * L5: the demo network is exactly the fixture's area stores (Satellite, Navrangpura) under one
+   * retailer. Runs after the stock import, and only once the import has created area stores:
+   *   - a store without an area and without a Retail Admin is deleted, with its stock rows;
+   *   - a store without an area that HAS a Retail Admin is kept, INACTIVE (no login is orphaned);
+   *   - a retailer left with no store is deleted;
+   *   - the demo retailer gets its current name (its id, stores and admins never change).
+   * Conversations, reservations and history were wiped before the import, so nothing else
+   * still refers to a deleted store. Running it again changes nothing.
    */
-  private async retireStoresOutsideNetwork(brandId: string): Promise<void> {
+  private async cleanUpNetwork(brandId: string): Promise<NetworkCleanup> {
+    const out: NetworkCleanup = { storesDeleted: [], storesRetired: [], retailersDeleted: [], retailerRenamed: null };
     const stores = await this.deps.stores.list(brandId);
-    if (!stores.some((s) => s.area)) return;
-    const retired = stores.filter((s) => !s.area && s.storeStatus === 'ACTIVE');
-    if (retired.length === 0) return;
-    await this.deps.stores.upsertFromImport(
-      brandId,
-      retired.map((s) => ({
-        storeId: s.storeId,
-        storeName: s.storeName,
-        city: s.city,
-        address: s.address ?? '',
-        latitude: s.latitude ?? 0,
-        longitude: s.longitude ?? 0,
-        storeHours: s.storeHours ?? {},
-        storeStatus: 'INACTIVE' as const,
-        reservationAvailable: s.reservationAvailable,
-        pickupAvailable: s.pickupAvailable,
-        area: null,
-        shortName: s.shortName ?? null,
-      })),
+    if (!stores.some((s) => s.area)) return out;
+    let stockRowsDeleted = 0;
+    for (const s of stores.filter((x) => !x.area)) {
+      if (!s.retailAdminUserId) {
+        stockRowsDeleted += await this.deps.inventory.deleteByStore(brandId, s.storeId);
+        if (await this.deps.stores.deleteIfUnclaimed(brandId, s.storeId)) {
+          out.storesDeleted.push(s.storeId);
+          continue;
+        }
+      }
+      if (s.storeStatus !== 'INACTIVE') {
+        await this.deps.stores.upsertFromImport(brandId, [
+          {
+            storeId: s.storeId,
+            storeName: s.storeName,
+            city: s.city,
+            address: s.address ?? '',
+            latitude: s.latitude ?? 0,
+            longitude: s.longitude ?? 0,
+            storeHours: s.storeHours ?? {},
+            storeStatus: 'INACTIVE',
+            reservationAvailable: s.reservationAvailable,
+            pickupAvailable: s.pickupAvailable,
+            area: null,
+            shortName: s.shortName ?? null,
+          },
+        ]);
+      }
+      out.storesRetired.push(s.storeId);
+    }
+    out.stockRowsDeleted = stockRowsDeleted;
+
+    const owners = new Set(
+      (await this.deps.stores.list(brandId)).map((s) => s.retailerId).filter((id): id is string => !!id),
     );
+    for (const r of await this.deps.retailers.list(brandId)) {
+      if (r.retailerId === DEMO_RETAILER.id) {
+        const from = r.name;
+        if (
+          from !== DEMO_RETAILER.name &&
+          (await this.deps.retailers.rename(brandId, r.retailerId, DEMO_RETAILER.name))
+        )
+          out.retailerRenamed = { retailerId: r.retailerId, from, to: DEMO_RETAILER.name };
+      } else if (!owners.has(r.retailerId) && (await this.deps.retailers.deleteIfEmpty(brandId, r.retailerId))) {
+        out.retailersDeleted.push(r.retailerId);
+      }
+    }
+    return out;
   }
 
   /** 4 weeks of flagged synthetic history (M6), built from the brand's own stores and catalogue. */

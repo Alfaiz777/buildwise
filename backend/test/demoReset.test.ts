@@ -138,3 +138,160 @@ describe('Reset demo rebuilds the Ahmedabad network (L5)', () => {
     expect(stores.filter((s) => s.storeStatus === 'ACTIVE' && !s.area)).toEqual([]);
   });
 });
+
+describe('Reset demo removes the old Mumbai / Pune network (L5 cleanup)', () => {
+  const oldStore = (storeId: string, storeName: string, city: string, latitude: number, longitude: number) => ({
+    storeId,
+    storeName,
+    city,
+    address: `${storeName}, ${city}`,
+    latitude,
+    longitude,
+    storeHours: { timezone: 'Asia/Kolkata', monday: '10:00-21:00' },
+    storeStatus: 'ACTIVE' as const,
+    reservationAvailable: true,
+    pickupAvailable: true,
+  });
+
+  /** brand_A as a live project seeded before L5: North Retail, Pune Retail, four stores, two admins. */
+  async function oldNetwork() {
+    const w = buildTestWorld({ demo: DEMO });
+    w.stores.stores.splice(0, w.stores.stores.length, ...w.stores.stores.filter((s) => s.brandId !== 'brand_A'));
+    w.retailers.retailers.splice(
+      0,
+      w.retailers.retailers.length,
+      ...w.retailers.retailers.filter((r) => r.brandId !== 'brand_A'),
+      { brandId: 'brand_A', retailerId: 'rtl_north', name: 'North Retail', status: 'ACTIVE' },
+      { brandId: 'brand_A', retailerId: 'rtl_pune', name: 'Pune Retail', status: 'ACTIVE' },
+    );
+    await w.stores.upsertFromImport('brand_A', [
+      oldStore('st_north_1', 'Bandra Store', 'Mumbai', 19.0544, 72.8267),
+      oldStore('st_north_2', 'Andheri Store', 'Mumbai', 19.1364, 72.8296),
+      oldStore('st_north_3', 'Powai Store', 'Mumbai', 19.1176, 72.906),
+      oldStore('st_pune_1', 'Koregaon Park Store', 'Pune', 18.5362, 73.8939),
+    ]);
+    for (const [storeId, retailerId, admin] of [
+      ['st_north_1', 'rtl_north', 'radmin_n1'],
+      ['st_north_2', 'rtl_north', 'radmin_n2'],
+      ['st_north_3', 'rtl_north', null],
+      ['st_pune_1', 'rtl_pune', null],
+    ] as const) {
+      const s = w.stores.stores.find((x) => x.brandId === 'brand_A' && x.storeId === storeId)!;
+      s.retailerId = retailerId;
+      s.retailAdminUserId = admin;
+      if (admin)
+        w.users.users.push({
+          userId: admin,
+          role: 'RETAIL_ADMIN',
+          brandId: 'brand_A',
+          retailerId,
+          storeId,
+          email: `${admin}@example.test`,
+          status: 'ACTIVE',
+        });
+    }
+    return w;
+  }
+  type World = Awaited<ReturnType<typeof oldNetwork>>;
+  const brandStores = (w: World) => w.stores.stores.filter((s) => s.brandId === 'brand_A');
+  const stockOf = (w: World) =>
+    w.inventory.rows
+      .filter((r) => r.brandId === 'brand_A')
+      .map((r) => [r.inventoryId, r.quantity, r.reservedQuantity])
+      .sort();
+
+  it('leaves exactly the six area stores under one retailer, "Ahmedabad Retail Partners"; admins still sign in', async () => {
+    const w = await oldNetwork();
+    const res = await reset(w.app, 'admin_a');
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+
+    expect(
+      brandStores(w)
+        .map((s) => [s.storeId, s.storeName, s.area, s.storeStatus, s.retailerId])
+        .sort(),
+    ).toEqual(
+      [
+        ['st_north_1', 'Wellness Mart', 'Satellite', 'ACTIVE', 'rtl_north'],
+        ['st_sat_2', 'GlowUp Beauty', 'Satellite', 'ACTIVE', 'rtl_north'],
+        ['st_sat_3', 'CityCare Pharmacy', 'Satellite', 'ACTIVE', 'rtl_north'],
+        ['st_north_2', 'HealthPlus Chemist', 'Navrangpura', 'ACTIVE', 'rtl_north'],
+        ['st_nav_2', 'Skin Studio', 'Navrangpura', 'ACTIVE', 'rtl_north'],
+        ['st_nav_3', 'MediGlow Pharmacy', 'Navrangpura', 'ACTIVE', 'rtl_north'],
+      ].sort(),
+    );
+    expect(w.retailers.retailers.filter((r) => r.brandId === 'brand_A')).toEqual([
+      { brandId: 'brand_A', retailerId: 'rtl_north', name: 'Ahmedabad Retail Partners', status: 'ACTIVE' },
+    ]);
+    // No stock row is left for a deleted store.
+    expect(w.inventory.rows.some((r) => ['st_north_3', 'st_pune_1'].includes(r.storeId))).toBe(false);
+    expect(res.body.network).toEqual({
+      stores_deleted: ['st_north_3', 'st_pune_1'],
+      stores_inactive: [],
+      retailers_deleted: ['rtl_pune'],
+      retailer_renamed: { retailerId: 'rtl_north', from: 'North Retail', to: 'Ahmedabad Retail Partners' },
+    });
+    expect(res.body.deleted).toMatchObject({ stores: 2, retailers: 1 });
+    expect(w.audit.brandEvents.at(-1)).toMatchObject({
+      action: 'DEMO_RESET',
+      result: 'SUCCESS',
+      reasonCode: expect.stringMatching(
+        /;stores_deleted=st_north_3,st_pune_1;retailers_deleted=rtl_pune;retailer_renamed=rtl_north$/,
+      ),
+    });
+
+    // The two Retail Admins keep their stores, now with the Ahmedabad names.
+    for (const [admin, storeId, name, area] of [
+      ['radmin_n1', 'st_north_1', 'Wellness Mart', 'Satellite'],
+      ['radmin_n2', 'st_north_2', 'HealthPlus Chemist', 'Navrangpura'],
+    ] as const) {
+      const me = await request(w.app).get('/api/me').set('Authorization', bearer(admin));
+      expect(me.status).toBe(200);
+      expect(me.body).toMatchObject({
+        role: 'RETAIL_ADMIN',
+        store_id: storeId,
+        retailer_name: 'Ahmedabad Retail Partners',
+        store: { store_name: name, area },
+      });
+    }
+  });
+
+  it('a second reset is a no-op for the network: same stores, retailer and stock', async () => {
+    const w = await oldNetwork();
+    expect((await reset(w.app, 'admin_a')).status).toBe(200);
+    const stores = brandStores(w).map((s) => ({ ...s }));
+    const stock = stockOf(w);
+    const again = await w.demoReset.rebuild('brand_A', { type: 'SYSTEM', id: 'test' });
+    expect(again.network).toEqual({
+      storesDeleted: [],
+      storesRetired: [],
+      retailersDeleted: [],
+      retailerRenamed: null,
+      stockRowsDeleted: 0,
+    });
+    expect(brandStores(w)).toEqual(stores);
+    expect(stockOf(w)).toEqual(stock);
+    expect(w.retailers.retailers.filter((r) => r.brandId === 'brand_A').map((r) => r.name)).toEqual([
+      'Ahmedabad Retail Partners',
+    ]);
+  });
+
+  it('an old store that has a Retail Admin is kept INACTIVE, and so is its retailer', async () => {
+    const w = await oldNetwork();
+    w.stores.stores.find((s) => s.storeId === 'st_pune_1')!.retailAdminUserId = 'radmin_pune';
+    const res = await reset(w.app, 'admin_a');
+    expect(res.status).toBe(200);
+    expect(await w.stores.get('brand_A', 'st_pune_1')).toMatchObject({
+      storeStatus: 'INACTIVE',
+      retailerId: 'rtl_pune',
+      retailAdminUserId: 'radmin_pune',
+    });
+    expect(await w.stores.get('brand_A', 'st_north_3')).toBeNull();
+    expect(
+      w.retailers.retailers
+        .filter((r) => r.brandId === 'brand_A')
+        .map((r) => r.retailerId)
+        .sort(),
+    ).toEqual(['rtl_north', 'rtl_pune']);
+    expect(res.body.network).toMatchObject({ stores_deleted: ['st_north_3'], stores_inactive: ['st_pune_1'] });
+  });
+});

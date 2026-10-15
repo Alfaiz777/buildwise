@@ -71,7 +71,7 @@ const LOGINS = [
     email: 'retail-admin-north-2@qwikspot.test',
     password: 'pw-from-api',
     role: 'RETAIL_ADMIN',
-    title: 'Retail Admin — Andheri Store',
+    title: 'Retail Admin — HealthPlus Chemist',
     hint: 'Complete holds.',
   },
 ];
@@ -93,9 +93,9 @@ describe('login page — "Try the demo" (DEMO_MODE)', () => {
     renderAt('/login?as=store', apiWith({}), { user: null });
     const panel = await screen.findByRole('region', { name: 'Try the demo' });
     expect(fetchMock).toHaveBeenCalledWith('/api/demo/config');
-    expect(within(panel).getByText('Retail Admin — Andheri Store')).toBeInTheDocument();
+    expect(within(panel).getByText('Retail Admin — HealthPlus Chemist')).toBeInTheDocument();
     expect(within(panel).getByText('Retail Admin')).toBeInTheDocument(); // a label, not RETAIL_ADMIN
-    fireEvent.click(within(panel).getByRole('button', { name: 'Use Retail Admin — Andheri Store' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Use Retail Admin — HealthPlus Chemist' }));
     expect(screen.getByLabelText('Email')).toHaveValue('retail-admin-north-2@qwikspot.test');
     expect(screen.getByLabelText('Password')).toHaveValue('pw-from-api');
   });

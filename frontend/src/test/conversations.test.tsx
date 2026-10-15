@@ -225,7 +225,7 @@ const TRACED = {
       message_id: 'msg_4',
       direction: 'OUTBOUND',
       message_type: 'INTERACTIVE',
-      text: 'Done — 1 × Vitamin C Glow Serum 30 ml is on hold for you at Andheri Store.\nPickup code: 004271\nDirections: https://www.google.com/maps/search/?api=1&query=19.1364,72.8296',
+      text: 'Done — 1 × Vitamin C Glow Serum 30 ml is on hold for you at HealthPlus Chemist.\nPickup code: 004271\nDirections: https://www.google.com/maps/search/?api=1&query=23.034,72.5595',
       options: [{ option_id: 'cancel:res_1', label: 'Cancel reservation' }],
       location: null,
       origin: 'AUTOMATED_REPLY',
@@ -243,7 +243,7 @@ const TRACED = {
       decision_source: 'AGENT',
       guardrail_status: 'ALLOWED',
       guardrail_reason: null,
-      rationale_summary: 'Nearest eligible store is Andheri Store; 2 store(s) excluded by verified reasons.',
+      rationale_summary: 'Nearest eligible store is HealthPlus Chemist; 2 store(s) excluded by verified reasons.',
       proposed_at: '2026-10-05T10:04:00.000Z',
       reservation: null,
       trace: {
@@ -262,18 +262,20 @@ const TRACED = {
             duration_ms: 3.2,
           },
         ],
-        eligible: [{ store_id: 'st_north_2', store_name: 'Andheri Store', distance_km: 7.6, variant_id: 'var_2001' }],
+        eligible: [
+          { store_id: 'st_north_2', store_name: 'HealthPlus Chemist', distance_km: 7.6, variant_id: 'var_2001' },
+        ],
         excluded: [
           {
             store_id: 'st_north_3',
-            store_name: 'Powai Store',
+            store_name: 'Skin Studio',
             reason: 'OUT_OF_STOCK',
             distance_km: 0.7,
             variant_id: 'var_2001',
           },
           {
             store_id: 'st_north_1',
-            store_name: 'Bandra Store',
+            store_name: 'Wellness Mart',
             reason: 'TOO_FAR',
             distance_km: 10.6,
             variant_id: 'var_2001',
@@ -298,7 +300,7 @@ const TRACED = {
         reservation_id: 'res_1',
         status: 'PENDING',
         store_id: 'st_north_2',
-        store_name: 'Andheri Store',
+        store_name: 'HealthPlus Chemist',
         pickup_code: '004271',
         expires_at: '2026-10-05T12:05:00.000Z',
       },
@@ -329,7 +331,7 @@ describe('Brand Console — M5 decision trace and reservations', () => {
             {
               reservation_id: 'res_1',
               store_id: 'st_north_2',
-              store_name: 'Andheri Store',
+              store_name: 'HealthPlus Chemist',
               product_title: 'Vitamin C Glow Serum',
               variant_title: '30 ml',
               sku: 'DBC-VCSERUM-30',
@@ -392,12 +394,12 @@ describe('Brand Console — M5 decision trace and reservations', () => {
     const offer = screen.getByRole('article', { name: 'Store discovery' });
     expect(
       within(offer).getByText(
-        'Offered Andheri Store (7.6 km) because Powai Store (0.7 km) is out of stock and Bandra Store (10.6 km) is too far.',
+        'Offered HealthPlus Chemist (7.6 km) because Skin Studio (0.7 km) is out of stock and Wellness Mart (10.6 km) is too far.',
       ),
     ).toBeInTheDocument();
     const hold = screen.getByRole('article', { name: 'Store reservation' });
     expect(
-      within(hold).getByText('Held 1 at Andheri Store. Stock was re-checked just before holding.'),
+      within(hold).getByText('Held 1 at HealthPlus Chemist. Stock was re-checked just before holding.'),
     ).toBeInTheDocument();
     expect(within(hold).getByText('Safety check passed')).toBeInTheDocument();
     expect(screen.getAllByText('Mock AI · deterministic')).toHaveLength(2);
@@ -409,14 +411,14 @@ describe('Brand Console — M5 decision trace and reservations', () => {
 
     fireEvent.click(within(hold).getByText('Technical details'));
     expect(within(hold).getByText(/Allowed after re-checking create reservation on fresh data/)).toBeInTheDocument();
-    expect(within(hold).getByText(/Andheri Store · pending · pickup code/)).toBeInTheDocument();
+    expect(within(hold).getByText(/HealthPlus Chemist · pending · pickup code/)).toBeInTheDocument();
     fireEvent.click(within(offer).getByText('Technical details'));
     expect(await screen.findByText('excluded: out of stock')).toBeInTheDocument();
     expect(screen.getByText('excluded: too far')).toBeInTheDocument();
     expect(screen.getByText('Tool calls (1)')).toBeInTheDocument();
 
     const link = screen.getByRole('link', { name: /google\.com\/maps/ });
-    expect(link).toHaveAttribute('href', 'https://www.google.com/maps/search/?api=1&query=19.1364,72.8296');
+    expect(link).toHaveAttribute('href', 'https://www.google.com/maps/search/?api=1&query=23.034,72.5595');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
@@ -425,7 +427,7 @@ describe('Brand Console — M5 decision trace and reservations', () => {
     expect(await screen.findByText('Customer •••• 4821')).toBeInTheDocument();
     const row = screen.getByText('Customer •••• 4821').closest('tr')!;
     expect(within(row).getByText('Pending')).toBeInTheDocument();
-    expect(within(row).getByText('Andheri Store')).toBeInTheDocument();
+    expect(within(row).getByText('HealthPlus Chemist')).toBeInTheDocument();
     expect(within(row).getByText(/Vitamin C Glow Serum/)).toBeInTheDocument();
     expect(within(row).getByText(/In progress/)).toBeInTheDocument();
     fireEvent.click(row);

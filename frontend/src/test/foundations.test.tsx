@@ -22,16 +22,16 @@ const BRAND: MeResponse = {
 const STORE: MeResponse = {
   scope: 'RETAIL',
   role: 'RETAIL_ADMIN',
-  user: { user_id: 'r', email: 'andheri@demo.test' },
+  user: { user_id: 'r', email: 'healthplus@demo.test' },
   brand_id: 'brd_demo',
   brand_name: 'Demo Beauty Co',
   retailer_id: 'rtl_north',
-  retailer_name: 'North Retail',
+  retailer_name: 'Ahmedabad Retail Partners',
   store_id: 'st_north_2',
   store: {
     store_id: 'st_north_2',
-    store_name: 'Andheri Store',
-    city: 'Mumbai',
+    store_name: 'HealthPlus Chemist',
+    city: 'Ahmedabad',
     address: null,
     store_status: 'ACTIVE',
     store_hours: null,
@@ -179,7 +179,9 @@ describe('console shell', () => {
   it('Store and Platform shells name their console and context', async () => {
     shell(STORE);
     expect(await screen.findByText('Store Console')).toBeInTheDocument();
-    expect(screen.getByText('Andheri Store · for Demo Beauty Co via North Retail')).toBeInTheDocument();
+    expect(
+      screen.getByText('HealthPlus Chemist · for Demo Beauty Co via Ahmedabad Retail Partners'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Store Console' })).toBeInTheDocument();
   });
 
@@ -192,7 +194,7 @@ describe('console shell', () => {
   it('the role banner shows on the first visit, and stays dismissed for that console', async () => {
     shell(STORE);
     expect(await screen.findByRole('note')).toHaveTextContent(
-      'You run Andheri Store for Demo Beauty Co via North Retail. Holds from customers arrive here.',
+      'You run HealthPlus Chemist for Demo Beauty Co via Ahmedabad Retail Partners. Holds from customers arrive here.',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss this note' }));
     expect(screen.queryByRole('note')).not.toBeInTheDocument();

@@ -68,6 +68,13 @@ export function brandDemoRouter(demoReset: DemoResetService): Router {
       catalog: r.catalog,
       stock: { status: r.stock.status, rows_valid: r.stock.rowsValid, rows_invalid: r.stock.rowsInvalid },
       history: r.history,
+      // L5: the old store network removed, the retailer renamed.
+      network: {
+        stores_deleted: r.network.storesDeleted,
+        stores_inactive: r.network.storesRetired,
+        retailers_deleted: r.network.retailersDeleted,
+        retailer_renamed: r.network.retailerRenamed,
+      },
       // L1: SHOPIFY_NOT_CONNECTED → the catalogue waits for Settings → Shopify → Connect.
       pending: r.pending,
     });

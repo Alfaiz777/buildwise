@@ -44,7 +44,7 @@ const row = (over: Partial<ConversationRow>): ConversationRow => ({
 const reservation = (over: Partial<ReservationRow>): ReservationRow => ({
   reservation_id: 'res_1',
   store_id: 'st_north_2',
-  store_name: 'Andheri Store',
+  store_name: 'HealthPlus Chemist',
   product_title: 'Vitamin C Glow Serum',
   variant_title: '30 ml',
   sku: 'DBC-VCSERUM-30',
@@ -117,7 +117,9 @@ describe('Overview — KPI tiles and attention', () => {
         '/api/brand/conversations': { conversations: [row({ human_handoff: true, handoff_at: ago(14) })] },
         '/api/reservations': { reservations: [] },
         '/api/brand/stores': {
-          stores: [{ store_id: 'st_north_2', store_name: 'Andheri Store', sku_count: 10, stock_updated_at: ago(5) }],
+          stores: [
+            { store_id: 'st_north_2', store_name: 'HealthPlus Chemist', sku_count: 10, stock_updated_at: ago(5) },
+          ],
         },
         '/api/products': {
           products: [],
@@ -141,7 +143,7 @@ describe('Overview — KPI tiles and attention', () => {
       '/brand/conversations?filter=handoff',
     );
     expect(screen.getByText(/2.7× the other days' average/)).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: 'Open Andheri Store →' })[0]).toHaveAttribute(
+    expect(screen.getAllByRole('link', { name: 'Open HealthPlus Chemist →' })[0]).toHaveAttribute(
       'href',
       '/brand/network#store-st_north_2',
     );
@@ -173,8 +175,8 @@ describe('Overview — KPI tiles and attention', () => {
       stores: [
         {
           store_id: 'st_3',
-          store_name: 'Powai Store',
-          city: 'Mumbai',
+          store_name: 'Skin Studio',
+          city: 'Ahmedabad',
           store_status: 'ACTIVE',
           retailer_id: 'r',
           retail_admin_user_id: null,
@@ -183,8 +185,8 @@ describe('Overview — KPI tiles and attention', () => {
         },
         {
           store_id: 'st_2',
-          store_name: 'Andheri Store',
-          city: 'Mumbai',
+          store_name: 'HealthPlus Chemist',
+          city: 'Ahmedabad',
           store_status: 'ACTIVE',
           retailer_id: 'r',
           retail_admin_user_id: null,
@@ -198,8 +200,8 @@ describe('Overview — KPI tiles and attention', () => {
     });
     expect(items.map((i) => i.text)).toEqual([
       '2 customers are waiting for a person — longest 14 min',
-      'Andheri Store refused 1 hold in the last 24 h — not actually in stock',
-      'Powai Store stock is 3 days old — ask for a fresh retail file',
+      'HealthPlus Chemist refused 1 hold in the last 24 h — not actually in stock',
+      'Skin Studio stock is 3 days old — ask for a fresh retail file',
       '3 retail SKUs need attention — their stock is not used yet',
     ]);
     expect(
@@ -221,7 +223,7 @@ const discovery: Recommendation = {
   runtime: 'MOCK',
   decision_source: 'AGENT',
   guardrail_status: 'ALLOWED',
-  rationale_summary: 'Nearest eligible store is Andheri Store.',
+  rationale_summary: 'Nearest eligible store is HealthPlus Chemist.',
   target_store_id: 'st_north_2',
   target_variant_id: 'v30',
   proposed_at: ago(20),
@@ -230,12 +232,12 @@ const discovery: Recommendation = {
     context_hash: 'x',
     context_summary: {},
     tool_calls: [],
-    eligible: [{ store_id: 'st_north_2', store_name: 'Andheri Store', distance_km: 7.62, variant_id: 'v30' }],
+    eligible: [{ store_id: 'st_north_2', store_name: 'HealthPlus Chemist', distance_km: 7.62, variant_id: 'v30' }],
     excluded: [
-      { store_id: 'st_north_1', store_name: 'Bandra Store', reason: 'TOO_FAR', distance_km: 10.6, variant_id: 'v30' },
+      { store_id: 'st_north_1', store_name: 'Wellness Mart', reason: 'TOO_FAR', distance_km: 10.6, variant_id: 'v30' },
       {
         store_id: 'st_north_3',
-        store_name: 'Powai Store',
+        store_name: 'Skin Studio',
         reason: 'OUT_OF_STOCK',
         distance_km: 0.68,
         variant_id: 'v30',
@@ -251,7 +253,7 @@ const discovery: Recommendation = {
 describe('"Why Qwikspot did this" sentences', () => {
   it('store offered: nearest excluded stores first, distances rounded', () => {
     expect(whySentence(discovery)).toBe(
-      'Offered Andheri Store (7.6 km) because Powai Store (0.7 km) is out of stock and Bandra Store (10.6 km) is too far.',
+      'Offered HealthPlus Chemist (7.6 km) because Skin Studio (0.7 km) is out of stock and Wellness Mart (10.6 km) is too far.',
     );
   });
 
@@ -262,13 +264,13 @@ describe('"Why Qwikspot did this" sentences', () => {
       trace: {
         ...discovery.trace!,
         eligible: [
-          { store_id: 'st_north_1', store_name: 'Bandra Store', distance_km: 0.7, variant_id: 'v30' },
-          { store_id: 'st_north_2', store_name: 'Andheri Store', distance_km: 8.5, variant_id: 'v30' },
+          { store_id: 'st_north_1', store_name: 'Wellness Mart', distance_km: 0.7, variant_id: 'v30' },
+          { store_id: 'st_north_2', store_name: 'HealthPlus Chemist', distance_km: 8.5, variant_id: 'v30' },
         ],
         excluded: [
           {
             store_id: 'st_north_3',
-            store_name: 'Powai Store',
+            store_name: 'Skin Studio',
             reason: 'TOO_FAR',
             distance_km: 10.2,
             variant_id: 'v30',
@@ -276,7 +278,7 @@ describe('"Why Qwikspot did this" sentences', () => {
         ],
       },
     };
-    expect(whySentence(nearest)).toBe('Offered Bandra Store (0.7 km), the nearest store with stock.');
+    expect(whySentence(nearest)).toBe('Offered Wellness Mart (0.7 km), the nearest store with stock.');
   });
 
   it('no store qualified: says why, and that buying online was offered', () => {
@@ -290,14 +292,14 @@ describe('"Why Qwikspot did this" sentences', () => {
         excluded: [
           {
             store_id: 'st_north_3',
-            store_name: 'Powai Store',
+            store_name: 'Skin Studio',
             reason: 'OUT_OF_STOCK',
             distance_km: 0.68,
             variant_id: 'v30',
           },
           {
             store_id: 'st_north_2',
-            store_name: 'Andheri Store',
+            store_name: 'HealthPlus Chemist',
             reason: 'CLOSED',
             distance_km: 7.62,
             variant_id: 'v30',
@@ -306,7 +308,7 @@ describe('"Why Qwikspot did this" sentences', () => {
       },
     };
     expect(whySentence(r)).toBe(
-      'No store could take this today: Powai Store (0.7 km) is out of stock and Andheri Store (7.6 km) is closed now. Offered to buy online instead.',
+      'No store could take this today: Skin Studio (0.7 km) is out of stock and HealthPlus Chemist (7.6 km) is closed now. Offered to buy online instead.',
     );
   });
 
@@ -321,7 +323,7 @@ describe('"Why Qwikspot did this" sentences', () => {
       },
     };
     expect(whySentence(blocked)).toBe(
-      "Didn't hold at Andheri Store: the stock check just before holding found none left.",
+      "Didn't hold at HealthPlus Chemist: the stock check just before holding found none left.",
     );
     const fallback: Recommendation = {
       ...discovery,
@@ -405,7 +407,7 @@ const DETAIL: ConversationDetail = {
         reservation_id: 'res_1',
         status: 'COMPLETED',
         store_id: 'st_north_2',
-        store_name: 'Andheri Store',
+        store_name: 'HealthPlus Chemist',
         pickup_code: '482913',
         expires_at: ago(-1),
         quantity: 1,
@@ -427,7 +429,7 @@ const DETAIL: ConversationDetail = {
       evidence: 'RESERVATION_COMPLETED',
       channel: 'SIMULATOR',
       store_id: 'st_north_2',
-      store_name: 'Andheri Store',
+      store_name: 'HealthPlus Chemist',
       reservation_id: 'res_1',
       value: 795,
       currency: 'INR',
@@ -445,15 +447,15 @@ describe('Journey timeline', () => {
       'Started a WhatsApp chat',
       'Shared a location',
       'Qwikspot looked for a store',
-      'Hold placed at Andheri Store',
-      'Andheri Store confirmed the hold',
-      'Ready for pickup at Andheri Store',
-      'Customer arrived at Andheri Store',
-      'Picked up at Andheri Store — in-store purchase · ₹795 est.',
+      'Hold placed at HealthPlus Chemist',
+      'HealthPlus Chemist confirmed the hold',
+      'Ready for pickup at HealthPlus Chemist',
+      'Customer arrived at HealthPlus Chemist',
+      'Picked up at HealthPlus Chemist — in-store purchase · ₹795 est.',
     ]);
-    const hold = buildJourney(DETAIL).find((s) => s.title === 'Hold placed at Andheri Store')!;
+    const hold = buildJourney(DETAIL).find((s) => s.title === 'Hold placed at HealthPlus Chemist')!;
     expect(hold.detail).toBe(
-      '1 × Vitamin C Glow Serum 30 ml. Held 1 at Andheri Store. Stock was re-checked just before holding.',
+      '1 × Vitamin C Glow Serum 30 ml. Held 1 at HealthPlus Chemist. Stock was re-checked just before holding.',
     );
   });
 
@@ -478,7 +480,7 @@ describe('Journey timeline', () => {
       ],
     };
     const titles = buildJourney(refused).map((s) => s.title);
-    expect(titles).toContain('Andheri Store refused: not actually in stock');
+    expect(titles).toContain('HealthPlus Chemist refused: not actually in stock');
     expect(titles.at(-1)).toBe('No purchase recorded');
   });
 
@@ -493,9 +495,11 @@ describe('Journey timeline', () => {
       }),
     );
     const journey = await screen.findByRole('list', { name: 'Journey' });
-    expect(within(journey).getByText('Picked up at Andheri Store — in-store purchase · ₹795 est.')).toBeInTheDocument();
+    expect(
+      within(journey).getByText('Picked up at HealthPlus Chemist — in-store purchase · ₹795 est.'),
+    ).toBeInTheDocument();
     const panel = screen.getByLabelText('Intent and follow-up');
-    expect(within(panel).getByText(/Bought: Picked up at Andheri Store — in-store purchase/)).toBeInTheDocument();
+    expect(within(panel).getByText(/Bought: Picked up at HealthPlus Chemist — in-store purchase/)).toBeInTheDocument();
     expect(screen.queryByText(/Ordered: no/)).not.toBeInTheDocument();
     expect(screen.getByRole('log', { name: 'Messages' })).toBeInTheDocument();
   });
@@ -606,7 +610,7 @@ describe('charts', () => {
       '/brand/insights',
       apiWith({
         '/api/brand/insights': INSIGHTS,
-        '/api/brand/stores': { stores: [{ store_id: 'st_north_2', store_name: 'Andheri Store' }] },
+        '/api/brand/stores': { stores: [{ store_id: 'st_north_2', store_name: 'HealthPlus Chemist' }] },
         '/api/brand/demo': { reset_available: false },
         '/api/brand/conversations': { conversations: [] },
       }),
@@ -617,7 +621,7 @@ describe('charts', () => {
     const table = await screen.findByRole('table', { name: 'Demand vs availability by weekday' });
     expect(within(table).getByText('Saturday').closest('tr')).toHaveTextContent('6 (50%)');
     await waitFor(() =>
-      expect(screen.getByRole('link', { name: 'Open Andheri Store →' })).toHaveAttribute(
+      expect(screen.getByRole('link', { name: 'Open HealthPlus Chemist →' })).toHaveAttribute(
         'href',
         '/brand/network#store-st_north_2',
       ),

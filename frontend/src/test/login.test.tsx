@@ -12,10 +12,10 @@ import { AuthContext, type AuthState, type AuthUser } from '../auth/authContext'
 const LOGINS = [
   { email: 'admin@demo-brand.test', password: 'pw-a', role: 'BRAND_ADMIN', title: 'Brand Admin — Demo', hint: 'h' },
   {
-    email: 'andheri@qwikspot.test',
+    email: 'healthplus@qwikspot.test',
     password: 'pw-b',
     role: 'RETAIL_ADMIN',
-    title: 'Retail Admin — Andheri Store',
+    title: 'Retail Admin — HealthPlus Chemist',
     hint: 'h',
   },
   { email: 'platform@qwikspot.test', password: 'pw-c', role: 'PLATFORM_ADMIN', title: 'Platform Admin', hint: 'h' },
@@ -36,12 +36,12 @@ const ME: Record<string, MeResponse> = {
     brand_id: 'brd_demo',
     brand_name: 'Demo Beauty Co',
     retailer_id: 'rtl',
-    retailer_name: 'North Retail',
+    retailer_name: 'Ahmedabad Retail Partners',
     store_id: 'st',
     store: {
       store_id: 'st',
-      store_name: 'Andheri Store',
-      city: 'Mumbai',
+      store_name: 'HealthPlus Chemist',
+      city: 'Ahmedabad',
       address: null,
       store_status: 'ACTIVE',
       store_hours: null,
@@ -142,7 +142,7 @@ describe('role-aware login', () => {
     ).toEqual(['Use Brand Admin — Demo']);
     fireEvent.click(screen.getByRole('radio', { name: 'Store' }));
     expect(screen.getByRole('heading', { level: 1, name: 'Store login' })).toBeInTheDocument();
-    expect(within(screen.getByRole('region', { name: 'Try the demo' })).getByText('Retail Admin — Andheri Store'));
+    expect(within(screen.getByRole('region', { name: 'Try the demo' })).getByText('Retail Admin — HealthPlus Chemist'));
     fireEvent.keyDown(screen.getByRole('radio', { name: 'Store' }), { key: 'ArrowRight' });
     expect(screen.getByRole('radio', { name: 'Qwikspot team' })).toHaveAttribute('aria-checked', 'true');
     expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Qwikspot team' }));

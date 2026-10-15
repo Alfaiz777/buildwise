@@ -84,6 +84,13 @@ export interface RetailerRepository {
   get(brandId: string, retailerId: string): Promise<RetailerRecord | null>;
   list(brandId: string): Promise<RetailerRecord[]>;
   create(retailer: { brandId: string; retailerId: string; name: string }): Promise<RetailerRecord>;
+  /** Renames a retailer; its id, stores and Retail Admins are untouched. False when it does not exist. */
+  rename(brandId: string, retailerId: string, name: string): Promise<boolean>;
+  /**
+   * Deletes a retailer that no store belongs to (checked in the same transaction). False when it
+   * does not exist or still has a store.
+   */
+  deleteIfEmpty(brandId: string, retailerId: string): Promise<boolean>;
 }
 
 export interface StoreRecord {
@@ -150,6 +157,12 @@ export interface StoreRepository {
    * retailer: it fails with DomainConflictError('STORE_HAS_NO_RETAILER') otherwise.
    */
   adminSlot(brandId: string, storeId: string): AdminSlot;
+  /**
+   * Deletes a store that has no Retail Admin (checked in the same transaction, so a store whose
+   * admin is being provisioned is never deleted). False when it does not exist or has an admin.
+   * The caller removes its stock rows first.
+   */
+  deleteIfUnclaimed(brandId: string, storeId: string): Promise<boolean>;
 }
 
 /** docs/04_DATA_MODEL.md §7 */
@@ -251,6 +264,8 @@ export interface InventoryRepository {
     rows: InventoryUpsert[],
     availabilityOf: (quantity: number, reservedQuantity: number) => string,
   ): Promise<void>;
+  /** Deletes every stock row of one store (in batches). Returns how many were deleted. */
+  deleteByStore(brandId: string, storeId: string): Promise<number>;
 }
 
 /** docs/04_DATA_MODEL.md §5 (credentials are never stored here). */

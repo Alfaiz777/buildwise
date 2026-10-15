@@ -73,8 +73,8 @@ const NETWORK: NetworkResponse = {
 };
 const store = (over: Partial<BrandNetwork['retailers'][number]['stores'][number]>) => ({
   store_id: 'st_north_2',
-  store_name: 'Andheri Store',
-  city: 'Mumbai',
+  store_name: 'HealthPlus Chemist',
+  city: 'Ahmedabad',
   status: 'ACTIVE',
   store_admin_provisioned: true,
   stock: { sku_count: 9, freshness: 'FRESH' as const, updated_at: '2026-10-05T06:00:00.000Z' },
@@ -99,18 +99,18 @@ const BRAND_NETWORK: BrandNetwork = {
   retailers: [
     {
       retailer_id: 'rtl_north',
-      name: 'North Retail',
+      name: 'Ahmedabad Retail Partners',
       status: 'ACTIVE',
       stores: [
         store({}),
         store({
           store_id: 'st_north_3',
-          store_name: 'Powai Store',
+          store_name: 'Skin Studio',
           store_admin_provisioned: false,
           stock: { sku_count: 0, freshness: 'NONE', updated_at: null },
           flags: ['NO_STOCK_UPLOAD', 'NO_STORE_ADMIN'],
         }),
-        store({ store_id: 'st_north_1', store_name: 'Bandra Store', flags: [], fill_pct: 95 }),
+        store({ store_id: 'st_north_1', store_name: 'Wellness Mart', flags: [], fill_pct: 95 }),
       ],
     },
   ],
@@ -200,14 +200,14 @@ describe('Retail network', () => {
   it('retailers → stores with counts and health flags in words; never an email', async () => {
     renderAt('/platform/network?brand=brd_demo');
     expect(await screen.findByText('2 of 3 stores need attention.')).toBeInTheDocument();
-    const powai = screen.getByText('Powai Store').closest('tr')!;
-    expect(within(powai).getByText('No stock upload')).toBeInTheDocument();
-    expect(within(powai).getByText('No Store Admin')).toBeInTheDocument();
-    expect(within(powai).getByText('Not yet')).toBeInTheDocument();
-    const andheri = screen.getByText('Andheri Store').closest('tr')!;
-    expect(within(andheri).getByText('Low fill rate')).toBeInTheDocument();
-    expect(within(andheri).getByText('damaged 1')).toBeInTheDocument();
-    expect(within(screen.getByText('Bandra Store').closest('tr')!).getByText('Healthy')).toBeInTheDocument();
+    const skinStudio = screen.getByText('Skin Studio').closest('tr')!;
+    expect(within(skinStudio).getByText('No stock upload')).toBeInTheDocument();
+    expect(within(skinStudio).getByText('No Store Admin')).toBeInTheDocument();
+    expect(within(skinStudio).getByText('Not yet')).toBeInTheDocument();
+    const healthPlus = screen.getByText('HealthPlus Chemist').closest('tr')!;
+    expect(within(healthPlus).getByText('Low fill rate')).toBeInTheDocument();
+    expect(within(healthPlus).getByText('damaged 1')).toBeInTheDocument();
+    expect(within(screen.getByText('Wellness Mart').closest('tr')!).getByText('Healthy')).toBeInTheDocument();
     // The header shows the signed-in Platform Admin's own email; the page content never shows one.
     expect(screen.getByRole('main').textContent).not.toMatch(/@/);
   });

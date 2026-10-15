@@ -13,16 +13,16 @@ import type { StoreInsights } from '../pages/retailer/StoreDemand';
 const RETAIL: MeResponse = {
   scope: 'RETAIL',
   role: 'RETAIL_ADMIN',
-  user: { user_id: 'r', email: 'andheri@demo.test' },
+  user: { user_id: 'r', email: 'healthplus@demo.test' },
   brand_id: 'brd_demo',
   brand_name: 'Demo Beauty Co',
   retailer_id: 'rtl_north',
-  retailer_name: 'North Retail',
+  retailer_name: 'Ahmedabad Retail Partners',
   store_id: 'st_north_2',
   store: {
     store_id: 'st_north_2',
-    store_name: 'Andheri Store',
-    city: 'Mumbai',
+    store_name: 'HealthPlus Chemist',
+    city: 'Ahmedabad',
     address: 'Lokhandwala Complex',
     store_status: 'ACTIVE',
     store_hours: { timezone: 'Asia/Kolkata', monday: '10:00-21:00' },
@@ -32,7 +32,7 @@ const inMin = (m: number) => new Date(Date.now() + m * 60_000).toISOString();
 
 const hold = (over: Partial<QueueReservation> = {}): QueueReservation => ({
   reservation_id: 'res_1',
-  store_name: 'Andheri Store',
+  store_name: 'HealthPlus Chemist',
   store_timezone: 'Asia/Kolkata',
   product_title: 'Vitamin C Glow Serum',
   variant_title: '30 ml',
@@ -49,9 +49,9 @@ const hold = (over: Partial<QueueReservation> = {}): QueueReservation => ({
   cancel_reason: null,
   last_notification: null,
   why_here: {
-    text: 'Powai Store was closer but out of stock. You were the nearest store with stock — 7.6 km from the customer.',
+    text: 'Skin Studio was closer but out of stock. You were the nearest store with stock — 7.6 km from the customer.',
     distance_km: 7.6,
-    closer_unavailable: [{ store_name: 'Powai Store', reason: 'OUT_OF_STOCK' }],
+    closer_unavailable: [{ store_name: 'Skin Studio', reason: 'OUT_OF_STOCK' }],
     options: 1,
   },
   image_url: '/demo-products/vitamin-c-glow-serum.png',
@@ -142,7 +142,7 @@ describe('Today', () => {
     const next = await screen.findByRole('region', { name: 'Next up' });
     const card = within(next).getByRole('article');
     expect(within(card).getByRole('button', { name: 'Confirm' })).toHaveClass('next-up__action');
-    expect(within(card).getByText(/Powai Store was closer but out of stock/)).toBeInTheDocument();
+    expect(within(card).getByText(/Skin Studio was closer but out of stock/)).toBeInTheDocument();
     expect(within(card).getByText(/Customer •••• 4821/)).toBeInTheDocument();
     expect(screen.getByText('Also waiting (1)')).toBeInTheDocument();
     // No trace: a plain fallback that names the brand, never a customer.
@@ -279,7 +279,7 @@ const INSIGHTS: StoreInsights = {
   suggestions: [
     {
       rule: 'RAISE_STOCK_BEFORE_PEAK',
-      text: 'Andheri Store was the nearest store but out of stock of Vitamin C Glow Serum 30 ml 8 times on Saturdays in the last 7 days. Suggested: raise its Vitamin C Glow Serum 30 ml stock before Saturday.',
+      text: 'HealthPlus Chemist was the nearest store but out of stock of Vitamin C Glow Serum 30 ml 8 times on Saturdays in the last 7 days. Suggested: raise its Vitamin C Glow Serum 30 ml stock before Saturday.',
     },
   ],
 };

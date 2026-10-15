@@ -30,7 +30,7 @@ export const INSIGHTS: InsightsResponse = {
     {
       sku: 'DBC-VCSERUM-50',
       label: 'Vitamin C Glow Serum 50 ml',
-      area: 'andheri',
+      area: 'navrangpura',
       weekday: 'saturday',
       count: 6,
       reasons: { OUT_OF_STOCK: 6 },
@@ -54,7 +54,7 @@ export const INSIGHTS: InsightsResponse = {
   fill_rate: [
     {
       store_id: 'st_north_2',
-      store_name: 'Andheri Store',
+      store_name: 'HealthPlus Chemist',
       weekday: 'saturday',
       nearest: 8,
       had_stock: 2,
@@ -65,7 +65,7 @@ export const INSIGHTS: InsightsResponse = {
   suggestions: [
     {
       rule: 'RAISE_STOCK_BEFORE_PEAK',
-      text: 'Andheri Store was the nearest store but out of stock of Vitamin C Glow Serum 30 ml 6 times on Saturdays in the last 7 days. Suggested: raise its Vitamin C Glow Serum 30 ml stock before Saturday.',
+      text: 'HealthPlus Chemist was the nearest store but out of stock of Vitamin C Glow Serum 30 ml 6 times on Saturdays in the last 7 days. Suggested: raise its Vitamin C Glow Serum 30 ml stock before Saturday.',
       evidence: { kind: 'EVENTS', ids: ['evt_1', 'evt_2', 'evt_3', 'evt_4', 'evt_5', 'evt_6'] },
     },
   ],

@@ -836,7 +836,8 @@ demoResetService.ts             stores outside the new network become INACTIVE
 - A typed store name could be a question about the store ("is GlowUp open?"): it shows that store's card and holds nothing, so the worst case is one extra tap.
 - Two short names in one message, or a name not on the last card, match nothing. The agent handles those as usual.
 - A refusal used to re-offer the next store by distance. In area mode, "Other stores" had been written to ignore `skip_stores` (so the area list includes the store just shown), which would have re-offered the refusing store. Now `skip_stores` always applies; only the mock runtime's "Other stores" leaves it out and asks for `show: ALL_STORES`. A re-offer stays inside the customer's area, so the extended-radius offer (another area's store) no longer happens there.
-- Reset demo keeps stores (they have Retail Admins), so the old Mumbai stores would have lingered on a live project. Reset now sets them INACTIVE, and the area search reads ACTIVE stores only.
+- Reset demo kept stores (some have Retail Admins), so on the live project the Network page still listed Powai Store, Koregaon Park Store, "North Retail" and "Pune Retail" as INACTIVE. Setting them INACTIVE was not enough: judges read the Network page, not the store status. Reset now deletes an old store that has no Retail Admin (and its stock), deletes a retailer left with no store, and renames `rtl_north`. An old store that has a Retail Admin is still only set INACTIVE, so a login is never left without its store.
+- A delete races with provisioning: an admin could be assigned between the read and the delete. The store delete runs in a transaction that re-reads `retail_admin_user_id`, and the retailer delete re-queries its stores in the same transaction.
 - The browser plan `scripts/judge-test-plan.mjs` still tells the Mumbai story. It needs a rewrite against a running stack.
 
 ### Teach-back
