@@ -1,7 +1,7 @@
 import { performance } from 'node:perf_hooks';
 import {
   AGENT_PROMPT_VERSION,
-  QWIKSPOT_AGENT_PROMPT_V1,
+  QWIKSPOT_AGENT_PROMPT,
   ModelProposalSchema,
   extractJson,
   modelProposalJsonSchema,
@@ -110,7 +110,7 @@ export class AdkGeminiAgentRuntime implements AgentRuntime {
         const response = await this.request(
           {
             model: this.options.model,
-            system: QWIKSPOT_AGENT_PROMPT_V1,
+            system: QWIKSPOT_AGENT_PROMPT,
             turns,
             tools: offerTools ? readTools : [],
             responseSchema: modelProposalJsonSchema(),
@@ -374,6 +374,7 @@ export function toDecision(proposal: ModelProposal, input: DecisionInput, calls:
   }
 
   const commerce = searched || action === 'STORE_RESERVATION' || Boolean(cancelId);
+  const turnType = action === 'NO_ACTION' && !cancelId ? (proposal.turn_type ?? undefined) : undefined;
   const options = commerce
     ? []
     : [...new Set(proposal.quick_replies ?? [])]
@@ -390,6 +391,7 @@ export function toDecision(proposal: ModelProposal, input: DecisionInput, calls:
       ...(variantId ? { variant_id: variantId } : {}),
       ...(action === 'STORE_RESERVATION' ? { quantity: proposal.quantity ?? ctx.pending_proposal?.quantity ?? 1 } : {}),
       ...(cancelId ? { reservation_id: cancelId } : {}),
+      ...(turnType ? { turn_type: turnType } : {}),
       reason: proposal.reason,
     },
     response_strategy: {

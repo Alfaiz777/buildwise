@@ -422,6 +422,21 @@ The **final** AI evaluation runs on `AdkGeminiAgentRuntime`. Running the scenari
 
 **First live run (2026-10-13, `gemini-3.8-flash` on `global`, 1 run per scenario, from a laptop in India).** 16 of 19 rows passed. Every turn the model answered in time was correct: scenarios 8–12 (safety, inventory truth, concurrency) when answered, the store cards and the hold, the grounded product answer and comparison, and a Hinglish message answered in Hinglish. All 3 failures were timeouts that ended in the deterministic fallback: 36 decisions, median 5.8 s, 3 over the 18.5 s deadline (about 1 in 12). `gemini-3.5-flash-lite` was faster (median 3.5 s) but worse: it chose a product without asking and twice said it would check stores without calling the tool — not recommended. **With the mock backup (same day, 3 runs per scenario).** All 19 rows passed: 94 turns, 70 decided by Gemini, 24 by the mock backup after a Gemini timeout at the 12 s deadline (about 1 in 4), none by the fixed fallback, and no conversation handed off by a timeout. **With a 15 s deadline and 8 s per request (same day, 3 runs per scenario).** 94 turns: 79 decided by Gemini, 15 by the mock backup (about 1 in 6), none by the fixed fallback. 18 of 19 rows passed; scenario 10 passed 2 of 3 — in one run Gemini answered a crafted hold tap for a store that was never offered with a new store search instead of a reservation proposal, so nothing was reserved and the guardrail had nothing to block. **With button taps decided by the rules (same day, 3 runs per scenario).** All 19 rows passed, scenario 10 included (3 of 3). 94 turns: 13 taps decided by the rules, 50 decided by Gemini, 31 by the mock backup after a Gemini timeout, none by the fixed fallback. Vertex was slower during this run, so the backup share of typed turns was higher than in the run before. This run is not the final evaluation: that is `EVAL_RUNS=5` from the deployed region (`08_TEST_PLAN.md` §7.3).
 
+**Reply rules for conversational turns (L5, prompt `QWIKSPOT_AGENT_PROMPT_V2`).** A message that needs no commerce action gets a NO_ACTION decision with a `turn_type`: GREETING, THANKS, LATER, OK, BYE, COMPLIMENT, COMPLAINT, OFF_TOPIC or CLARIFY. Store cards, holds, prices and comparisons are still built by `replyComposer` from verified tool results; only the NO_ACTION text is free-form, under these rules (`domain/conversationalReplies.ts`):
+
+| Rule | How it is enforced |
+|---|---|
+| At most 2 sentences, about 250 characters, at most one emoji, in the customer's language (English, Hindi or Hinglish) | `checkConversationalText` on every social turn written by Gemini |
+| No price, stock count, store name, distance, delivery time, discount, "free", offer or promise; the product's name is allowed | The same check on **every** Gemini NO_ACTION text, a clarifying question included |
+| A text that fails a rule is not sent | It is replaced by the deterministic reply: the fixed text for that turn, else the existing clarify template. `agent.reply_rejected` logs the reason code, never the text |
+| THANKS, LATER and BYE close the conversation: no sales question, no buttons | `finishConversationalReply` removes every button, whatever the runtime wrote. The backend also recognises a closing itself (`classifyTurn`), so a missing `turn_type` cannot leave buttons on a goodbye |
+| A COMPLAINT apologises once and offers a person | The "Talk to a person" button is added (when handoff is on). The conversation is handed off only if the customer asks for a person |
+| OFF_TOPIC (weather, cricket, jokes, "who are you") | One line on what the assistant can help with, naming the current product |
+
+The rules runtime (the mock, and the backup behind Gemini) answers the same turns with fixed natural texts in English, Hinglish and Hindi. For example, "Thanks for the response, I will buy it later! 😊👍" gets "No problem! Whenever you're ready, just message me here and I'll check stock near you again. 😊", with no buttons.
+
+**Conversation test set (L5).** `backend/test/eval/conversations.fixtures.ts` holds 43 shopper messages in 10 multi-turn chains on the Ahmedabad network. They cover thanks / later / ok / bye / 👍 / 🙏, Hinglish and Hindi, typos, an area only, an unserved area, typed store names, price, skin-type and comparison questions, a complaint, off-topic, a person, a cancellation and an unknown product. Each message names the acceptable actions and is checked for no forbidden content, no buttons on a closing, the customer's language and the length limits. The set runs against the mock in `npm test` and against Gemini in the live eval, which prints a table of message → path → action → reply → time → pass / fail with p50 and p95.
+
 ---
 
 # 17. AI decision principle
@@ -429,3 +444,38 @@ The **final** AI evaluation runs on `AdkGeminiAgentRuntime`. Running the scenari
 > **Gemini reasons over verified context; the application remains the authority.**
 
 This is the central AI architecture rule.
+
+## 17.1 How the AI stays grounded
+
+For a reader new to Qwikspot: what Gemini can and cannot do, and what happens when it is slow.
+
+- **It answers only from verified data.** The context package holds the brand's product sheet (titles, sizes, prices, attributes) and the conversation. Stock, stores, opening hours and distances come only from the backend's read tools (`find_nearby_stores`, `check_store_inventory`, `get_store_hours`, …), called through the backend's ToolExecutor.
+- **It cannot invent a price, stock level or store.** A store card, a hold confirmation, a comparison or an order link is rebuilt by `replyComposer` from this turn's tool results, never from the model's words. Gemini's own text appears only on NO_ACTION turns (thanks, later, a greeting, a complaint, a clarifying question). There, a validator rejects any price, stock count, store name, distance, delivery time, discount or promise, and the deterministic reply is sent instead (§16).
+- **The backend decides every action.** Gemini proposes; it is offered read tools only. A hold, a cancellation, a handoff and an order link are executed by the backend after the guardrail re-checks fresh data: the store was offered, it is open, it has the stock, the quantity is within policy. Ids the model was never shown are dropped.
+- **Button taps never call the model.** A tap ("Pick up: Wellness", "Other stores", an area, Cancel) and a typed store name from the card just shown are decided by the rules (`RULES_TAP`): the same answer every time, in milliseconds.
+- **A slow or failing model never leaves the customer waiting.** Each Gemini request is cut off at 8 s (one retry), the whole decision at 15 s. Then the rule-based backup answers the same message with the same tools. Only if that fails too does a fixed "please try again" reply go out.
+
+**Where reply time goes, and what keeps it low.** One `conversation.reply_timing` log line per inbound message (no PII) records:
+- `total_ms` (the whole pipeline) and `gemini_ms` (the model, tool calls included);
+- `rules_ms` (rules or backup), `tool_calls`, and the `path` that answered (`RULES_TAP`, `GEMINI`, `BACKUP`, `FALLBACK`) with `backup_used`.
+
+Almost all of the time is the model. Firestore reads and writes and the guardrail take milliseconds to tens of milliseconds: a rule-decided turn finished in 5–37 ms in the live eval (in-memory data). What keeps replies fast:
+- **Taps skip the model:** most of a purchase is taps.
+- **Fewer tool calls:** the product sheet travels in the context, so product questions need none; at most 5 per decision.
+- **Short output:** a short conversational reply.
+- **Hard deadlines:** the 8 s / 15 s limits, then the backup.
+
+The Cloud Run request timeout (60 s) is far above the worst case: a 20 s agent budget plus the guardrail, tools and the send.
+
+**Measured (live eval, 2026-10-16, `gemini-3.8-flash` on `global`, `EVAL_RUNS=2`, from a laptop in India).** The conversation test set passed 86 of 86 messages.
+
+| Who answered | Turns | Reply time |
+|---|---|---|
+| Rules (a button tap or a typed store name) | 12 | median 15 ms, max 37 ms |
+| Gemini | 59 | median 5.0 s (2.5–14.9 s); conversational replies median 4.5 s |
+| Backup after the 15 s Gemini deadline | 15 | about 15.0 s |
+| All messages | 86 | p50 5.1 s, p95 15.0 s |
+
+Almost all of the time is the model. A taps-first purchase answers in milliseconds, and about one typed turn in six waits for the deadline before the backup answers. The next step for steadier latency is Provisioned Throughput or a smaller model for conversational turns (`VERTEX_MODEL`), measured with the same set.
+
+The run also found one ungrounded claim. Asked "is it original?", Gemini once answered (EDUCATE) that every product was "100% genuine and original". Nothing verified says so. Prompt V2 now forbids authenticity and safety claims without a verified attribute and offers a person instead; that line was added after this run.

@@ -1,6 +1,7 @@
+import { performance } from 'node:perf_hooks';
 import type { DecisionSource, GuardrailStatus } from '../../domain/ai.js';
 import type { InboundPolicyDecision } from '../../domain/conversationPolicy.js';
-import type { AgentDecision } from '../../ports/agent.js';
+import type { AgentContext, AgentDecision } from '../../ports/agent.js';
 import type {
   ConversationRecord,
   CustomerRecord,
@@ -63,6 +64,10 @@ export interface PipelineData {
   /** M5: this run's ToolExecutor (calls + trace), the context package digest and the stage results. */
   tools?: AgentToolExecutor;
   contextHash?: string;
+  /** L5: the context package the agent decided on (the NO_ACTION reply rules read it). */
+  agentContext?: AgentContext;
+  /** L5: reply timing — the configured runtime's and the backup's time, in ms. */
+  timing?: { agentMs: number | null; backupMs: number | null };
   contextSummary?: { [key: string]: JsonValue };
   guardrail?: GuardrailOutcome;
   /** The final reply after forward dispatch (TOOLS); falls back to decision.reply. */
@@ -111,11 +116,17 @@ export interface PipelineResult {
   stoppedAt: { stage: PipelineStageName; reason: string } | null;
 }
 
+/** Called once per inbound message with the run's result and its total time (L5: reply timing). */
+export type PipelineObserver = (result: PipelineResult, totalMs: number) => void;
+
 export class ConversationPipeline {
   private readonly stages: readonly PipelineStage[];
 
   /** Requires exactly one stage per name, in the approved order. */
-  constructor(stages: readonly PipelineStage[]) {
+  constructor(
+    stages: readonly PipelineStage[],
+    private readonly observer?: PipelineObserver,
+  ) {
     const names = stages.map((stage) => stage.name);
     const expected = PIPELINE_STAGES.join(' → ');
     if (names.join(' → ') !== expected) {
@@ -125,6 +136,17 @@ export class ConversationPipeline {
   }
 
   async handleInbound(inbound: InboundMessage): Promise<PipelineResult> {
+    const started = performance.now();
+    const result = await this.run(inbound);
+    try {
+      this.observer?.(result, Math.round(performance.now() - started));
+    } catch {
+      // Observability never changes the reply.
+    }
+    return result;
+  }
+
+  private async run(inbound: InboundMessage): Promise<PipelineResult> {
     const context: PipelineContext = {
       inbound,
       customerId: null,

@@ -43,7 +43,9 @@ export async function buildAgentContext(
     deps.stores ? deps.stores.list(brand.brandId) : Promise.resolve([]),
   ]);
   const storeById = new Map(stores.map((s) => [s.storeId, s]));
-  const areas = servedAreas(stores.filter((s) => s.storeStatus === 'ACTIVE')).map((a) => a.name);
+  const active = stores.filter((s) => s.storeStatus === 'ACTIVE');
+  const areas = servedAreas(active).map((a) => a.name);
+  const storeNames = [...new Set(active.flatMap((s) => [s.storeName, ...(s.shortName ? [s.shortName] : [])]))];
 
   const bound = intent?.productId ? products.find((p) => p.productId === intent.productId) : undefined;
   const sheets = bound ? [bound, ...alternativesOf(bound, products)].map((p) => sheetOf(p, variants, settings)) : [];
@@ -63,6 +65,7 @@ export async function buildAgentContext(
       handoff_enabled: messaging.handoffEnabled,
       online_purchase_available: onlineProductUrl(settings, 'x') !== null,
       ...(areas.length > 0 ? { areas } : {}),
+      ...(storeNames.length > 0 ? { store_names: storeNames } : {}),
     },
     customer: {
       channel: conversation.channel,

@@ -22,7 +22,7 @@ import {
 import { createProviders } from '../src/composition/container.js';
 import { loadConfig } from '../src/config/env.js';
 import type { AgentRuntime } from '../src/ports/agent.js';
-import { AGENT_PROMPT_VERSION, QWIKSPOT_AGENT_PROMPT_V1, extractJson } from '../src/domain/agentPrompt.js';
+import { AGENT_PROMPT_VERSION, QWIKSPOT_AGENT_PROMPT, extractJson } from '../src/domain/agentPrompt.js';
 import { READ_TOOLS, WRITE_TOOLS } from '../src/domain/agentTools.js';
 import { AgentDecisionSchema, type AgentContext } from '../src/ports/agent.js';
 import { toolDeclarations } from '../src/ports/agentTools.js';
@@ -123,7 +123,7 @@ describe('AdkGeminiAgentRuntime — the tool-call loop', () => {
     // Request 1: the system instruction, the context as JSON, read tools, a response schema, low temperature.
     expect(requests[0]).toMatchObject({
       model: 'gemini-test-model',
-      system: QWIKSPOT_AGENT_PROMPT_V1,
+      system: QWIKSPOT_AGENT_PROMPT,
       temperature: 0.2,
     });
     expect(requests[0]!.responseSchema).toMatchObject({ type: 'object' });
@@ -216,6 +216,15 @@ describe('AdkGeminiAgentRuntime — the proposal becomes the AgentDecision', () 
     const { client } = fakeGemini([{ text: `Here you go:\n\`\`\`json\n${proposal()}\n\`\`\`` }]);
     const decision = await runtime(client).decide(input('hi'), stubExecutor({}));
     expect(decision.reply).toEqual({ message_type: 'TEXT', text: 'Hi! Which product are you looking for?' });
+  });
+
+  it('L5: a NO_ACTION carries the turn type the model set; other actions never do', async () => {
+    const later = await decide('I will buy it later', { turn_type: 'LATER', reply_text: 'No problem!' });
+    expect(later.next_best_action).toMatchObject({ action: 'NO_ACTION', turn_type: 'LATER' });
+    const none = await decide('hi', { turn_type: null });
+    expect(none.next_best_action).not.toHaveProperty('turn_type');
+    const educate = await decide('is it good for oily skin?', { action: 'EDUCATE', turn_type: 'THANKS' });
+    expect(educate.next_best_action).not.toHaveProperty('turn_type');
   });
 
   it('the write tools follow from the action; the model never names one', async () => {

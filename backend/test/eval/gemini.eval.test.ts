@@ -10,7 +10,9 @@
  * Optional: EVAL_RUNS (default 1; the final evaluation uses 5), VERTEX_MODEL, VERTEX_LOCATION.
  *
  * Prints one table — who decided, action, reply and pass / fail per scenario — and writes it to
- * GEMINI_EVAL_REPORT (default: <tmp>/qwikspot-gemini-eval.md). Assertions are on structured
+ * GEMINI_EVAL_REPORT (default: <tmp>/qwikspot-gemini-eval.md). L5: the conversation test set
+ * (conversations.fixtures.ts) prints a second table with each reply's time and p50 / p95, written
+ * next to it (…-conversations.md). Assertions are on structured
  * output (action, guardrail, offered stores, persisted records), never on wording.
  */
 import { writeFileSync } from 'node:fs';
@@ -24,6 +26,8 @@ import { DEFAULT_VERTEX_LOCATION, DEFAULT_VERTEX_MODEL } from '../../src/config/
 import type { Logger } from '../../src/lib/logger.js';
 import { globalNever, requiredPasses, SCENARIOS, setScenarioWorldDefaults } from '../contracts/agentScenarioSuite.js';
 import { buildScenarioWorld, ORIGIN, type ScenarioWorld } from '../scenarioWorld.js';
+import { percentile, runConversation, type StepResult } from './conversationRunner.js';
+import { checkedMessages, CONVERSATIONS } from './conversations.fixtures.js';
 
 const ENABLED = process.env.RUN_GEMINI_EVAL === '1';
 const RUNS = Math.max(1, Number(process.env.EVAL_RUNS ?? 1));
@@ -150,6 +154,57 @@ describe.skipIf(!ENABLED)(`LIVE Gemini evaluation — ${MODEL} @ ${LOCATION} (${
         RUNS * 120_000,
       );
     }
+  });
+
+  describe(`L5 conversation test set — ${checkedMessages()} shopper messages on the Ahmedabad network`, () => {
+    const steps: (StepResult & { run: number })[] = [];
+    afterAll(() => {
+      const ms = steps.map((s) => s.ms);
+      const passed = steps.filter((s) => s.failures.length === 0).length;
+      const byPath = Object.entries(
+        steps.reduce<Record<string, number>>((acc, s) => ({ ...acc, [s.path]: (acc[s.path] ?? 0) + 1 }), {}),
+      )
+        .map(([path, count]) => `${path} ${count}`)
+        .join(', ');
+      const lines = [
+        '',
+        `Conversation set — ${steps.length} messages (${RUNS} run(s)); passed ${passed}/${steps.length}; answered by: ${byPath}`,
+        `Reply time (whole pipeline, per message): p50 ${percentile(ms, 0.5)} ms, p95 ${percentile(ms, 0.95)} ms, max ${Math.max(0, ...ms)} ms`,
+        '',
+        '| Case | Message | Path | Action | Reply | ms | Result |',
+        '|---|---|---|---|---|---|---|',
+        ...steps.map(
+          (s) =>
+            `| ${s.caseId}${s.step}${RUNS > 1 ? `·${s.run}` : ''} | ${short(oneLine(s.message), 50)} | ${s.path} | ${s.action} | ${short(oneLine(s.reply), 90)} | ${s.ms} | ${s.failures.length ? `FAIL: ${oneLine(s.failures.join('; '))}` : 'PASS'} |`,
+        ),
+        '',
+      ];
+      console.log(lines.join('\n'));
+      writeFileSync(REPORT.replace(/\.md$/, '') + '-conversations.md', lines.join('\n'));
+    });
+
+    for (const c of CONVERSATIONS) {
+      it(
+        `${c.id} · ${c.title}`,
+        async () => {
+          for (let run = 1; run <= RUNS; run++) {
+            const results = await runConversation(c, { agent: makeRuntime(), backupAgent: new MockAgentRuntime() });
+            steps.push(...results.map((r) => ({ ...r, run })));
+            // What the backend guarantees whatever the model writes: never violated.
+            const hard = results.flatMap((r) =>
+              r.failures.filter((f) => /forbidden content|buttons on a closing|a hold was created/.test(f)),
+            );
+            expect(hard, 'a backend-enforced reply rule was violated').toEqual([]);
+          }
+        },
+        RUNS * 600_000,
+      );
+    }
+
+    it('passes at least 85% of the checked messages (actions, language and limits are model judgement)', () => {
+      const passed = steps.filter((s) => s.failures.length === 0).length;
+      expect(passed / Math.max(1, steps.length)).toBeGreaterThanOrEqual(0.85);
+    });
   });
 
   describe('WhatsApp, 12 Oct 2026 — a customer who writes in directly (no storefront intent)', () => {

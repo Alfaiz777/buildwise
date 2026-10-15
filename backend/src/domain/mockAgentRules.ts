@@ -5,6 +5,7 @@
  */
 import { isHumanRequest } from './conversationPolicy.js';
 import { parseOption, type ParsedOption } from './agentReplies.js';
+import { classifyTurn, type TurnType } from './conversationalReplies.js';
 
 export type MockRule =
   | { rule: 'REFUSE' }
@@ -17,6 +18,7 @@ export type MockRule =
   | { rule: 'ASK_AREA' }
   | { rule: 'EDUCATE' }
   | { rule: 'COMPARE' }
+  | { rule: 'SOCIAL'; turn: TurnType }
   | { rule: 'CLARIFY' };
 
 const INJECTION =
@@ -28,9 +30,9 @@ const HOLD =
 const BUY_ONLINE = /\b(buy|order) (it )?online\b|\bhome delivery\b|^\s*deliver( it)?( to me)?\s*[.!]?\s*$/i;
 const OTHER_STORE = /\b(another|other|different) (store|shop|branch|location)s?\b/i;
 const STORE_SEARCH =
-  /\b(today|tonight|right now|asap|urgent(ly)?|nearby|near me|near by|close to me|closest|nearest|in store|pick ?up|store near|shop near|available near|get it near|need it)\b/i;
+  /\b(today|tonight|right now|asap|urgent(ly)?|nearby|near me|near by|close to me|closest|nearest|in store|pick ?up|store near|shop near|available near|get it near|need it|near|milega|milegi|mil jayega|mil jaega|kal tak|aaj|abhi chahiye|paas (mein|me)|nazdeek)\b/i;
 const EDUCATE =
-  /\b(oily|dry|sensitive|combination|skin|ingredients?|contain|suitable|good for|texture|how (to|do i) use|when (to|should i) use|morning|night)\b/i;
+  /\b(oily|dry|sensitive|combination|skin|ingredients?|contain|suitable|good for|texture|how (to|do i) use|when (to|should i) use|morning|night|price|cost|how much|kitne|kitna|mrp|rate|original|genuine|authentic|fake)\b/i;
 const COMPARE = /\b(which (one|should)|compare|comparison|difference|differ|vs\.?|versus|better)\b/i;
 
 export function classifyMessage(input: {
@@ -64,6 +66,9 @@ export function classifyMessage(input: {
   if (OTHER_STORE.test(text)) return { rule: 'OTHER_STORES' };
   if (COMPARE.test(text)) return { rule: 'COMPARE' };
   if (STORE_SEARCH.test(text) || input.mentionsArea) return { rule: 'STORE_SEARCH', fromLocation: false };
+  // L5: thanks / later / ok / bye / a complaint / off-topic — before EDUCATE ("good night" is not a usage question).
+  const turn = classifyTurn(text);
+  if (turn) return { rule: 'SOCIAL', turn };
   if (EDUCATE.test(text)) return { rule: 'EDUCATE' };
   return { rule: 'CLARIFY' };
 }
