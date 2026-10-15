@@ -73,10 +73,7 @@ async function brand(brandId: string) {
   await db
     .doc(`brands/${brandId}`)
     .set({ brand_id: brandId, name: `Brand ${brandId}`, status: 'ACTIVE', settings: {} });
-  for (const [id, name] of [
-    ['rtl_north', 'North Retail'],
-    ['rtl_pune', 'Pune Retail'],
-  ]) {
+  for (const [id, name] of [['rtl_north', 'Ahmedabad Retail Partners']]) {
     await db
       .doc(`brands/${brandId}/retailers/${id}`)
       .set({ retailer_id: id, brand_id: brandId, name, status: 'ACTIVE' });
@@ -151,11 +148,11 @@ beforeAll(async () => {
   await db.doc(`brands/${DEMO}`).update({ brand_admin_user_id: demoAdmin });
   const keepAdmin = await user('admin@reset-keep.test', 'BRAND_ADMIN', KEEP);
   await db.doc(`brands/${KEEP}`).update({ brand_admin_user_id: keepAdmin });
-  const andheri = await user('andheri@reset-demo.test', 'RETAIL_ADMIN', DEMO, 'st_north_2');
-  await db.doc(`brands/${DEMO}/stores/st_north_2`).update({ retail_admin_user_id: andheri });
+  const healthplus = await user('healthplus@reset-demo.test', 'RETAIL_ADMIN', DEMO, 'st_north_2');
+  await db.doc(`brands/${DEMO}/stores/st_north_2`).update({ retail_admin_user_id: healthplus });
   tokens.demo = await signIn('admin@reset-demo.test');
   tokens.keep = await signIn('admin@reset-keep.test');
-  tokens.andheri = await signIn('andheri@reset-demo.test');
+  tokens.healthplus = await signIn('healthplus@reset-demo.test');
 }, 120_000);
 
 afterAll(async () => {
@@ -184,7 +181,7 @@ describe('Reset demo (Change 14, G4)', () => {
       shopify_variant_id: 'gid://shopify/ProductVariant/2001',
     });
     await send({ type: 'TEXT', text: `I need it today ${refOf(click.body.whatsapp)}` });
-    await send({ type: 'LOCATION', latitude: 19.12, longitude: 72.9 });
+    await send({ type: 'LOCATION', latitude: 23.0352, longitude: 72.5602 });
     const hold = await send({ type: 'INTERACTIVE_REPLY', option_id: 'hold:st_north_2' });
     expect(hold.body.decision.executed_action?.type).toBe('RESERVATION_CREATED');
 
@@ -228,7 +225,7 @@ describe('Reset demo (Change 14, G4)', () => {
 
     const stock = after[`brands/${DEMO}/retailInventory/st_north_2__DBC-VCSERUM-30`] as Record<string, unknown>;
     expect(stock).toMatchObject({ quantity: 25, reserved_quantity: 0 });
-    expect(after[`brands/${DEMO}/retailInventory/st_north_3__DBC-VCSERUM-30`]).toMatchObject({ quantity: 0 });
+    expect(after[`brands/${DEMO}/retailInventory/st_nav_2__DBC-VCSERUM-30`]).toMatchObject({ quantity: 0 });
     expect((after[`brands/${DEMO}/stores/st_north_2`] as Record<string, unknown>).retail_admin_user_id).toBeTruthy();
     expect((after[`brands/${DEMO}`] as { settings: Record<string, unknown> }).settings).toMatchObject({
       reservation_policy: { hold_minutes: 20 },
@@ -240,7 +237,7 @@ describe('Reset demo (Change 14, G4)', () => {
     // UI-6: the judge's per-session Asha — customer, identity and conversation — is gone.
     expect(await perSessionShoppers()).toBe(0);
     // The Retail Admin still signs in to the same store.
-    const me = await request(app).get('/api/me').set('Authorization', `Bearer ${tokens.andheri}`);
+    const me = await request(app).get('/api/me').set('Authorization', `Bearer ${tokens.healthplus}`);
     expect(me.body).toMatchObject({ role: 'RETAIL_ADMIN', store_id: 'st_north_2' });
   }, 120_000);
 
@@ -252,7 +249,7 @@ describe('Reset demo (Change 14, G4)', () => {
     expect((await reset('demo')).status).toBe(429);
     const other = await reset('keep');
     expect([other.status, other.body.error.code]).toEqual([403, 'DEMO_RESET_NOT_ALLOWED']);
-    expect((await reset('andheri')).status).toBe(403);
+    expect((await reset('healthplus')).status).toBe(403);
     expect((await reset('demo', appOff)).status).toBe(404);
     expect(await snapshot(KEEP)).toMatchObject(
       Object.fromEntries(Object.entries(keepBefore).filter(([k]) => !k.includes('/auditEvents/'))),

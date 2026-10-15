@@ -37,7 +37,7 @@ export function HeroVisual() {
         </div>
         <div className="hero-phone__chat">
           <p className="hero-bubble hero-bubble--in">
-            Need the vitamin C serum today. I&apos;m near Powai.
+            Need the vitamin C serum today. I&apos;m near Satellite.
             <CheckCheck size={14} aria-hidden="true" />
           </p>
           <div className="hero-bubble hero-bubble--out">
@@ -49,14 +49,14 @@ export function HeroVisual() {
               </div>
             </div>
             <p>
-              🏬 Pick up today at <strong>Andheri Store</strong>, 2.1 km · open till 9 pm
+              🏬 Pick up today at <strong>Wellness Mart</strong>, Satellite Road, 0.3 km · open till 10 pm
               <br />
               🚚 Home delivery in 4–5 days
             </p>
             <span className="hero-bubble__footer">Powered by Qwikspot</span>
           </div>
           <div className="hero-buttons" aria-label="Reply buttons">
-            <span>Pick up today</span>
+            <span>Pick up: Wellness</span>
             <span>Home delivery</span>
             <span>Other stores</span>
           </div>
@@ -66,7 +66,7 @@ export function HeroVisual() {
         <div className="hero-queue__top">
           <span className="ui-pill ui-pill--primary">New hold</span>
           <span className="hero-queue__store">
-            <MapPin size={14} aria-hidden="true" /> Andheri Store
+            <MapPin size={14} aria-hidden="true" /> Wellness Mart, Satellite
           </span>
         </div>
         <strong>1 × Vitamin C Glow Serum 30 ml</strong>

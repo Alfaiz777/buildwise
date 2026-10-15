@@ -36,14 +36,14 @@ const PASSWORD = 'password-123';
 const B1 = 'brd_m5'; // the §7.1 fixture brand (stores A–E)
 const B1R = 'brd_m5r'; // the same fixture again: the simulator allows 30 messages/min per Brand Admin
 const B2 = 'brd_m5b'; // another brand, for leakage checks
-const DEMO = 'brd_m5demo'; // the demo story (demo-retail.csv: Bandra, Andheri, Powai, Pune)
+const DEMO = 'brd_m5demo'; // the demo story (demo-retail.csv: Ahmedabad, Satellite and Navrangpura)
 const V1 = 'var_2001';
 const V1_50 = 'var_2002';
 const V2 = 'var_2003';
 const HERE = { latitude: 19.0, longitude: 72.8 }; // customer C1, near Store A
-const NEAR_POWAI = { latitude: 19.12, longitude: 72.9 };
+const NEAR_CG_ROAD = { latitude: 23.0352, longitude: 72.5602 }; // Navrangpura
 
-const clock = { t: Date.parse('2026-10-07T06:30:00.000Z') }; // Wednesday 12:00 in Mumbai
+const clock = { t: Date.parse('2026-10-07T06:30:00.000Z') }; // Wednesday 12:00 IST
 const advanceMinutes = (m: number) => (clock.t += m * 60_000);
 
 let app: ReturnType<typeof createApp>;
@@ -198,9 +198,9 @@ beforeAll(async () => {
   await seedBrand(B1, 'Scenario Beauty', 'b1', ['rtl_sc'], 'scenario-stores.csv');
   await seedBrand(B1R, 'Scenario Beauty Two', 'b1r', ['rtl_sc'], 'scenario-stores.csv');
   await seedBrand(B2, 'Other Beauty Ltd', 'b2', [], null);
-  await seedBrand(DEMO, 'Demo Beauty Co', 'demo', ['rtl_north', 'rtl_pune'], 'demo-retail.csv');
+  await seedBrand(DEMO, 'Demo Beauty Co', 'demo', ['rtl_north'], 'demo-retail.csv');
   await provisionRetailAdmin('b1r', 'sc_A', 'owner-a@m5.test', 'retailA');
-  await provisionRetailAdmin('demo', 'st_north_2', 'owner-andheri@m5.test', 'andheri');
+  await provisionRetailAdmin('demo', 'st_north_2', 'owner-healthplus@m5.test', 'healthplus');
 }, 60_000);
 
 afterAll(async () => {
@@ -515,45 +515,44 @@ describe('scoping: traces and reservations', () => {
 });
 
 describe('demo story (demo-retail.csv)', () => {
-  it('Asha near Powai → Andheri held → Andheri Retail Admin sees reserved +1 → 50 ml unmet → follow-up reply searches stores', async () => {
+  it('Asha in Navrangpura → HealthPlus held → its Retail Admin sees reserved +1 → 50 ml unmet → follow-up reply searches stores', async () => {
     const asha = customer('demo', DEMO, 'asha');
     const reservedBefore = (await stock(DEMO, 'st_north_2')).reserved_quantity;
 
     // 1. "Need it today?" on Serum 30 ml → the agent asks for the area (never guesses).
     const first = await asha.fromStore('I need it today');
     expect(first.body.decision.action).toBe('STORE_DISCOVERY');
-    expect(textOf(first)).toMatch(/share your location or tell me your area/);
+    expect(textOf(first)).toMatch(/We have stores in Satellite and Navrangpura\./);
 
-    // 2. Location near Powai: Powai excluded (out of stock), Andheri proposed (Bandra too far).
-    const proposal = await asha.share(NEAR_POWAI);
-    expect(optionsOf(proposal)).toEqual(['hold:st_north_2', 'buy_online']);
-    expect(textOf(proposal)).toContain('Andheri Store');
+    // 2. A location on C.G. Road: the Navrangpura stores only, HealthPlus nearest; Skin Studio is out of stock.
+    const proposal = await asha.share(NEAR_CG_ROAD);
+    expect(optionsOf(proposal)[0]).toBe('hold:st_north_2');
+    expect(optionsOf(proposal)).toContain('other_stores');
+    expect(textOf(proposal)).toContain('In stock at 2 stores in Navrangpura:');
+    expect(textOf(proposal)).not.toMatch(/Wellness Mart|Skin Studio/);
     const trace = (await recommendationOf(DEMO, proposal)).trace;
     expect(trace.excluded).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ store_id: 'st_north_3', reason: 'OUT_OF_STOCK' }),
-        expect.objectContaining({ store_id: 'st_north_1', reason: 'TOO_FAR' }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ store_id: 'st_nav_2', reason: 'OUT_OF_STOCK' })]),
     );
 
     // 3. Hold → pickup code, maps link, hold time.
     const hold = await asha.tap('hold:st_north_2');
     expect(hold.body.decision.executed_action.type).toBe('RESERVATION_CREATED');
     expect(textOf(hold)).toMatch(/Pickup code: \*\d{6}\*/);
-    expect(hold.body.outbound_messages[0].parts.location).toMatchObject({ latitude: 19.1364, longitude: 72.8296 });
+    expect(hold.body.outbound_messages[0].parts.location).toMatchObject({ latitude: 23.034, longitude: 72.5595 });
     expect(textOf(hold)).toMatch(/Held until \d{2}:\d{2} \(store time\)/);
 
-    // 4. The Andheri Retail Admin sees reserved +1 in the store stock table.
-    const retail = await as('andheri').get('/api/retail/stores/st_north_2/inventory');
+    // 4. The HealthPlus Retail Admin sees reserved +1 in the store stock table.
+    const retail = await as('healthplus').get('/api/retail/stores/st_north_2/inventory');
     const serum = retail.body.items.find((i: { sku: string }) => i.sku === 'DBC-VCSERUM-30');
     expect(serum).toMatchObject({
       quantity: 5,
       reserved_quantity: reservedBefore + 1,
       available_quantity: 5 - reservedBefore - 1,
     });
-    expect((await as('andheri').get('/api/retail/stores/st_north_1/inventory')).status).toBe(404);
+    expect((await as('healthplus').get('/api/retail/stores/st_north_1/inventory')).status).toBe(404);
 
-    // 5. Serum 50 ml has no eligible Mumbai store → the verified alternative or Buy online + unmet demand.
+    // 5. Serum 50 ml has no eligible Navrangpura store → the verified alternative or Buy online + unmet demand.
     const fifty = await asha.say('Do you have the 50 ml today?');
     expect(['ALTERNATIVE_PRODUCT', 'ONLINE_PURCHASE']).toContain(fifty.body.decision.action);
     expect(textOf(fifty)).toContain(
@@ -570,10 +569,10 @@ describe('demo story (demo-retail.csv)', () => {
       .find((p) => p.kind === 'UNMET_DEMAND' && p.variant_id === V1_50);
     expect(unmet).toMatchObject({
       sku: 'DBC-VCSERUM-50',
-      area: { type: 'LOCALITY', value: 'powai' },
+      area: { type: 'LOCALITY', value: 'Navrangpura' },
       local_weekday: 'wednesday',
     });
-    expect(unmet.excluded).toEqual(expect.arrayContaining([{ store_id: 'st_north_3', reason: 'OUT_OF_STOCK' }]));
+    expect(unmet.excluded).toEqual(expect.arrayContaining([{ store_id: 'st_nav_2', reason: 'OUT_OF_STOCK' }]));
 
     // 6. A proactive follow-up to an opted-in shopper; the reply "yes, need it today" flows into the store search.
     advanceMinutes(25 * 60);

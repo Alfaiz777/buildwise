@@ -1,6 +1,7 @@
 import { Info, X } from 'lucide-react';
 import { useState } from 'react';
 import type { MeResponse } from '../../api/apiContext';
+import { storeLabel } from '../../lib/storeLabel';
 
 const key = (scope: string) => `qs_role_banner_dismissed:${scope}`;
 
@@ -16,7 +17,7 @@ function readDismissed(scope: string): boolean {
 export function roleSentence(me: MeResponse): string {
   switch (me.scope) {
     case 'RETAIL':
-      return `You run ${me.store.store_name} for ${me.brand_name} via ${me.retailer_name}. Holds from customers arrive here.`;
+      return `You run ${storeLabel(me.store)} for ${me.brand_name} via ${me.retailer_name}. Holds from customers arrive here.`;
     case 'BRAND':
       return `You manage ${me.brand_name}. See what Qwikspot did for your brand, steer conversations and run your store network.`;
     case 'PLATFORM':

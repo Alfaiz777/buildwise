@@ -17,6 +17,8 @@ export interface Store {
   store_id: string;
   store_name: string;
   city: string;
+  /** L5: the store's area ("Satellite"), when the network has areas. */
+  area?: string | null;
   address: string | null;
   store_status: string;
   store_hours: Record<string, string> | null;

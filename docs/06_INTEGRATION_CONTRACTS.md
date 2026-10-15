@@ -571,7 +571,12 @@ Optional:
 ```text
 pickup_available
 reservation_available
+retailer_id
+area          (L5) the area the store serves, e.g. "Satellite" — at most 40 characters
+short_name    (L5) the store's name on a WhatsApp button, e.g. "Wellness" — at most 24 characters
 ```
+
+With `area`, a customer's area search lists only that area's stores. The area's centre and aliases come from the gazetteer in `domain/locality.ts`. "Pick up: <short_name>" must fit WhatsApp's 20-character button limit; a longer one falls back to "Pick up today" (00 §11.8 Change 17).
 
 Maximum file size: 10 MB per CSV file.
 

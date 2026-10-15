@@ -27,10 +27,10 @@ interface Row {
   qty: number;
 }
 const ROWS: Row[] = [
-  { id: 'r1', product: 'Vitamin C Glow Serum 30 ml', store: 'Andheri Store', status: 'PENDING', qty: 1 },
-  { id: 'r2', product: 'Niacinamide Serum 50 ml', store: 'Bandra Store', status: 'READY', qty: 2 },
-  { id: 'r3', product: 'Ceramide Cream 50 ml', store: 'Andheri Store', status: 'COMPLETED', qty: 1 },
-  { id: 'r4', product: 'Mineral Sunscreen 50 ml', store: 'Powai Store', status: 'CANCELLED', qty: 1 },
+  { id: 'r1', product: 'Vitamin C Glow Serum 30 ml', store: 'HealthPlus Chemist', status: 'PENDING', qty: 1 },
+  { id: 'r2', product: 'Niacinamide Serum 50 ml', store: 'Wellness Mart', status: 'READY', qty: 2 },
+  { id: 'r3', product: 'Ceramide Cream 50 ml', store: 'GlowUp Beauty', status: 'COMPLETED', qty: 1 },
+  { id: 'r4', product: 'Mineral Sunscreen 50 ml', store: 'Skin Studio', status: 'CANCELLED', qty: 1 },
 ];
 
 /**
@@ -185,10 +185,10 @@ export function UiKitPage() {
               { id: '2', title: 'Asked on WhatsApp: "Need it today"', time: '6:41 pm', tone: 'info' },
               {
                 id: '3',
-                title: 'Held at Andheri Store',
+                title: 'Held at Wellness Mart',
                 time: '6:42 pm',
                 tone: 'primary',
-                detail: 'Powai was out of stock; Andheri is 2.1 km away.',
+                detail: 'Nearest Satellite store with stock, 0.3 km away.',
               },
               { id: '4', title: 'Picked up — in-store purchase', time: '8:05 pm', tone: 'success' },
             ]}

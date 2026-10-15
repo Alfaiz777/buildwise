@@ -32,7 +32,8 @@ const PLATFORM_ADMIN = env.DEMO_PLATFORM_ADMIN_EMAIL ?? 'platform@qwikspot.test'
 const AUTH_URL = env.FIREBASE_API_KEY
   ? `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${env.FIREBASE_API_KEY}`
   : `http://${env.FIREBASE_AUTH_EMULATOR_HOST ?? '127.0.0.1:9099'}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`;
-const NEAR_POWAI = { latitude: 19.12, longitude: 72.9 };
+// L5: a shopper on Satellite Road, Ahmedabad — the Satellite area (Wellness Mart is nearest).
+const NEAR_SATELLITE = { latitude: 23.0285, longitude: 72.5262 };
 
 class CheckFailed extends Error {}
 const ok = (label: string) => console.log(`✔ ${label}`);
@@ -155,14 +156,14 @@ const offer = await step('Customer: storefront "Need it today?" → simulator ch
   );
   // The shopper sends the prefilled sentence as it is (L4: the chat is linked by recognising it).
   await send({ type: 'TEXT', text: click.whatsapp.prefilled_text });
-  const res = await send({ type: 'LOCATION', ...NEAR_POWAI });
+  const res = await send({ type: 'LOCATION', ...NEAR_SATELLITE });
   const holds = ((res.outbound_messages[0]?.options ?? []) as Json[])
     .map((o) => o.option_id as string)
     .filter((id) => id.startsWith('hold:'));
   must(
     holds.length > 0,
     `no store offered (the assistant said: "${String(res.outbound_messages[0]?.text ?? '').slice(0, 160)}"). ` +
-      'Stores must be open and in stock near Powai — Reset demo restores the stock.',
+      'Stores in Satellite must be open and in stock — Reset demo restores the stock.',
   );
   return holds;
 });

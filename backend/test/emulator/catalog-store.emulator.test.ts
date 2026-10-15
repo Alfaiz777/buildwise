@@ -96,10 +96,7 @@ beforeAll(async () => {
     email: 'admin@m3.test',
     status: 'ACTIVE',
   });
-  for (const [id, name] of [
-    ['rtl_north', 'North Retail'],
-    ['rtl_pune', 'Pune Retail'],
-  ]) {
+  for (const [id, name] of [['rtl_north', 'Ahmedabad Retail Partners']]) {
     await db.doc(`brands/${BRAND}/retailers/${id}`).set({ retailer_id: id, brand_id: BRAND, name, status: 'ACTIVE' });
   }
   tokens.brandAdmin = await signIn('admin@m3.test');
@@ -131,15 +128,15 @@ describe('M3 local E2E: catalogue sync → retail CSV import → store stock', (
     expect(processed.status).toBe(200);
     expect(processed.body).toMatchObject({
       status: 'COMPLETED',
-      rows_processed: 36,
-      rows_valid: 33,
+      rows_processed: 73,
+      rows_valid: 70,
       rows_invalid: 3,
       mappings_failed: 1,
     });
     expect(processed.body.row_errors.map((e: { code: string; line: number }) => [e.line, e.code])).toEqual([
       [12, 'INVALID_QUANTITY'],
-      [23, 'UNKNOWN_SKU'],
-      [37, 'INVALID_PRICE'],
+      [50, 'UNKNOWN_SKU'],
+      [66, 'INVALID_PRICE'],
     ]);
 
     const history = await call(tokens.brandAdmin!).get('/api/brand/retail-imports');
@@ -156,10 +153,12 @@ describe('M3 local E2E: catalogue sync → retail CSV import → store stock', (
       ]),
     );
     expect(byId).toEqual({
-      st_north_1: ['rtl_north', 10],
-      st_north_2: ['rtl_north', 10],
-      st_north_3: ['rtl_north', 7],
-      st_pune_1: ['rtl_pune', 6],
+      st_north_1: ['rtl_north', 11],
+      st_sat_2: ['rtl_north', 12],
+      st_sat_3: ['rtl_north', 12],
+      st_north_2: ['rtl_north', 12],
+      st_nav_2: ['rtl_north', 11],
+      st_nav_3: ['rtl_north', 12],
     });
 
     const inventory = await db.doc(`brands/${BRAND}/retailInventory/st_north_2__DBC-VCSERUM-30`).get();
@@ -180,14 +179,14 @@ describe('M3 local E2E: catalogue sync → retail CSV import → store stock', (
       reserved_quantity: 2,
       availability_status: 'LOW_STOCK',
     });
-    expect((await db.collection(`brands/${BRAND}/stores`).get()).size).toBe(4);
+    expect((await db.collection(`brands/${BRAND}/stores`).get()).size).toBe(6);
   });
 
   it('each RETAIL_ADMIN sees only its own store’s stock (same retailer, different stores)', async () => {
     const admin = call(tokens.brandAdmin!);
     for (const [storeId, email, key] of [
-      ['st_north_1', 'owner-bandra@m3.test', 'bandra'],
-      ['st_north_2', 'owner-andheri@m3.test', 'andheri'],
+      ['st_north_1', 'owner-wellness@m3.test', 'wellness'],
+      ['st_north_2', 'owner-healthplus@m3.test', 'healthplus'],
     ] as const) {
       const res = await admin.post(`/api/brand/stores/${storeId}/admins`, { email });
       expect(res.status).toBe(201);
@@ -196,20 +195,20 @@ describe('M3 local E2E: catalogue sync → retail CSV import → store stock', (
       tokens[key] = await signIn(email);
     }
 
-    const bandra = await call(tokens.bandra!).get('/api/retail/stores/st_north_1/inventory');
-    expect(bandra.status).toBe(200);
-    expect(bandra.body.items).toHaveLength(10);
-    expect(bandra.body.items.find((i: { sku: string }) => i.sku === 'DBC-VCSERUM-30')).toMatchObject({
+    const wellness = await call(tokens.wellness!).get('/api/retail/stores/st_north_1/inventory');
+    expect(wellness.status).toBe(200);
+    expect(wellness.body.items).toHaveLength(11);
+    expect(wellness.body.items.find((i: { sku: string }) => i.sku === 'DBC-VCSERUM-30')).toMatchObject({
       product_title: 'Vitamin C Glow Serum',
-      quantity: 3,
-      available_quantity: 3,
-      availability_status: 'LOW_STOCK',
+      quantity: 6,
+      available_quantity: 6,
+      availability_status: 'IN_STOCK',
     });
 
-    expect((await call(tokens.bandra!).get('/api/retail/stores/st_north_2/inventory')).status).toBe(404);
-    expect((await call(tokens.andheri!).get('/api/retail/stores/st_north_1/inventory')).status).toBe(404);
-    expect((await call(tokens.andheri!).get('/api/retail/stores/st_north_2/inventory')).status).toBe(200);
-    expect((await call(tokens.bandra!).post('/api/integrations/shopify/sync')).status).toBe(403);
-    expect((await call(tokens.bandra!).get('/api/brand/retail-imports')).status).toBe(403);
+    expect((await call(tokens.wellness!).get('/api/retail/stores/st_north_2/inventory')).status).toBe(404);
+    expect((await call(tokens.healthplus!).get('/api/retail/stores/st_north_1/inventory')).status).toBe(404);
+    expect((await call(tokens.healthplus!).get('/api/retail/stores/st_north_2/inventory')).status).toBe(200);
+    expect((await call(tokens.wellness!).post('/api/integrations/shopify/sync')).status).toBe(403);
+    expect((await call(tokens.wellness!).get('/api/brand/retail-imports')).status).toBe(403);
   });
 });

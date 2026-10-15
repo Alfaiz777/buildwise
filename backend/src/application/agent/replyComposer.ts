@@ -72,7 +72,9 @@ export async function composeReply(input: {
     const find = [...finds]
       .reverse()
       .find((f) => f.output.variant?.variant_id === decision.next_best_action.variant_id);
-    const rebuilt = find ? discoveryReply(find.output, { canHold: input.canHold }) : null;
+    const onlyStoreId = decision.next_best_action.show === 'ONE_STORE' ? decision.next_best_action.store_id : undefined;
+    const listAll = decision.next_best_action.show === 'ALL_STORES';
+    const rebuilt = find ? discoveryReply(find.output, { canHold: input.canHold, onlyStoreId, listAll }) : null;
     if (rebuilt) return rebuilt;
   }
   if (action === 'ALTERNATIVE_PRODUCT' || action === 'ONLINE_PURCHASE') {

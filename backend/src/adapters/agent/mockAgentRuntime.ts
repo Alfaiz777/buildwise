@@ -7,6 +7,7 @@ import type {
 } from '../../domain/agentTools.js';
 import type { AiAction, IntentType } from '../../domain/ai.js';
 import {
+  askLocationReply,
   clarifyReply,
   compareReply,
   discoveryReply,
@@ -21,6 +22,7 @@ import {
   type Reply,
 } from '../../domain/agentReplies.js';
 import { matchProducts, matchSize } from '../../domain/catalogMatch.js';
+import { namedShownStore } from '../../domain/locality.js';
 import { classifyMessage } from '../../domain/mockAgentRules.js';
 import type { AgentDecision, AgentRuntime, DecisionInput, ToolExecutor, ToolResult } from '../../ports/agent.js';
 
@@ -98,6 +100,8 @@ class MockRun {
     requiredTools?: string[];
     includeStoreContext?: boolean;
     askForConfirmation?: boolean;
+    /** L5: the card of one store the customer named. */
+    show?: 'ONE_STORE' | 'ALL_STORES';
   }): AgentDecision {
     const intentType = d.intentType ?? this.ctx.intent?.intent_type ?? 'UNKNOWN';
     return {
@@ -110,6 +114,7 @@ class MockRun {
         ...(d.variantId ? { variant_id: d.variantId } : {}),
         ...(d.quantity ? { quantity: d.quantity } : {}),
         ...(d.reservationId ? { reservation_id: d.reservationId } : {}),
+        ...(d.show ? { show: d.show } : {}),
         reason: d.reason,
       },
       response_strategy: {
@@ -148,6 +153,15 @@ class MockRun {
       isLocation: content.type === 'LOCATION',
       mentionsArea: false,
     });
+    // L5: a typed store name ("I'll go to GlowUp") among the stores just shown → that store's card.
+    // Checked before every other rule, so "hold it at GlowUp" never holds at another store.
+    const pending = this.ctx.pending_proposal;
+    const named =
+      content.type === 'TEXT' && pending?.offered_store_names?.length
+        ? namedShownStore(this.text, pending.offered_store_names)
+        : null;
+    if (named && rule.rule !== 'REFUSE' && rule.rule !== 'HUMAN' && rule.rule !== 'CANCEL')
+      return this.storeNamed(named);
     switch (rule.rule) {
       case 'REFUSE':
         return this.decision({
@@ -181,13 +195,24 @@ class MockRun {
       case 'OTHER_STORES':
         return this.storeSearch({ otherStores: true, fromLocation: false });
       case 'STORE_SEARCH':
-        return this.storeSearch({ otherStores: false, fromLocation: rule.fromLocation, variantId: rule.variantId });
+        return this.storeSearch({
+          otherStores: false,
+          fromLocation: rule.fromLocation,
+          variantId: rule.variantId,
+          ...(rule.area ? { basis: rule.area } : {}),
+        });
+      case 'ASK_AREA':
+        return this.decision({
+          action: 'NO_ACTION',
+          reply: askLocationReply(null, this.ctx.brand.areas ?? []),
+          reason: 'The customer wants another area: ask which.',
+        });
       case 'EDUCATE':
         return this.educate();
       case 'COMPARE':
         return this.compare();
       default:
-        // A bare area name ("I'm in Powai") answers the location question: only a store locality counts.
+        // A bare area name ("I'm in Satellite") answers the location question: only a store locality counts.
         if (this.text && (this.ctx.pending_proposal || this.ctx.intent?.variant_id)) {
           return this.storeSearch({ otherStores: false, fromLocation: false, areaOnly: true });
         }
@@ -428,14 +453,22 @@ class MockRun {
         intentType,
       });
     }
-    const exclude = opts.otherStores && this.ctx.pending_proposal ? [this.ctx.pending_proposal.store_id] : [];
+    // L5: in a brand with areas, "Other stores" lists the whole area, the store just shown included.
+    const listsArea = (this.ctx.brand.areas?.length ?? 0) > 0;
+    const exclude =
+      opts.otherStores && this.ctx.pending_proposal && !listsArea ? [this.ctx.pending_proposal.store_id] : [];
     const area = !opts.fromLocation && basis ? { area: basis } : {};
     const { output: find } = await this.call<NearbyStoresOutput>('find_nearby_stores', {
       variant_id: variantId,
       ...area,
       ...(exclude.length ? { skip_stores: exclude } : {}),
     });
-    if (opts.areaOnly && find?.origin?.source !== 'LOCALITY' && find?.status !== 'AMBIGUOUS_AREA') {
+    if (
+      opts.areaOnly &&
+      find?.origin?.source !== 'LOCALITY' &&
+      find?.status !== 'AMBIGUOUS_AREA' &&
+      find?.status !== 'UNSERVED_AREA'
+    ) {
       return this.clarify();
     }
     if (!find) {
@@ -446,7 +479,8 @@ class MockRun {
         intentType,
       });
     }
-    const reply = discoveryReply(find, { canHold: this.canHold });
+    const showAll = opts.otherStores && listsArea;
+    const reply = discoveryReply(find, { canHold: this.canHold, ...(showAll ? { listAll: true } : {}) });
     if (reply && find.status !== 'OK') {
       return this.decision({
         action: 'STORE_DISCOVERY',
@@ -454,10 +488,12 @@ class MockRun {
         reason:
           find.status === 'LOCATION_REQUIRED'
             ? 'No customer location: ask for the area, list no stores.'
-            : 'Area is ambiguous: ask.',
+            : find.status === 'UNSERVED_AREA'
+              ? 'The named area has no store: name the areas that do.'
+              : 'Area is ambiguous: ask.',
         intentType,
         variantId,
-        // Keep the product for the customer's answer ("Bandra") when nothing is bound yet.
+        // Keep the product for the customer's answer ("Navrangpura") when nothing is bound yet.
         requiredTools: this.ctx.intent ? [] : ['record_customer_intent'],
       });
     }
@@ -474,6 +510,7 @@ class MockRun {
         requiredTools: this.refineOrBind(intentType),
         includeStoreContext: true,
         askForConfirmation: this.canHold,
+        ...(showAll ? { show: 'ALL_STORES' as const } : {}),
       });
     }
     if (find.status !== 'OK' || !find.variant) {
@@ -506,6 +543,31 @@ class MockRun {
           variantId,
           requiredTools: this.refineOrBind(intentType),
         });
+  }
+
+  /**
+   * L5: the customer typed the name of a store just shown. Its own card, with Pick up there — one
+   * more tap holds it, so a typo or a vague "I'll go there" never reserves the wrong store.
+   */
+  private async storeNamed(storeId: string): Promise<AgentDecision> {
+    const variantId = this.ctx.pending_proposal!.variant_id;
+    const { output: find } = await this.call<NearbyStoresOutput>('find_nearby_stores', { variant_id: variantId });
+    const store = find?.eligible.find((s) => s.store_id === storeId);
+    if (!find || !store) {
+      return this.storeSearch({ otherStores: false, fromLocation: true, variantId });
+    }
+    return this.decision({
+      action: 'STORE_DISCOVERY',
+      reply: discoveryReply(find, { canHold: this.canHold, onlyStoreId: storeId })!,
+      reason: `The customer named ${store.store_name}: its card, a hold needs one more tap.`,
+      intentType: this.ctx.intent?.intent_type ?? 'STORE_ORIENTED',
+      confidence: 0.9,
+      storeId,
+      variantId,
+      show: 'ONE_STORE',
+      includeStoreContext: true,
+      askForConfirmation: this.canHold,
+    });
   }
 
   private async findAlternative(find: NearbyStoresOutput, area: { area?: string }) {

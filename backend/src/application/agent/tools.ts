@@ -26,7 +26,14 @@ import {
   resolveMessagingSettings,
 } from '../../domain/brandSettings.js';
 import { matchProducts, matchSize } from '../../domain/catalogMatch.js';
-import { primaryLocality, resolveLocality, roundCoordinate } from '../../domain/locality.js';
+import {
+  areaNamed,
+  nearestArea,
+  primaryLocality,
+  resolveLocality,
+  roundCoordinate,
+  servedAreas,
+} from '../../domain/locality.js';
 import { ACTIVE_RESERVATION_STATUSES, resolveReservationPolicy } from '../../domain/reservationStatus.js';
 import { closingTimeToday, isOpenNow } from '../../domain/storeHours.js';
 import {
@@ -380,19 +387,28 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
       };
       if (!base.variant) return ok({ ...base, status: 'UNKNOWN_VARIANT' });
       const stores = await deps.stores.list(scope.brandId);
+      // L5: a brand whose stores have areas is searched one area at a time.
+      // Areas and place names come from ACTIVE stores only (Reset demo retires stores it no longer has).
+      const activeStores = stores.filter((s) => s.storeStatus === 'ACTIVE');
+      const areas = servedAreas(activeStores);
+      base.served_areas = areas.map((a) => a.name);
+      let area: string | null = null;
 
       // Location: given coordinates → an area matching one store locality → the customer's last location.
       let origin: GeoPoint | null = null;
       if (input.latitude !== undefined && input.longitude !== undefined) {
         origin = { latitude: roundCoordinate(input.latitude), longitude: roundCoordinate(input.longitude) };
         base.origin = { source: 'SHARED', approximate: false, locality: null };
+        area = nearestArea(origin, areas)?.name ?? null; // a shared location picks its nearest area
       } else if (input.area) {
-        const resolved = resolveLocality(input.area, stores);
+        const resolved = resolveLocality(input.area, activeStores);
         if (resolved.status === 'AMBIGUOUS')
           return ok({ ...base, status: 'AMBIGUOUS_AREA', ambiguous_areas: resolved.localities });
+        if (resolved.status === 'UNSERVED') return ok({ ...base, status: 'UNSERVED_AREA' });
         if (resolved.status === 'MATCH') {
           origin = resolved.origin;
           base.origin = { source: 'LOCALITY', approximate: true, locality: resolved.locality };
+          area = resolved.area ?? null;
         }
       }
       if (!origin) {
@@ -401,13 +417,17 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
         if (!last) return ok({ ...base, status: 'LOCATION_REQUIRED' });
         origin = { latitude: last.latitude, longitude: last.longitude };
         base.origin = { source: last.source, approximate: last.source === 'LOCALITY', locality: last.locality };
+        if (areas.length > 0) area = (areaNamed(last.locality, areas) ?? nearestArea(origin, areas))?.name ?? null;
       }
+      base.area = area;
       base.origin_point = origin;
 
       const stock = await deps.inventory.listByVariant(scope.brandId, input.variant_id);
       const freshnessHours = resolveFreshnessHours((await deps.brands.getById(scope.brandId))?.settings ?? {});
       const byStore = new Map(stock.map((row) => [row.storeId, row]));
-      const candidates = stores.filter((s) => !excludedIds.includes(s.storeId));
+      // In an area, only its stores; skip_stores always applies (a refusing store is never offered again).
+      const inArea = (s: (typeof stores)[number]) => !area || s.area?.trim().toLowerCase() === area.toLowerCase();
+      const candidates = stores.filter((s) => inArea(s) && !excludedIds.includes(s.storeId));
       const result = findEligibleStores({
         origin,
         radiusKm,
@@ -433,6 +453,8 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
           offline_price: byStore.get(s.storeId)?.offlinePrice ?? null,
           stock_updated_at: byStore.get(s.storeId)?.lastUpdatedAt ?? null,
           stale: isStockStale(byStore.get(s.storeId)?.lastUpdatedAt ?? null, now, freshnessHours),
+          area: s.area ?? null,
+          short_name: s.shortName ?? null,
         };
       });
       base.excluded = result.excluded

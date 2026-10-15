@@ -102,6 +102,10 @@ export interface StoreRecord {
   pickupAvailable: boolean;
   /** The store's single RETAIL_ADMIN (at most one per store), or null before provisioning. */
   retailAdminUserId: string | null;
+  /** L5: the area the store serves ("Satellite"); stores without one keep the older name-based localities. */
+  area?: string | null;
+  /** L5: a short name for buttons ("Pick up: Wellness" — WhatsApp allows 20 characters). */
+  shortName?: string | null;
 }
 
 /** Store fields a retail import may set. Never retailer_id or retail_admin_user_id. */
@@ -116,6 +120,9 @@ export interface StoreImportFields {
   storeStatus: 'ACTIVE' | 'INACTIVE';
   reservationAvailable: boolean;
   pickupAvailable: boolean;
+  /** L5, optional CSV columns `area` and `short_name`. */
+  area?: string | null;
+  shortName?: string | null;
 }
 
 export interface StoreRepository {

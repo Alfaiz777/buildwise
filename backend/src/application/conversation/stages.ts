@@ -17,7 +17,7 @@ import {
   isProposalLive,
   type PendingProposal,
 } from '../../domain/guardrail.js';
-import { roundCoordinate } from '../../domain/locality.js';
+import { namedShownStore, roundCoordinate } from '../../domain/locality.js';
 import { canTransition, resolveReservationPolicy } from '../../domain/reservationStatus.js';
 import { nearestOf, unmetDemandPayload } from '../../domain/unmetDemand.js';
 import {
@@ -437,7 +437,12 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
       // model as the configured runtime, the deterministic rules decide it and the model is not
       // called — faster, and the same decision every time. The guardrail runs as for any decision.
       const content = context.inbound.content;
-      const ruleTap = Boolean(backupAgent) && content.type === 'INTERACTIVE_REPLY' && isRuleTap(content.optionId);
+      // L5: so is a typed store name among the stores just shown ("I'll go to GlowUp" → its card).
+      const shownStores = pkg.context.pending_proposal?.offered_store_names ?? [];
+      const typedStore =
+        content.type === 'TEXT' && shownStores.length > 0 && namedShownStore(input.text ?? '', shownStores) !== null;
+      const ruleTap =
+        Boolean(backupAgent) && ((content.type === 'INTERACTIVE_REPLY' && isRuleTap(content.optionId)) || typedStore);
       const result = ruleTap
         ? await runAgentRuntime(backupAgent!, input, tools, budget)
         : await runAgentRuntime(deps.agent, input, tools, budget - backupBudget);
@@ -776,9 +781,15 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
         }
 
         // The hold offered in this reply becomes the conversation's pending proposal.
-        const offered = (reply.options ?? [])
+        let offered = (reply.options ?? [])
           .map((o) => parseOption(o.option_id))
           .flatMap((o) => (o.kind === 'HOLD' ? [o.storeId] : []));
+        // L5: an area card names up to 3 stores but shows one Pick up button — all of them were offered.
+        const areaSearch = [...finds]
+          .reverse()
+          .find((f) => f.output.area && f.output.eligible.some((s) => s.store_id === offered[0]));
+        if (offered.length > 0 && areaSearch)
+          offered = [...new Set([...offered, ...areaSearch.output.eligible.slice(0, 3).map((s) => s.store_id)])];
         let pending: PendingProposal | null | undefined;
         if (executed?.type === 'RESERVATION_CREATED') pending = null;
         else if (offered.length > 0) {

@@ -22,7 +22,7 @@ const VIEWPORTS = [
 ];
 const USERS = {
   brand: 'admin@demo-brand.test',
-  store: 'retail-admin-north-2@qwikspot.test',
+  store: 'retail-admin-north-1@qwikspot.test',
   platform: 'platform@qwikspot.test',
 };
 
@@ -70,7 +70,7 @@ const shot = async (page, name, vp, fullPage = false) => {
 
 /**
  * UI-2 shopper journey as a guest: product page → "Need it today?" (docked chat on desktop,
- * /chat on phones) → Near Powai → store found → other stores (list sheet) → hold (pickup
+ * /chat on phones) → Near Satellite → area card → other stores (list sheet) → hold (pickup
  * pass) → the store confirms in its own tab → the store update appears in the chat.
  */
 async function shopperJourney(vp, newPage, storePage, brandPage) {
@@ -91,21 +91,13 @@ async function shopperJourney(vp, newPage, storePage, brandPage) {
   await chat.getByRole('button', { name: 'Send' }).click();
   await chat.locator('.wa-msg--in').first().waitFor({ timeout: T });
   await chat.getByRole('button', { name: 'Share location' }).click();
-  await chat.getByRole('menuitem', { name: /Near Powai/ }).click();
+  await chat.getByRole('menuitem', { name: /Near Satellite/ }).click();
   await chat
-    .getByRole('button', { name: /^Hold / })
+    .getByRole('button', { name: /^Pick up: / })
     .last()
     .waitFor({ timeout: T });
   await shot(page, 'chat-store-found', vp);
-  // Near Bandra several stores qualify: the reply offers "Other stores" → a list.
-  await chat.getByRole('button', { name: 'Share location' }).click();
-  await chat.getByRole('menuitem', { name: /Near Bandra/ }).click();
-  await chat
-    .locator('.wa-msg--in')
-    .nth(3)
-    .waitFor({ timeout: T })
-    .catch(() => undefined);
-  await page.waitForTimeout(500);
+  // "Other stores" lists every Satellite store.
   const other = chat.getByRole('button', { name: 'Other stores' });
   if (
     await other
@@ -121,12 +113,12 @@ async function shopperJourney(vp, newPage, storePage, brandPage) {
     const sheet = page.getByRole('dialog', { name: 'Choose a store' });
     await sheet.waitFor({ timeout: T });
     await shot(page, 'chat-list-sheet', vp);
-    const andheri = sheet.getByRole('button', { name: /Andheri/ });
-    await ((await andheri.count()) ? andheri.first() : sheet.locator('.wa-row').first()).click();
+    const wellness = sheet.getByRole('button', { name: /Wellness Mart/ });
+    await ((await wellness.count()) ? wellness.first() : sheet.locator('.wa-row').first()).click();
   } else {
     console.error('(no "Other stores" offered: list shot skipped)');
     await chat
-      .getByRole('button', { name: /^Hold / })
+      .getByRole('button', { name: /^Pick up: / })
       .last()
       .click();
   }
@@ -167,7 +159,7 @@ async function shopperJourney(vp, newPage, storePage, brandPage) {
       await storePage.waitForTimeout(1_000);
     }
   } catch {
-    console.error('(no Andheri hold to fulfil: store update / pickup skipped)');
+    console.error('(no Wellness Mart hold to fulfil: store update / pickup skipped)');
   }
   await brandPage.goto(`${BASE}/brand/conversations`);
   await brandPage

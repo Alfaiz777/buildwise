@@ -16,13 +16,14 @@ import type {
   IntentRecord,
   JsonValue,
 } from '../../ports/conversationRepositories.js';
-import type { BrandRecord, ProductRepository } from '../../ports/repositories.js';
+import { servedAreas } from '../../domain/locality.js';
+import type { BrandRecord, ProductRepository, StoreRepository } from '../../ports/repositories.js';
 import { alternativesOf, catalogIndex, sheetOf } from './tools.js';
 
 export const HISTORY_LIMIT = 10;
 
 export async function buildAgentContext(
-  deps: { products: ProductRepository; conversations: ConversationRepository },
+  deps: { products: ProductRepository; conversations: ConversationRepository; stores?: StoreRepository },
   input: {
     brand: BrandRecord;
     customer: CustomerRecord;
@@ -35,11 +36,14 @@ export async function buildAgentContext(
   const settings = brand.settings ?? {};
   const messaging = resolveMessagingSettings(settings, brand.name);
   const policy = resolveReservationPolicy(settings);
-  const [products, variants, messages] = await Promise.all([
+  const [products, variants, messages, stores] = await Promise.all([
     deps.products.listProducts(brand.brandId),
     deps.products.listVariants(brand.brandId),
     deps.conversations.listMessages(brand.brandId, conversation.conversationId),
+    deps.stores ? deps.stores.list(brand.brandId) : Promise.resolve([]),
   ]);
+  const storeById = new Map(stores.map((s) => [s.storeId, s]));
+  const areas = servedAreas(stores.filter((s) => s.storeStatus === 'ACTIVE')).map((a) => a.name);
 
   const bound = intent?.productId ? products.find((p) => p.productId === intent.productId) : undefined;
   const sheets = bound ? [bound, ...alternativesOf(bound, products)].map((p) => sheetOf(p, variants, settings)) : [];
@@ -58,6 +62,7 @@ export async function buildAgentContext(
       },
       handoff_enabled: messaging.handoffEnabled,
       online_purchase_available: onlineProductUrl(settings, 'x') !== null,
+      ...(areas.length > 0 ? { areas } : {}),
     },
     customer: {
       channel: conversation.channel,
@@ -92,6 +97,10 @@ export async function buildAgentContext(
           proposed_at: pending.proposedAt,
           expires_at: pending.expiresAt,
           offered_stores: pending.offeredStores,
+          offered_store_names: pending.offeredStores.flatMap((id) => {
+            const s = storeById.get(id);
+            return s ? [{ store_id: id, store_name: s.storeName, short_name: s.shortName ?? null }] : [];
+          }),
         }
       : null,
   };

@@ -34,8 +34,8 @@ The login page lists every demo account under **Try the demo** (DEMO_MODE; it ne
 | Account | Email | Opens |
 |---|---|---|
 | Brand Admin — Demo Beauty Co | `admin@demo-brand.test` | Brand Console |
-| Retail Admin — Andheri Store | `retail-admin-north-2@qwikspot.test` | Store Console — the demo hold lands here |
-| Retail Admin — Bandra Store | `retail-admin-north-1@qwikspot.test` | Store Console (Bandra only) |
+| Retail Admin — Wellness Mart, Satellite | `retail-admin-north-1@qwikspot.test` | Store Console — the demo hold lands here |
+| Retail Admin — HealthPlus Chemist, Navrangpura | `retail-admin-north-2@qwikspot.test` | Store Console (HealthPlus only) |
 | Platform Admin | `platform@qwikspot.test` | Platform Console |
 
 Local demo password: `qwikspot-demo-1` (emulators only; a deployed demo uses its own secret).
@@ -48,9 +48,9 @@ Start from a clean demo: **Brand Console → Overview → Demo guide → Reset d
 |---|---|---|---|
 | 1 | Landing | **See it as a shopper** | The brand's demo store |
 | 2 | Shopper demo | **Vitamin C Glow Serum** → 30 ml → **Need it today? Check a store near you** → send | The brand's chat (docked on desktop, full screen on a phone) |
-| 3 | Chat | **📍 → Near Powai**, then **Pick up today** | Powai is out of stock, so the card offers "Pick up today at Andheri Store, 7.6 km" next to "Home delivery in 4–5 days"; then the pickup pass, pickup code and the store's location |
-| 4 | New tab: **Store login** (Andheri) | **Confirm → Mark ready → Customer arrived → Complete** with the code from the chat | Confirm and Mark ready appear in the shopper's chat, Complete sends one thank-you; "Why this hold came to you" on the card |
-| 5 | **Brand login** → Conversations | Open the conversation | The journey from the website to "Picked up at Andheri Store — in-store purchase", and why Andheri was offered |
+| 3 | Chat | Type **Satellite** (or **📍 → Near Satellite**), then **Pick up: Wellness** | "In stock at 3 stores in Satellite" — Wellness Mart, GlowUp Beauty and CityCare Pharmacy, nearest first, next to home delivery; then the pickup pass, pickup code and the store's location. **Other stores** lists the area; typing **Navrangpura** switches area |
+| 4 | New tab: **Store login** (Wellness Mart) | **Confirm → Mark ready → Customer arrived → Complete** with the code from the chat | Confirm and Mark ready appear in the shopper's chat, Complete sends one thank-you; "Why this hold came to you" on the card |
+| 5 | **Brand login** → Conversations | Open the conversation | The journey from the website to "Picked up at Wellness Mart — in-store purchase", and why Wellness Mart was offered |
 | 6 | Brand → Insights | — | The funnel, the weekday reading (an availability problem, not a demand problem), suggestions linked to the store |
 | 7 | Shopper demo → **Demo controls** | **Sign in as Asha** → add the serum to the bag → leave; ~3 minutes later Brand → Conversations → **Process due work now** | The cart follow-up arrives in Asha's chat, with quick replies. Every "Sign in as Asha" is its own synthetic customer |
 | 8 | **Platform login** | Overview → Retail network → System | Results across brands as counts, store health flags, and how Qwikspot runs today (Mock AI, simulator, mock catalogue) |

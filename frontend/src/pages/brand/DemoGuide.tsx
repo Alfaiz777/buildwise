@@ -67,21 +67,22 @@ export function DemoGuide({ brandId }: { brandId: string }) {
           <em>Need it today? Check a store near you</em> and send the message that is ready in the chat.
         </li>
         <li>
-          <strong>Pick up today.</strong> In the chat, <em>📍 → Near Powai</em>. Powai is out of stock, so the assistant
-          offers &quot;Pick up today at Andheri Store, 7.6 km&quot; next to &quot;Home delivery in 4–5 days&quot;. Tap{' '}
-          <em>Pick up today</em>: the pickup pass and the store&apos;s location arrive.
+          <strong>Pick up today.</strong> In the chat, type <em>Satellite</em> (or <em>📍 → Near Satellite</em>). The
+          assistant lists the three Satellite stores with stock, nearest first, next to home delivery. Tap{' '}
+          <em>Pick up: Wellness</em>: the pickup pass and the store&apos;s location arrive. <em>Other stores</em> lists
+          the whole area; typing <em>Navrangpura</em> switches area.
         </li>
         <li>
-          <strong>Fulfil in store.</strong> In a new tab, sign in as <em>Retail Admin — Andheri Store</em>: Confirm →
-          Mark ready → Customer arrived → Complete with the pickup code from the chat. Confirm and Mark ready appear in
-          the shopper&apos;s chat, and Complete sends one short thank-you.{' '}
+          <strong>Fulfil in store.</strong> In a new tab, sign in as <em>Retail Admin — Wellness Mart, Satellite</em>:
+          Confirm → Mark ready → Customer arrived → Complete with the pickup code from the chat. Confirm and Mark ready
+          appear in the shopper&apos;s chat, and Complete sends one short thank-you.{' '}
           <a href="/login?as=store" {...newTab}>
             Open a store sign-in tab
           </a>
         </li>
         <li>
           <strong>See the journey and why.</strong> Here, the conversation&apos;s timeline ends &quot;Picked up at
-          Andheri Store — in-store purchase&quot;, with one sentence on why Andheri was offered.{' '}
+          Wellness Mart — in-store purchase&quot;, with one sentence on why Wellness Mart was offered.{' '}
           <Link to="/brand/conversations">Conversations</Link>
         </li>
         <li>

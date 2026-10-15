@@ -35,9 +35,10 @@ if (!AUTH_HOST || !FS_HOST) {
 
 const ORIGIN = 'http://localhost:5173';
 const PASSWORD = 'password-123';
-const NEAR_POWAI = { latitude: 19.12, longitude: 72.9 };
-const NEAR_BANDRA = { latitude: 19.06, longitude: 72.83 };
-const clock = { t: Date.parse('2026-10-07T06:30:00.000Z') }; // Wednesday 12:00 in Mumbai
+// L5 (demo-retail.csv, Ahmedabad): C.G. Road is Navrangpura (HealthPlus nearest), Satellite Road is Satellite.
+const NEAR_CG_ROAD = { latitude: 23.0352, longitude: 72.5602 };
+const NEAR_SATELLITE = { latitude: 23.0285, longitude: 72.5262 };
+const clock = { t: Date.parse('2026-10-07T06:30:00.000Z') }; // Wednesday 12:00 IST
 
 let app: ReturnType<typeof createApp>;
 let db: ReturnType<typeof initFirebase>['db'];
@@ -147,7 +148,7 @@ afterAll(async () => {
 });
 
 describe('M7 full journey — platform → brand → stores → customer → store → outcome → insights', () => {
-  let andheriHold = { id: '', pickupCode: '', conversationId: '', recommendationId: '' };
+  let healthPlusHold = { id: '', pickupCode: '', conversationId: '', recommendationId: '' };
 
   it('1 · the Platform Admin creates a brand and provisions its Brand Admin, who signs in', async () => {
     const created = await as('platform').post('/api/platform/brands', { name: 'Journey Beauty' });
@@ -177,12 +178,13 @@ describe('M7 full journey — platform → brand → stores → customer → sto
     const sync = await as('brand').post('/api/integrations/shopify/sync');
     expect(sync.body.status).toBe('CONNECTED');
 
-    const north = (await as('brand').post('/api/brand/retailers', { name: 'North Retail' })).body.retailer_id;
-    const pune = (await as('brand').post('/api/brand/retailers', { name: 'Pune Retail' })).body.retailer_id;
+    const north = (await as('brand').post('/api/brand/retailers', { name: 'Ahmedabad Retail Partners' })).body
+      .retailer_id;
     expect(north).toBeTruthy();
-    const csv = (await readFile(new URL('../../fixtures/retail/demo-retail.csv', import.meta.url), 'utf8'))
-      .replaceAll(',rtl_north,', `,${north},`)
-      .replaceAll(',rtl_pune,', `,${pune},`);
+    const csv = (await readFile(new URL('../../fixtures/retail/demo-retail.csv', import.meta.url), 'utf8')).replaceAll(
+      ',rtl_north,',
+      `,${north},`,
+    );
     const created = await as('brand').post('/api/brand/retail-imports', { file_name: 'journey-retail.csv' });
     expect((await as('brand').put(created.body.upload.url, Buffer.from(csv))).status).toBe(200);
     const report = await as('brand').post(`/api/brand/retail-imports/${created.body.import.import_id}/process`);
@@ -195,8 +197,8 @@ describe('M7 full journey — platform → brand → stores → customer → sto
     expect(stores.find((s: { store_id: string }) => s.store_id === 'st_north_2').retailer_id).toBe(north);
 
     for (const [storeId, email, key] of [
-      ['st_north_2', 'andheri@journey.test', 'andheri'],
-      ['st_north_1', 'bandra@journey.test', 'bandra'],
+      ['st_north_2', 'healthplus@journey.test', 'healthplus'],
+      ['st_north_1', 'wellness@journey.test', 'wellness'],
     ] as const) {
       const res = await as('brand').post(`/api/brand/stores/${storeId}/admins`, { email });
       expect(res.status).toBe(201);
@@ -232,7 +234,7 @@ describe('M7 full journey — platform → brand → stores → customer → sto
       (await db.collection(`brands/${brandId}/auditEvents`).where('action', '==', 'INTENT_TOKEN_BOUND').get()).size,
     ).toBe(1);
 
-    const offer = await asha.share(NEAR_POWAI);
+    const offer = await asha.share(NEAR_CG_ROAD);
     expect(optionIds(offer)).toContain('hold:st_north_2');
     const hold = await asha.tap('hold:st_north_2');
     expect(hold.body.decision).toMatchObject({
@@ -241,7 +243,7 @@ describe('M7 full journey — platform → brand → stores → customer → sto
     });
     const id = hold.body.decision.executed_action.reservation_id as string;
     const doc = (await db.doc(`brands/${brandId}/reservations/${id}`).get()).data()!;
-    andheriHold = {
+    healthPlusHold = {
       id,
       pickupCode: doc.pickup_code,
       conversationId: hold.body.conversation_id,
@@ -251,24 +253,24 @@ describe('M7 full journey — platform → brand → stores → customer → sto
   }, 60_000);
 
   it('4 · the Retail Admin confirms → ready → arrived → completes with the code → OFFLINE; the brand sees it in Outcomes and the trace', async () => {
-    const { id, pickupCode, conversationId } = andheriHold;
-    const queue = await as('andheri').get('/api/reservations?view=active');
+    const { id, pickupCode, conversationId } = healthPlusHold;
+    const queue = await as('healthplus').get('/api/reservations?view=active');
     expect(queue.body.reservations.map((r: { reservation_id: string }) => r.reservation_id)).toEqual([id]);
     expect(JSON.stringify(queue.body)).not.toMatch(/asha|sim:|cus_/); // no customer identity at the store
-    // UI-4: why the hold came here — store names and Andheri's own distance only.
+    // UI-4: why the hold came here — HealthPlus's own distance only (no closer store was skipped).
     expect(queue.body.reservations[0].why_here.text).toMatch(
-      /^Powai Store was closer but out of stock\. You were the nearest store with stock — \d+(\.\d)? km from the customer\.$/,
+      /^You were the nearest store with stock — \d+(\.\d)? km from the customer\.$/,
     );
     expect(JSON.stringify(queue.body)).not.toMatch(/latitude|longitude|conversation_id/);
     // UI-4: the store's own demand slice; a sibling store of the same retailer is 404.
-    expect((await as('andheri').get('/api/retail/stores/st_north_2/insights')).status).toBe(200);
-    expect((await as('andheri').get('/api/retail/stores/st_north_1/insights')).status).toBe(404);
-    expect((await as('bandra').get('/api/reservations?view=active')).body.reservations).toEqual([]);
+    expect((await as('healthplus').get('/api/retail/stores/st_north_2/insights')).status).toBe(200);
+    expect((await as('healthplus').get('/api/retail/stores/st_north_1/insights')).status).toBe(404);
+    expect((await as('wellness').get('/api/reservations?view=active')).body.reservations).toEqual([]);
 
-    expect((await move('andheri', id, 'CONFIRMED', 'PENDING')).body.notification.status).toBe('SENT');
-    await move('andheri', id, 'READY', 'CONFIRMED');
-    await move('andheri', id, 'CUSTOMER_ARRIVED', 'READY');
-    const done = await move('andheri', id, 'COMPLETED', 'CUSTOMER_ARRIVED', { pickup_code: pickupCode });
+    expect((await move('healthplus', id, 'CONFIRMED', 'PENDING')).body.notification.status).toBe('SENT');
+    await move('healthplus', id, 'READY', 'CONFIRMED');
+    await move('healthplus', id, 'CUSTOMER_ARRIVED', 'READY');
+    const done = await move('healthplus', id, 'COMPLETED', 'CUSTOMER_ARRIVED', { pickup_code: pickupCode });
     expect(done.body.status).toBe('COMPLETED');
 
     const insights = await as('brand').get('/api/brand/insights?days=28');
@@ -283,7 +285,7 @@ describe('M7 full journey — platform → brand → stores → customer → sto
       detail.body.recommendations.at(-1).reservation.status_history.map((h: { status: string }) => h.status),
     ).toEqual(['PENDING', 'CONFIRMED', 'READY', 'CUSTOMER_ARRIVED', 'COMPLETED']);
     expect(detail.body.outcomes).toEqual([
-      expect.objectContaining({ purchase_type: 'OFFLINE', store_name: 'Andheri Store', value: 795 }),
+      expect.objectContaining({ purchase_type: 'OFFLINE', store_name: 'HealthPlus Chemist', value: 795 }),
     ]);
     expect(insights.body.funnel.value.amount).toBeGreaterThanOrEqual(795);
   }, 60_000);
@@ -291,7 +293,7 @@ describe('M7 full journey — platform → brand → stores → customer → sto
   it('5 · Buy online → qs_ref → demo storefront order → ONLINE outcome', async () => {
     const om = customer('om_journey');
     await om.fromStore('I need it today');
-    await om.share(NEAR_POWAI);
+    await om.share(NEAR_CG_ROAD);
     const online = await om.tap('buy_online');
     const ref = /qs_ref=([0-9A-Z]{26})/.exec(online.body.outbound_messages[0].text)![1];
     const order = await request(app).post('/api/demo-storefront/orders').set('Origin', ORIGIN).send({
@@ -308,20 +310,21 @@ describe('M7 full journey — platform → brand → stores → customer → sto
   it('6 · the store refuses → the customer gets an apology and a hold at the next store → a new reservation', async () => {
     const ravi = customer('ravi_journey');
     await ravi.fromStore('I need it today');
-    const offer = await ravi.share(NEAR_BANDRA);
+    const offer = await ravi.share(NEAR_SATELLITE);
     expect(optionIds(offer)).toContain('hold:st_north_1');
     const hold = await ravi.tap('hold:st_north_1');
     const id = hold.body.decision.executed_action.reservation_id as string;
-    const refused = await move('bandra', id, 'CANCELLED', 'PENDING', { cancel_reason: 'NOT_ACTUALLY_IN_STOCK' });
+    const refused = await move('wellness', id, 'CANCELLED', 'PENDING', { cancel_reason: 'NOT_ACTUALLY_IN_STOCK' });
     expect(refused.body).toMatchObject({ cancelled_by: 'RETAILER', notification: { event: 'REFUSED' } });
     const messages = (await as('brand').get(`/api/brand/conversations/${hold.body.conversation_id}`)).body.messages as {
       text: string;
       options?: { option_id: string }[];
     }[];
     const apology = messages.at(-1)!;
-    expect(apology.text).toMatch(/^Sorry — Bandra Store can't fulfil your reservation/);
-    expect(apology.options!.map((o) => o.option_id)).toContain('hold:st_north_2');
-    const again = await ravi.tap('hold:st_north_2');
+    expect(apology.text).toMatch(/^Sorry — Wellness Mart can't fulfil your reservation/);
+    expect(apology.options!.map((o) => o.option_id)).toContain('hold:st_sat_2');
+    expect(apology.options!.map((o) => o.option_id)).not.toContain('hold:st_north_1');
+    const again = await ravi.tap('hold:st_sat_2');
     expect(again.body.decision.executed_action.type).toBe('RESERVATION_CREATED');
   }, 60_000);
 
@@ -344,23 +347,23 @@ describe('M7 full journey — platform → brand → stores → customer → sto
     const say = (content: object) =>
       shopper('post', '/messages').send({ client_message_id: `cm_shopjourney_${++n}`, content });
     await say({ type: 'TEXT', text: `I need it today ${refOf(click.body.whatsapp)}` });
-    const offer = (await say({ type: 'LOCATION', ...NEAR_POWAI })).body.messages.at(-1);
+    const offer = (await say({ type: 'LOCATION', ...NEAR_CG_ROAD })).body.messages.at(-1);
     expect(offer.parts.header).toMatchObject({ type: 'IMAGE' });
     expect(offer.parts.footer).toBe('Powered by Qwikspot');
-    // Earlier steps may leave other holds at Andheri: take the one this tap created.
-    const pendingAtAndheri = async () =>
+    // Earlier steps may leave other holds at HealthPlus: take the one this tap created.
+    const pendingAtHealthPlus = async () =>
       (await db.collection(`brands/${brandId}/reservations`).where('store_id', '==', 'st_north_2').get()).docs
         .map((d) => d.data())
         .filter((r) => r.status === 'PENDING')
         .map((r) => r.reservation_id as string);
-    const before = new Set(await pendingAtAndheri());
+    const before = new Set(await pendingAtHealthPlus());
     const hold = (await say({ type: 'INTERACTIVE_REPLY', option_id: 'hold:st_north_2' })).body.messages.at(-1);
     expect(hold.text).toContain('On hold for you');
     const all = (await shopper('get', '/messages')).body.messages;
-    const created = (await pendingAtAndheri()).filter((r) => !before.has(r));
+    const created = (await pendingAtHealthPlus()).filter((r) => !before.has(r));
     expect(created).toHaveLength(1);
     const id = created[0]!;
-    await move('andheri', id, 'CONFIRMED', 'PENDING');
+    await move('healthplus', id, 'CONFIRMED', 'PENDING');
     const update = (await shopper('get', `/messages?after=${all.at(-1).message_id}`)).body.messages;
     expect(update.map((m: { text: string }) => m.text)).toEqual([expect.stringContaining('confirmed your hold')]);
     expect(update[0]).not.toHaveProperty('origin');
@@ -393,7 +396,7 @@ describe('M7 full journey — platform → brand → stores → customer → sto
     expect(log).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
     expect(log).not.toMatch(/\+91|\b\d{10}\b/);
     expect(log).not.toMatch(/START_QWIKSPOT_|qs_ref=/);
-    expect(log).not.toMatch(new RegExp(`\\b${andheriHold.pickupCode}\\b`));
-    expect(log).not.toMatch(/I need it today|Sorry — Bandra/);
+    expect(log).not.toMatch(new RegExp(`\\b${healthPlusHold.pickupCode}\\b`));
+    expect(log).not.toMatch(/I need it today|Sorry — Wellness/);
   });
 });

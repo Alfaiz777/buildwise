@@ -816,3 +816,29 @@ firestore.indexes.json          intentTokens (text_hash, brand_id)
 ### Teach-back
 
 The link between the website and the chat used to be something the shopper could see. Now it is something only Qwikspot can recognise: the exact words it wrote for them, within a short window, once.
+
+## L5 — an Ahmedabad store network, one area at a time
+
+### What changed
+
+```text
+fixtures/retail/*.csv           six Ahmedabad stores in two areas; new optional columns area, short_name
+domain/locality.ts              AREA_GAZETTEER (centres, aliases), servedAreas, nearestArea, namedShownStore
+application/agent/tools.ts      find_nearby_stores searches one area; UNSERVED_AREA for a place with no store
+domain/agentReplies.ts          the area card (Pick up: <short>), Other stores with "Check another area"
+mockAgentRuntime / stages.ts    a typed store name → that store's card (a rule, like a tap); never a hold
+demoResetService.ts             stores outside the new network become INACTIVE
+```
+
+### What can fail?
+
+- Six stores within a few kilometres make "nearest store with stock" almost always succeed, so the old weekday story ("no store had it on Saturdays") disappeared from the synthetic history. The history now searches one area at a time, the way the agent does.
+- A typed store name could be a question about the store ("is GlowUp open?"): it shows that store's card and holds nothing, so the worst case is one extra tap.
+- Two short names in one message, or a name not on the last card, match nothing. The agent handles those as usual.
+- A refusal used to re-offer the next store by distance. In area mode, "Other stores" had been written to ignore `skip_stores` (so the area list includes the store just shown), which would have re-offered the refusing store. Now `skip_stores` always applies; only the mock runtime's "Other stores" leaves it out and asks for `show: ALL_STORES`. A re-offer stays inside the customer's area, so the extended-radius offer (another area's store) no longer happens there.
+- Reset demo keeps stores (they have Retail Admins), so the old Mumbai stores would have lingered on a live project. Reset now sets them INACTIVE, and the area search reads ACTIVE stores only.
+- The browser plan `scripts/judge-test-plan.mjs` still tells the Mumbai story. It needs a rewrite against a running stack.
+
+### Teach-back
+
+A store list is only useful if the customer recognises the place. Asking for an area the customer knows, then showing that area's stores by name and street, replaces a distance from a point they never chose.

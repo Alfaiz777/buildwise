@@ -23,7 +23,7 @@ export const REQUIRED_COLUMNS = [
   'offline_price',
 ];
 
-export const OPTIONAL_COLUMNS = ['pickup_available', 'reservation_available', 'retailer_id'];
+export const OPTIONAL_COLUMNS = ['pickup_available', 'reservation_available', 'retailer_id', 'area', 'short_name'];
 
 export type RowErrorCode =
   | 'MISSING_VALUE'
@@ -68,6 +68,9 @@ export interface NormalizedStore {
   pickupAvailable: boolean;
   /** From the optional column; null when absent (ownership is then left unchanged). */
   retailerId: string | null;
+  /** L5, optional: the area the store serves and a short name for buttons. */
+  area: string | null;
+  shortName: string | null;
 }
 
 export interface StockRow {
@@ -204,6 +207,8 @@ function normalizeRow(values: Record<string, string>): {
       reservationAvailable,
       pickupAvailable,
       retailerId: retailerRaw || null,
+      area: get('area').replace(/\s+/g, ' ').slice(0, 40) || null,
+      shortName: get('short_name').replace(/\s+/g, ' ').slice(0, 24) || null,
     },
     sku,
     quantity: Number(qty),

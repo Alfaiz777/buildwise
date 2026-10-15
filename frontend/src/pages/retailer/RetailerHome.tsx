@@ -9,6 +9,7 @@ import { label } from '../../lib/labels';
 import { formatDateTime, formatPrice } from '../brand/types';
 import { itemLabel, RetailerQueue, type QueueReservation } from './RetailerQueue';
 import { playNewHoldTone, useNewHoldTitle, useStoreSound } from './storeAlert';
+import { storeLabel } from '../../lib/storeLabel';
 
 const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -255,7 +256,7 @@ export function StoreStock({ autoPoll = false }: { autoPoll?: boolean }) {
         <dl className="settings-list">
           <dt>Store</dt>
           <dd>
-            {store.store_name} <span className="muted small mono">{store.store_id}</span>
+            {storeLabel(store)} <span className="muted small mono">{store.store_id}</span>
           </dd>
           <dt>Retailer</dt>
           <dd>{me.retailer_name}</dd>

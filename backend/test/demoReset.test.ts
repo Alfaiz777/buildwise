@@ -84,3 +84,57 @@ describe('Reset demo before the Shopify store is connected (L1, fresh gcp projec
     expect(res.body.pending).toBeNull();
   });
 });
+
+describe('Reset demo rebuilds the Ahmedabad network (L5)', () => {
+  it('the six area stores are active; a store of an older network keeps its admin but becomes INACTIVE', async () => {
+    const w = buildTestWorld({ demo: DEMO });
+    w.retailers.retailers.push({
+      brandId: 'brand_A',
+      retailerId: 'rtl_north',
+      name: 'Ahmedabad Retail Partners',
+      status: 'ACTIVE',
+    });
+    await w.stores.upsertFromImport('brand_A', [
+      {
+        storeId: 'st_north_3',
+        storeName: 'Powai Store',
+        city: 'Mumbai',
+        address: 'Hiranandani Gardens, Powai',
+        latitude: 19.1176,
+        longitude: 72.906,
+        storeHours: { timezone: 'Asia/Kolkata', monday: '10:00-21:00' },
+        storeStatus: 'ACTIVE',
+        reservationAvailable: true,
+        pickupAvailable: true,
+      },
+    ]);
+    const old = w.stores.stores.find((s) => s.brandId === 'brand_A' && s.storeId === 'st_north_3')!;
+    old.retailerId = 'rtl_north';
+    old.retailAdminUserId = 'radmin_old';
+
+    const res = await reset(w.app, 'admin_a');
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const stores = w.stores.stores.filter((s) => s.brandId === 'brand_A');
+    expect(
+      stores
+        .filter((s) => s.area)
+        .map((s) => [s.storeId, s.area, s.storeStatus])
+        .sort(),
+    ).toEqual(
+      [
+        ['st_nav_2', 'Navrangpura', 'ACTIVE'],
+        ['st_nav_3', 'Navrangpura', 'ACTIVE'],
+        ['st_north_1', 'Satellite', 'ACTIVE'],
+        ['st_north_2', 'Navrangpura', 'ACTIVE'],
+        ['st_sat_2', 'Satellite', 'ACTIVE'],
+        ['st_sat_3', 'Satellite', 'ACTIVE'],
+      ].sort(),
+    );
+    expect(await w.stores.get('brand_A', 'st_north_3')).toMatchObject({
+      storeStatus: 'INACTIVE',
+      retailerId: 'rtl_north',
+      retailAdminUserId: 'radmin_old',
+    });
+    expect(stores.filter((s) => s.storeStatus === 'ACTIVE' && !s.area)).toEqual([]);
+  });
+});

@@ -237,43 +237,56 @@ describe('commerce sync (MockCommerceProvider → products, variants, mappings, 
 describe('RetailImportService (validate → normalize → map → Firestore)', () => {
   it('imports the demo CSV: stores, stock, mappings and a report with real row errors', async () => {
     const world = buildTestWorld();
-    world.retailers.retailers.push(
-      { brandId: 'brand_A', retailerId: 'rtl_north', name: 'North Retail', status: 'ACTIVE' },
-      { brandId: 'brand_A', retailerId: 'rtl_pune', name: 'Pune Retail', status: 'ACTIVE' },
-    );
+    world.retailers.retailers.push({
+      brandId: 'brand_A',
+      retailerId: 'rtl_north',
+      name: 'Ahmedabad Retail Partners',
+      status: 'ACTIVE',
+    });
     await world.commerceSync.sync('brand_A', SYSTEM);
     const demo = readFileSync(new URL('../fixtures/retail/demo-retail.csv', import.meta.url));
     const report = await importCsv(world, demo);
 
     expect(report.record).toMatchObject({
       status: 'COMPLETED',
-      rowsProcessed: 36,
-      rowsValid: 33,
+      rowsProcessed: 73,
+      rowsValid: 70,
       rowsInvalid: 3,
       mappingsFailed: 1,
     });
     expect(report.rowErrors.map((e) => [e.code, e.sku, e.storeId])).toEqual([
       ['INVALID_QUANTITY', 'DBC-SALCLN-100', 'st_north_1'],
       ['UNKNOWN_SKU', 'DBC-LIPBALM-10', 'st_north_2'],
-      ['INVALID_PRICE', 'DBC-HASERUM-30', 'st_pune_1'],
+      ['INVALID_PRICE', 'DBC-HASERUM-30', 'st_nav_2'],
     ]);
 
-    // Stores created with their retailer, never with a Retail Admin.
-    const powai = (await world.stores.get('brand_A', 'st_north_3'))!;
-    expect(powai).toMatchObject({ retailerId: 'rtl_north', retailAdminUserId: null, storeName: 'Powai Store' });
-    expect(powai.storeHours).toMatchObject({ timezone: 'Asia/Kolkata', sunday: '' });
+    // L5: six Ahmedabad stores in two areas, with their retailer, never with a Retail Admin.
+    expect(
+      world.stores.stores.filter((s) => s.brandId === 'brand_A' && s.area).map((s) => [s.storeId, s.area, s.shortName]),
+    ).toEqual([
+      ['st_north_1', 'Satellite', 'Wellness'],
+      ['st_sat_2', 'Satellite', 'GlowUp'],
+      ['st_sat_3', 'Satellite', 'CityCare'],
+      ['st_north_2', 'Navrangpura', 'HealthPlus'],
+      ['st_nav_3', 'Navrangpura', 'MediGlow'],
+      ['st_nav_2', 'Navrangpura', 'Skin Studio'],
+    ]);
+    const cityCare = (await world.stores.get('brand_A', 'st_sat_3'))!;
+    expect(cityCare).toMatchObject({
+      retailerId: 'rtl_north',
+      retailAdminUserId: null,
+      storeName: 'CityCare Pharmacy',
+      city: 'Ahmedabad',
+    });
+    expect(cityCare.storeHours).toMatchObject({ timezone: 'Asia/Kolkata', sunday: '' }); // closed on Sundays
 
-    // The demo story: Vitamin C serum 30 ml — Powai 0, Bandra 3, Andheri 5; 50 ml: 0 in all Mumbai stores.
+    // The demo story: Vitamin C serum 30 ml — Satellite 6 / 3 / 2; Navrangpura 5 / 2 and none at Skin Studio.
     const qty = (store: string, sku: string) =>
       world.inventory.rows.find((r) => r.storeId === store && r.canonicalSku === sku)?.quantity;
-    expect([
-      qty('st_north_3', 'DBC-VCSERUM-30'),
-      qty('st_north_1', 'DBC-VCSERUM-30'),
-      qty('st_north_2', 'DBC-VCSERUM-30'),
-    ]).toEqual([0, 3, 5]);
-    expect(['st_north_1', 'st_north_2', 'st_north_3'].map((s) => qty(s, 'DBC-VCSERUM-50'))).toEqual([0, 0, 0]);
-    expect(qty('st_pune_1', 'DBC-VCSERUM-50')).toBe(4);
-    expect(world.inventory.rows.find((r) => r.inventoryId === 'st_north_1__DBC-VCSERUM-30')).toMatchObject({
+    expect(
+      ['st_north_1', 'st_sat_2', 'st_sat_3', 'st_north_2', 'st_nav_3', 'st_nav_2'].map((s) => qty(s, 'DBC-VCSERUM-30')),
+    ).toEqual([6, 3, 2, 5, 2, 0]);
+    expect(world.inventory.rows.find((r) => r.inventoryId === 'st_sat_3__DBC-VCSERUM-30')).toMatchObject({
       variantId: 'var_2001',
       availabilityStatus: 'LOW_STOCK',
     });

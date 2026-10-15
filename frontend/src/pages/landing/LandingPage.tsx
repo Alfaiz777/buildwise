@@ -218,7 +218,7 @@ export function LandingPage({ profile = 'local' }: { profile?: FrontendProfile }
               [
                 LineChart,
                 'Learn',
-                'Every pickup, online order and missed request becomes an insight, like "Andheri runs out of Serum 30 ml on Saturdays."',
+                'Every pickup, online order and missed request becomes an insight, like "Navrangpura runs out of Serum 30 ml on Saturdays."',
               ],
             ].map(([Icon, title, text], i) => {
               const I = Icon as typeof EyeOff;
@@ -248,9 +248,9 @@ export function LandingPage({ profile = 'local' }: { profile?: FrontendProfile }
             <ol className="lp-timeline" aria-label="Example journey">
               {[
                 ['6:40 pm', 'Priya views Vitamin C Glow Serum 30 ml and taps "Need it today?"'],
-                ['6:41 pm', "The brand's WhatsApp offers Andheri Store; Powai is out of stock."],
+                ['6:41 pm', "The brand's WhatsApp lists three Satellite stores with stock, nearest first."],
                 ['6:42 pm', 'She holds it and gets pickup code 48••••.'],
-                ['7:30 pm', 'Andheri Store marks it ready.'],
+                ['7:30 pm', 'Wellness Mart marks it ready.'],
                 ['8:05 pm', 'She picks it up.'],
               ].map(([time, text]) => (
                 <li key={time}>

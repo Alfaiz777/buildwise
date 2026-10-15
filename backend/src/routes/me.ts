@@ -7,6 +7,7 @@ export const storeJson = (s: StoreRecord) => ({
   store_id: s.storeId,
   store_name: s.storeName,
   city: s.city,
+  area: s.area ?? null,
   address: s.address,
   store_status: s.storeStatus,
   store_hours: s.storeHours,

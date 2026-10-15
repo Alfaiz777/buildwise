@@ -13,7 +13,8 @@ export type MockRule =
   | { rule: 'HOLD'; storeId: string | null }
   | { rule: 'BUY_ONLINE' }
   | { rule: 'OTHER_STORES' }
-  | { rule: 'STORE_SEARCH'; fromLocation: boolean; variantId?: string }
+  | { rule: 'STORE_SEARCH'; fromLocation: boolean; variantId?: string; area?: string }
+  | { rule: 'ASK_AREA' }
   | { rule: 'EDUCATE' }
   | { rule: 'COMPARE' }
   | { rule: 'CLARIFY' };
@@ -49,6 +50,9 @@ export function classifyMessage(input: {
     if (option.kind === 'HANDOFF') return { rule: 'HUMAN' };
     // M6: "Check stores again" after an expired hold — a fresh search for that variant.
     if (option.kind === 'RECHECK') return { rule: 'STORE_SEARCH', fromLocation: true, variantId: option.variantId };
+    // L5: an area button ("Satellite") searches that area; "Check another area" asks again.
+    if (option.kind === 'AREA') return { rule: 'STORE_SEARCH', fromLocation: false, area: option.area };
+    if (option.kind === 'ASK_AREA') return { rule: 'ASK_AREA' };
     return { rule: 'CLARIFY' };
   }
   const text = input.text ?? '';
