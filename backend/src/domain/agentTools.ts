@@ -97,6 +97,9 @@ export interface StoreOption {
   /** M7 (Change 14, G1): when this store's stock row was last updated, and whether that is older than the brand allows. */
   stock_updated_at: string | null;
   stale: boolean;
+  /** L5: the store's area and its short name for buttons (null for stores without them). */
+  area?: string | null;
+  short_name?: string | null;
 }
 
 export interface ExcludedStoreView {
@@ -124,7 +127,8 @@ export interface VariantView {
 }
 
 export interface NearbyStoresOutput {
-  status: 'OK' | 'LOCATION_REQUIRED' | 'AMBIGUOUS_AREA' | 'UNKNOWN_VARIANT';
+  /** UNSERVED_AREA (L5): the customer named a place the brand has no store in. */
+  status: 'OK' | 'LOCATION_REQUIRED' | 'AMBIGUOUS_AREA' | 'UNSERVED_AREA' | 'UNKNOWN_VARIANT';
   variant: VariantView | null;
   origin: { source: 'SHARED' | 'LOCALITY'; approximate: boolean; locality: string | null } | null;
   /** Coordinates of the origin (rounded); the trace redacts them. */
@@ -134,6 +138,10 @@ export interface NearbyStoresOutput {
   eligible: StoreOption[];
   excluded: ExcludedStoreView[];
   ambiguous_areas: string[];
+  /** L5: the areas the brand serves (empty for a brand whose stores have no area). */
+  served_areas?: string[];
+  /** L5: the area the stores were searched in (only that area's stores are listed), or null. */
+  area?: string | null;
 }
 
 export interface StoreInventoryOutput {

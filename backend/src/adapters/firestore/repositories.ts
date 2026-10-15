@@ -293,6 +293,8 @@ const StoreDoc = z.object({
   longitude: z.number().nullable().optional(),
   reservation_available: z.boolean().optional(),
   pickup_available: z.boolean().optional(),
+  area: z.string().nullable().optional(),
+  short_name: z.string().nullable().optional(),
 });
 
 const toStore = (storeId: string, brandId: string, d: z.infer<typeof StoreDoc>): StoreRecord => ({
@@ -309,6 +311,8 @@ const toStore = (storeId: string, brandId: string, d: z.infer<typeof StoreDoc>):
   longitude: d.longitude ?? null,
   reservationAvailable: d.reservation_available ?? true,
   pickupAvailable: d.pickup_available ?? true,
+  area: d.area ?? null,
+  shortName: d.short_name ?? null,
 });
 
 export class FirestoreStoreRepository implements StoreRepository {
@@ -350,6 +354,8 @@ export class FirestoreStoreRepository implements StoreRepository {
           store_status: s.storeStatus,
           reservation_available: s.reservationAvailable,
           pickup_available: s.pickupAvailable,
+          area: s.area ?? null,
+          short_name: s.shortName ?? null,
           updated_at: now,
         };
         // Ownership and admin fields are only initialized on create, never overwritten.

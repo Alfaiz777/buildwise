@@ -31,10 +31,11 @@ const ORIGIN = 'http://localhost:5173';
 const PASSWORD = 'password-123';
 const A = 'brd_m6'; // scenarios 1–3, 8, 9
 const B = 'brd_m6b'; // scenarios 4–7 (the simulator allows 30 messages/min per Brand Admin)
-const NEAR_POWAI = { latitude: 19.12, longitude: 72.9 };
-const NEAR_BANDRA = { latitude: 19.06, longitude: 72.83 };
+// L5 (demo-retail.csv, Ahmedabad): C.G. Road is Navrangpura (HealthPlus nearest), Satellite Road is Satellite.
+const NEAR_CG_ROAD = { latitude: 23.0352, longitude: 72.5602 };
+const NEAR_SATELLITE = { latitude: 23.0285, longitude: 72.5262 };
 
-const clock = { t: Date.parse('2026-10-07T06:30:00.000Z') }; // Wednesday 12:00 in Mumbai
+const clock = { t: Date.parse('2026-10-07T06:30:00.000Z') }; // Wednesday 12:00 IST
 const advanceMinutes = (m: number) => (clock.t += m * 60_000);
 
 let app: ReturnType<typeof createApp>;
@@ -95,14 +96,12 @@ async function seedBrand(brandId: string, key: string) {
     email,
     status: 'ACTIVE',
   });
-  for (const id of ['rtl_north', 'rtl_pune']) {
-    await db.doc(`brands/${brandId}/retailers/${id}`).set({
-      retailer_id: id,
-      brand_id: brandId,
-      name: id === 'rtl_north' ? 'North Retail' : 'Pune Retail',
-      status: 'ACTIVE',
-    });
-  }
+  await db.doc(`brands/${brandId}/retailers/rtl_north`).set({
+    retailer_id: 'rtl_north',
+    brand_id: brandId,
+    name: 'Ahmedabad Retail Partners',
+    status: 'ACTIVE',
+  });
   tokens[key] = await signIn(email);
   expect((await as(key).post('/api/integrations/shopify/sync')).status).toBe(200);
   const created = await as(key).post('/api/brand/retail-imports', { file_name: 'demo-retail.csv' });
@@ -195,9 +194,10 @@ beforeAll(async () => {
   ({ auth, db } = initFirebase(PROJECT, config.emulators));
   await seedBrand(A, 'a');
   await seedBrand(B, 'b');
-  await retailAdmin('a', 'st_north_2', 'andheri@m6.test', 'andheri');
-  await retailAdmin('a', 'st_north_1', 'bandra@m6.test', 'bandra');
-  await retailAdmin('b', 'st_north_2', 'andheri@m6b.test', 'andheriB');
+  await retailAdmin('a', 'st_north_2', 'healthplus@m6.test', 'healthplus');
+  await retailAdmin('a', 'st_north_1', 'wellness@m6.test', 'wellness');
+  await retailAdmin('a', 'st_nav_3', 'mediglow@m6.test', 'mediglow');
+  await retailAdmin('b', 'st_north_2', 'healthplus@m6b.test', 'healthplusB');
 }, 90_000);
 
 afterAll(async () => {
@@ -207,32 +207,32 @@ afterAll(async () => {
 describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
   it('1+2 · reserve → queue → confirmed → ready → arrived → wrong code 422 → right code → OFFLINE, stock drops', async () => {
     const asha = customer('a', A, 'asha');
-    const { id, pickupCode, conversationId } = await hold(asha, A, NEAR_POWAI, 'st_north_2');
+    const { id, pickupCode, conversationId } = await hold(asha, A, NEAR_CG_ROAD, 'st_north_2');
     expect(await stock(A, 'st_north_2')).toMatchObject({ quantity: 5, reserved_quantity: 1 });
 
-    const queue = await as('andheri').get('/api/reservations?view=active');
+    const queue = await as('healthplus').get('/api/reservations?view=active');
     expect(queue.body.reservations).toEqual([expect.objectContaining({ reservation_id: id, status: 'PENDING' })]);
-    expect((await as('bandra').get('/api/reservations?view=active')).body.reservations).toEqual([]);
-    expect((await move('bandra', id, 'CONFIRMED', 'PENDING')).status).toBe(404); // same retailer, other store
+    expect((await as('wellness').get('/api/reservations?view=active')).body.reservations).toEqual([]);
+    expect((await move('wellness', id, 'CONFIRMED', 'PENDING')).status).toBe(404); // same retailer, other store
     expect((await move('a', id, 'CONFIRMED', 'PENDING')).status).toBe(403); // the brand views only
 
-    const confirmed = await move('andheri', id, 'CONFIRMED', 'PENDING');
+    const confirmed = await move('healthplus', id, 'CONFIRMED', 'PENDING');
     expect(confirmed.body).toMatchObject({
       status: 'CONFIRMED',
       notification: { status: 'SENT', message_kind: 'SESSION' },
     });
     expect((await lastUpdate(A, conversationId)).text).toBe(
-      `✅ *Andheri Store confirmed your hold*\n1 × Vitamin C Glow Serum 30 ml\nPickup code: *${pickupCode}* · held until 14:00 (store time)`,
+      `✅ *HealthPlus Chemist confirmed your hold*\n1 × Vitamin C Glow Serum 30 ml\nPickup code: *${pickupCode}* · held until 14:00 (store time)`,
     );
 
-    await move('andheri', id, 'READY', 'CONFIRMED');
+    await move('healthplus', id, 'READY', 'CONFIRMED');
     const ready = await lastUpdate(A, conversationId);
     expect(ready.text).toContain(`Show code *${pickupCode}* at the counter.`);
-    expect(ready.parts.location).toMatchObject({ name: 'Andheri Store', latitude: 19.1364, longitude: 72.8296 });
-    expect((await move('andheri', id, 'READY', 'CONFIRMED')).body.error.code).toBe('STALE_STATUS');
-    await move('andheri', id, 'CUSTOMER_ARRIVED', 'READY');
+    expect(ready.parts.location).toMatchObject({ name: 'HealthPlus Chemist', latitude: 23.034, longitude: 72.5595 });
+    expect((await move('healthplus', id, 'READY', 'CONFIRMED')).body.error.code).toBe('STALE_STATUS');
+    await move('healthplus', id, 'CUSTOMER_ARRIVED', 'READY');
 
-    const wrong = await move('andheri', id, 'COMPLETED', 'CUSTOMER_ARRIVED', {
+    const wrong = await move('healthplus', id, 'COMPLETED', 'CUSTOMER_ARRIVED', {
       pickup_code: pickupCode === '000000' ? '111111' : '000000',
     });
     expect([wrong.status, wrong.body.error.code]).toEqual([422, 'PICKUP_CODE_MISMATCH']);
@@ -242,13 +242,13 @@ describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
     });
     expect(await stock(A, 'st_north_2')).toMatchObject({ quantity: 5, reserved_quantity: 1 });
 
-    const done = await move('andheri', id, 'COMPLETED', 'CUSTOMER_ARRIVED', { pickup_code: pickupCode });
+    const done = await move('healthplus', id, 'COMPLETED', 'CUSTOMER_ARRIVED', { pickup_code: pickupCode });
     expect(done.status).toBe(200);
     // Judge-test fixes: one plain-text thank-you from the brand (inside the 24-hour window), no footer.
     expect(done.body.notification).toMatchObject({ status: 'SENT', event: 'COMPLETED', message_kind: 'SESSION' });
     const thanks = await lastUpdate(A, conversationId);
     expect(thanks.text).toMatch(
-      /^Thanks for picking up \*Vitamin C Glow Serum 30 ml\* at Andheri Store\. Enjoy it! — /,
+      /^Thanks for picking up \*Vitamin C Glow Serum 30 ml\* at HealthPlus Chemist\. Enjoy it! — /,
     );
     expect(thanks.parts?.footer ?? null).toBeNull();
     expect(await stock(A, 'st_north_2')).toMatchObject({ quantity: 4, reserved_quantity: 0 });
@@ -270,70 +270,66 @@ describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
     expect(outcomeEvents.size).toBe(1);
   }, 60_000);
 
-  it('2b · refusal with no other store within 10 km → the nearest within 25 km is offered with its distance; the hold is allowed; the store sees why', async () => {
-    // Near Powai: Powai is out of stock, Andheri (7.6 km) takes the hold, Bandra is 10.6 km away.
+  it('2b · refusal in an area → the area’s next store is offered (never the refusing one); the hold is allowed; the store sees why', async () => {
+    // C.G. Road: HealthPlus (nearest) takes the hold; MediGlow is the other Navrangpura store with stock.
     const kiran = customer('a', A, 'kiran_m6');
-    const { id, conversationId } = await hold(kiran, A, NEAR_POWAI, 'st_north_2');
-    const refused = await move('andheri', id, 'CANCELLED', 'PENDING', { cancel_reason: 'DAMAGED' });
+    const { id, conversationId } = await hold(kiran, A, NEAR_CG_ROAD, 'st_north_2');
+    const refused = await move('healthplus', id, 'CANCELLED', 'PENDING', { cancel_reason: 'DAMAGED' });
     expect(refused.body.notification).toMatchObject({ status: 'SENT', event: 'REFUSED' });
     const offer = await lastUpdate(A, conversationId);
-    expect(offer.text).toContain('No other store near you has it. The nearest one is *Bandra Store*, 10.6 km away.');
-    expect(offer.text).toContain('🏬 Pick up today at *Bandra Store*, 10.6 km');
-    expect(offer.text).toContain('🚚 Home delivery in 4–5 days');
-    expect(offer.options.map((o: { option_id: string; label: string }) => [o.option_id, o.label])).toEqual([
-      ['hold:st_north_1', 'Pick up today'],
-      ['buy_online', 'Home delivery'],
-    ]);
-    const conversation = (await db.doc(`brands/${A}/conversations/${conversationId}`).get()).data()!;
-    expect(conversation.pending_proposal).toMatchObject({ store_id: 'st_north_1', radius_km: 25 });
-    const tap = await kiran.tap('hold:st_north_1');
+    expect(offer.text).toMatch(/^Sorry — HealthPlus Chemist can't fulfil/);
+    expect(offer.text).toContain('*MediGlow Pharmacy*');
+    const ids = offer.options.map((o: { option_id: string }) => o.option_id);
+    expect(ids[0]).toBe('hold:st_nav_3');
+    expect(ids).not.toContain('hold:st_north_2');
+    const tap = await kiran.tap('hold:st_nav_3');
     expect(tap.body.decision.executed_action.type).toBe('RESERVATION_CREATED');
     const second = tap.body.decision.executed_action.reservation_id as string;
-    const card = (await as('bandra').get('/api/reservations?view=active')).body.reservations.find(
+    const card = (await as('mediglow').get('/api/reservations?view=active')).body.reservations.find(
       (r: { reservation_id: string }) => r.reservation_id === second,
     );
-    expect(card.why_here.text).toBe(
-      "Andheri Store couldn't fulfil the customer's hold, so it came to you — 10.6 km from the customer.",
+    expect(card.why_here.text).toMatch(
+      /^HealthPlus Chemist couldn't fulfil the customer's hold, so it came to you — \d+\.\d km from the customer\.$/,
     );
     // Release the hold so later tests see the seeded stock.
-    await move('bandra', second, 'CANCELLED', 'PENDING', { cancel_reason: 'DAMAGED' });
+    await move('mediglow', second, 'CANCELLED', 'PENDING', { cancel_reason: 'DAMAGED' });
   }, 60_000);
 
   it('3 · refusal NOT_ACTUALLY_IN_STOCK → apology + hold at the next store → tap → new reservation; the refusing store shows unavailable', async () => {
     const ravi = customer('a', A, 'ravi_m6');
-    const { id, conversationId } = await hold(ravi, A, NEAR_BANDRA, 'st_north_1');
-    const refused = await move('bandra', id, 'CANCELLED', 'PENDING', { cancel_reason: 'NOT_ACTUALLY_IN_STOCK' });
+    const { id, conversationId } = await hold(ravi, A, NEAR_SATELLITE, 'st_north_1');
+    const refused = await move('wellness', id, 'CANCELLED', 'PENDING', { cancel_reason: 'NOT_ACTUALLY_IN_STOCK' });
     expect(refused.body).toMatchObject({
       status: 'CANCELLED',
       cancelled_by: 'RETAILER',
       notification: { status: 'SENT', event: 'REFUSED' },
     });
     const message = await lastUpdate(A, conversationId);
-    expect(message.text).toMatch(/^Sorry — Bandra Store can't fulfil your reservation/);
-    expect(message.options.map((o: { option_id: string }) => o.option_id)).toEqual(['hold:st_north_2', 'buy_online']);
-    const bandra = await stock(A, 'st_north_1');
-    expect(bandra.quantity).toBe(bandra.reserved_quantity); // available 0
-    expect(bandra.availability_status).toBe('OUT_OF_STOCK');
-    const retail = await as('bandra').get('/api/retail/stores/st_north_1/inventory');
+    expect(message.text).toMatch(/^Sorry — Wellness Mart can't fulfil your reservation/);
+    expect(message.options.map((o: { option_id: string }) => o.option_id)[0]).toBe('hold:st_sat_2');
+    const wellness = await stock(A, 'st_north_1');
+    expect(wellness.quantity).toBe(wellness.reserved_quantity); // available 0
+    expect(wellness.availability_status).toBe('OUT_OF_STOCK');
+    const retail = await as('wellness').get('/api/retail/stores/st_north_1/inventory');
     expect(retail.body.items.find((i: { sku: string }) => i.sku === 'DBC-VCSERUM-30')).toMatchObject({
       available_quantity: 0,
     });
 
-    const tap = await ravi.tap('hold:st_north_2');
+    const tap = await ravi.tap('hold:st_sat_2');
     expect(tap.body.decision.executed_action.type).toBe('RESERVATION_CREATED');
     const again = (
       await db.doc(`brands/${A}/reservations/${tap.body.decision.executed_action.reservation_id}`).get()
     ).data()!;
-    expect(again).toMatchObject({ store_id: 'st_north_2', status: 'PENDING' });
+    expect(again).toMatchObject({ store_id: 'st_sat_2', status: 'PENDING' });
   }, 60_000);
 
   it('9 · an opted-out customer is not notified; the store sees it', async () => {
     const meera = customer('a', A, 'meera_m6');
-    const { id } = await hold(meera, A, NEAR_POWAI, 'st_north_2');
+    const { id } = await hold(meera, A, NEAR_CG_ROAD, 'st_north_2');
     await meera.say('STOP');
-    const res = await move('andheri', id, 'CONFIRMED', 'PENDING');
+    const res = await move('healthplus', id, 'CONFIRMED', 'PENDING');
     expect(res.body.notification).toMatchObject({ status: 'NOT_SENT_OPTED_OUT' });
-    const card = (await as('andheri').get('/api/reservations?view=active')).body.reservations.find(
+    const card = (await as('healthplus').get('/api/reservations?view=active')).body.reservations.find(
       (r: { reservation_id: string }) => r.reservation_id === id,
     );
     expect(card.last_notification).toMatchObject({ status: 'NOT_SENT_OPTED_OUT', event: 'CONFIRMED' });
@@ -341,10 +337,10 @@ describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
 
   it('4 · a refusal when no other store qualifies → online / alternative and UNMET_DEMAND', async () => {
     const neha = customer('b', B, 'neha_m6');
-    const { id, conversationId } = await hold(neha, B, NEAR_POWAI, 'st_north_2');
-    // Bandra (10.6 km, within the 25 km extended radius) would otherwise be offered: empty it.
-    await db.doc(`brands/${B}/retailInventory/st_north_1__DBC-VCSERUM-30`).update({ quantity: 0 });
-    await move('andheriB', id, 'CANCELLED', 'PENDING', { cancel_reason: 'DAMAGED' });
+    const { id, conversationId } = await hold(neha, B, NEAR_CG_ROAD, 'st_north_2');
+    // MediGlow, the other Navrangpura store with stock, would otherwise be offered: empty it.
+    await db.doc(`brands/${B}/retailInventory/st_nav_3__DBC-VCSERUM-30`).update({ quantity: 0 });
+    await move('healthplusB', id, 'CANCELLED', 'PENDING', { cancel_reason: 'DAMAGED' });
     const message = await lastUpdate(B, conversationId);
     expect(message.text).toContain(
       "Vitamin C Glow Serum 30 ml isn't available for pickup at a store near you right now.",
@@ -363,7 +359,7 @@ describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
   it('5 · Buy online → qs_ref → demo storefront order → ONLINE outcome linked to the recommendation', async () => {
     const om = customer('b', B, 'om_m6');
     await om.fromStore('hi');
-    await om.share(NEAR_POWAI);
+    await om.share(NEAR_CG_ROAD);
     const online = await om.tap('buy_online');
     const ref = /qs_ref=([0-9A-Z]{26})/.exec(online.body.outbound_messages[0].text)![1];
     expect(online.body.outbound_messages[0].text).toContain(
@@ -390,7 +386,7 @@ describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
 
   it('6 · a hold expires and nothing is bought → expiry notice; NONE only after the attribution window', async () => {
     const zoya = customer('b', B, 'zoya_m6');
-    const { conversationId } = await hold(zoya, B, NEAR_POWAI, 'st_north_2');
+    const { conversationId } = await hold(zoya, B, NEAR_CG_ROAD, 'st_north_2');
     const journeyOutcome = async () => {
       const intent = (await db.doc(`brands/${B}/conversations/${conversationId}`).get()).get('current_intent_id');
       return (await db.collection(`brands/${B}/outcomes`).where('source_intent_id', '==', intent).get()).docs.map((d) =>
@@ -401,7 +397,7 @@ describe('M6 E2E — store fulfilment, notifications, outcomes', () => {
     const first = await as('b').post('/api/brand/follow-ups/process-due');
     expect(first.body.reservations_expired).toBeGreaterThanOrEqual(1);
     expect((await lastUpdate(B, conversationId)).text).toBe(
-      'Your hold at Andheri Store for Vitamin C Glow Serum 30 ml has expired.',
+      'Your hold at HealthPlus Chemist for Vitamin C Glow Serum 30 ml has expired.',
     );
     // Not at the moment the hold expires: the 30-min window counts from when the hold ended.
     expect(await journeyOutcome()).toEqual([]);

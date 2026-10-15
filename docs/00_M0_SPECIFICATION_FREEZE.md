@@ -779,6 +779,29 @@ Interfaces only: the guardrail, reservation rules, follow-up policy, outcome rul
   - The Brand Admin login hint no longer mentions the simulator; `scripts/judge-test-plan.mjs` runs the whole plan in a browser.
 - **Change 16 in one paragraph.** Qwikspot now has five surfaces — a public **landing** page, a DEMO_MODE-gated **shopper demo** (`/shop`, `/chat`) on signed per-tab sessions, and three role consoles (**Brand**, **Store**, **Platform**) on one design system. Customer messages are structured WhatsApp parts checked by a domain validator, always from the brand, with "Powered by Qwikspot" only as the footer of interactive automated messages. The Brand Console is results-first, with one journey per conversation and a plain "why"; the Store Console shows why each hold came and the demand near the store; the Platform Console widens to brand and store aggregates and never to customers. Business rules, the guardrail, tenancy and auth are unchanged; every backend change was additive and read-only except the shopper channel itself.
 
+### Change 17 — The demo store network moves to Ahmedabad (L5, Oct 2026)
+
+The demo brand's stores are now six synthetic stores in Ahmedabad, in two areas, all under retailer `rtl_north` ("Ahmedabad Retail Partners"). The fixtures `demo-retail.csv` and `demo-judge-retail.csv` replace the Mumbai and Pune stores; `rtl_pune` is gone.
+
+| Area | Store (short name) | Street | Id | Retail Admin |
+|---|---|---|---|---|
+| Satellite | Wellness Mart (Wellness) | Satellite Road | `st_north_1` | `retail-admin-north-1` — the demo hold lands here |
+| Satellite | GlowUp Beauty (GlowUp) | Shyamal Cross Road | `st_sat_2` | — |
+| Satellite | CityCare Pharmacy (CityCare) | Prahlad Nagar | `st_sat_3` | — |
+| Navrangpura | HealthPlus Chemist (HealthPlus) | C.G. Road | `st_north_2` | `retail-admin-north-2` |
+| Navrangpura | Skin Studio (Skin Studio) | University Road | `st_nav_2` | — |
+| Navrangpura | MediGlow Pharmacy (MediGlow) | Law Garden, Ellisbridge | `st_nav_3` | — |
+
+- **Areas.** Two new optional retail CSV columns, `area` and `short_name` (`06` §12). A store's area comes from its `area` column. A small gazetteer (`domain/locality.ts`) gives each area its centre and aliases (Satellite: Shyamal, Jodhpur, Prahlad Nagar …; Navrangpura: C.G. Road, University Road, Law Garden, Ellisbridge …). A store name is never an area. Stores without an area keep the older name-based localities.
+- **One area at a time.** A named area, an alias or a shared location (its nearest area) lists only that area's stores. An Ahmedabad place the brand does not serve ("Bopal") gets "We have stores in Satellite and Navrangpura. Which is closer to you?" with the two areas as buttons. No location gets "Which area are you in …?" with the same buttons.
+- **The store card.** "In stock at N stores in <area>:" with up to 3 stores, nearest first: name, street, distance, stock ("Only 2 left" at 2 or fewer) and opening time. Buttons: **Pick up: <short name>** (the nearest store; at most 20 characters), **Home delivery** and **Other stores**. Holding at any store named on the card passes the guardrail.
+- **Other stores.** A list of every store in the area (titles at most 24 characters), **Buy online** and **Check another area**.
+- **Refusals.** A store's refusal re-offers the next store with stock in the same area, never the refusing store. When none is left in the area, the customer gets the verified alternative or home delivery; the extended-radius offer does not cross into the other area.
+- **Typed store names.** A store name typed after a card ("I'll go to GlowUp"), matched only among the stores just shown, gets that store's own card with its Pick up button. It never holds by itself, so a vague or mistyped message never reserves the wrong store. This is a deterministic rule, like button taps; typing the other area's name switches area.
+- **Reset demo / seed:live** rebuild the network from the fixture. Stores of an older network are kept with their retailer and Retail Admin, but set INACTIVE and ignored by the area search. A retailer created before L5 keeps its old name ("North Retail").
+- **Consoles.** Store names show with their area ("Wellness Mart, Satellite"); the store APIs add `area`. The demo login titles, demo guide, landing page, README and demo scripts follow the new story.
+- **Unchanged:** the guardrail, reservation rules, outcomes, tenant isolation and every other rule.
+
 ### Supporting additions
 
 - `RetailImport` entity for the ingestion report (`04` §10.1). This closes a pre-existing gap.

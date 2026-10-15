@@ -8,6 +8,7 @@ import { label } from '../../lib/labels';
 import { CatalogSection } from './CatalogSection';
 import { RetailImportSection } from './RetailImportSection';
 import { formatDateTime, type BrandStore, type CatalogResponse, type RetailImport } from './types';
+import { storeLabel } from '../../lib/storeLabel';
 
 export interface BrandUser {
   user_id: string;
@@ -174,7 +175,7 @@ export function NetworkPage() {
                         className={target === `store-${s.store_id}` ? 'is-target' : undefined}
                       >
                         <td>
-                          {s.store_name} <span className="muted small mono">{s.store_id}</span>
+                          {storeLabel(s)} <span className="muted small mono">{s.store_id}</span>
                         </td>
                         <td>{s.city}</td>
                         <td>{label(s.store_status)}</td>

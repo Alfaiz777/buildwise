@@ -21,33 +21,36 @@ const input = (seed = 42): DemoHistoryInput => ({
   stores: [
     {
       storeId: 'st_north_1',
-      storeName: 'Bandra Store',
-      city: 'Mumbai',
-      address: 'Hill Road, Bandra West, Mumbai 400050',
+      storeName: 'Wellness Mart',
+      city: 'Ahmedabad',
+      address: 'Satellite Road, Satellite, Ahmedabad 380015',
       retailerId: 'rtl_north',
-      latitude: 19.0544,
-      longitude: 72.8267,
+      latitude: 23.0298,
+      longitude: 72.5268,
       storeHours: HOURS,
+      area: 'Satellite',
     },
     {
       storeId: 'st_north_2',
-      storeName: 'Andheri Store',
-      city: 'Mumbai',
-      address: 'Lokhandwala Complex, Andheri West, Mumbai 400053',
+      storeName: 'HealthPlus Chemist',
+      city: 'Ahmedabad',
+      address: 'C.G. Road, Navrangpura, Ahmedabad 380009',
       retailerId: 'rtl_north',
-      latitude: 19.1364,
-      longitude: 72.8296,
+      latitude: 23.034,
+      longitude: 72.5595,
       storeHours: HOURS,
+      area: 'Navrangpura',
     },
     {
-      storeId: 'st_north_3',
-      storeName: 'Powai Store',
-      city: 'Mumbai',
-      address: 'Hiranandani Gardens, Powai, Mumbai 400076',
+      storeId: 'st_nav_2',
+      storeName: 'Skin Studio',
+      city: 'Ahmedabad',
+      address: 'University Road, Navrangpura, Ahmedabad 380009',
       retailerId: 'rtl_north',
-      latitude: 19.1176,
-      longitude: 72.906,
+      latitude: 23.0362,
+      longitude: 72.5452,
       storeHours: { ...HOURS, sunday: '' },
+      area: 'Navrangpura',
     },
   ],
   serum30: {
@@ -76,23 +79,23 @@ const catalog: InsightCatalog = {
   stores: [
     {
       storeId: 'st_north_1',
-      storeName: 'Bandra Store',
-      locality: 'bandra',
-      retailerName: 'North Retail',
+      storeName: 'Wellness Mart',
+      locality: 'Satellite',
+      retailerName: 'Ahmedabad Retail Partners',
       timezone: 'Asia/Kolkata',
     },
     {
       storeId: 'st_north_2',
-      storeName: 'Andheri Store',
-      locality: 'andheri',
-      retailerName: 'North Retail',
+      storeName: 'HealthPlus Chemist',
+      locality: 'Navrangpura',
+      retailerName: 'Ahmedabad Retail Partners',
       timezone: 'Asia/Kolkata',
     },
     {
-      storeId: 'st_north_3',
-      storeName: 'Powai Store',
-      locality: 'powai',
-      retailerName: 'North Retail',
+      storeId: 'st_nav_2',
+      storeName: 'Skin Studio',
+      locality: 'Navrangpura',
+      retailerName: 'Ahmedabad Retail Partners',
       timezone: 'Asia/Kolkata',
     },
   ],
@@ -206,11 +209,13 @@ describe('synthetic demo history (Change 13, F9)', () => {
         (s) =>
           s.rule === 'STOCK_UNMET_AREA' &&
           s.text.startsWith('Vitamin C Glow Serum 50 ml') &&
-          s.text.includes('Andheri'),
+          s.text.includes('Navrangpura'),
       ),
     ).toBe(true);
-    expect(rules.some((s) => s.rule === 'RAISE_STOCK_BEFORE_PEAK' && s.text.startsWith('Andheri Store'))).toBe(true);
-    // Bandra never runs out.
+    expect(rules.some((s) => s.rule === 'RAISE_STOCK_BEFORE_PEAK' && s.text.startsWith('HealthPlus Chemist'))).toBe(
+      true,
+    );
+    // Wellness Mart never runs out.
     expect(rows.lookups.some((l) => l.nearestStoreId === 'st_north_1' && l.nearestReason === 'OUT_OF_STOCK')).toBe(
       false,
     );

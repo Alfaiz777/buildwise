@@ -8,12 +8,15 @@
  * is store-level, not retailer-level:
  *
  *   brd_demo (Demo Beauty Co)
- *     └── rtl_north (North Retail)
- *          ├── st_north_1 Bandra Store   ── retail-admin-north-1@qwikspot.test
- *          ├── st_north_2 Andheri Store  ── retail-admin-north-2@qwikspot.test
- *          └── st_north_3 Powai Store    ── (no Retail Admin yet)
- *     └── rtl_pune (Pune Retail)
- *          └── st_pune_1 Koregaon Park   ── (no Retail Admin yet)
+ *     └── rtl_north (Ahmedabad Retail Partners) — L5: two areas, three stores each
+ *          Satellite
+ *          ├── st_north_1 Wellness Mart, Satellite Road      ── retail-admin-north-1@qwikspot.test
+ *          ├── st_sat_2   GlowUp Beauty, Shyamal Cross Road  ── (no Retail Admin yet)
+ *          ├── st_sat_3   CityCare Pharmacy, Prahlad Nagar   ── (no Retail Admin yet)
+ *          Navrangpura
+ *          ├── st_north_2 HealthPlus Chemist, C.G. Road      ── retail-admin-north-2@qwikspot.test
+ *          ├── st_nav_2   Skin Studio, University Road       ── (no Retail Admin yet)
+ *          └── st_nav_3   MediGlow Pharmacy, Law Garden      ── (no Retail Admin yet)
  *   brd_other (Other Brand Ltd) ── admin@other-brand.test (tenant-isolation checks)
  *     └── rtl_other ── st_other_1        ── (no Retail Admin yet)
  *
@@ -37,9 +40,10 @@
  * "Buy online" links to the demo storefront product page. MockAgentRuntime answers.
  *
  * M7: brd_demo is built by DemoResetService.rebuild() — the same code as "Reset demo" — and
- * imports fixtures/retail/demo-judge-retail.csv: the same stores and row errors, but shared-demo headroom (Serum 30 ml: Bandra 20, Andheri 25; Powai 0 and Serum
- * 50 ml none in Mumbai) and Mumbai stores open 00:00–23:59, so a judge in any timezone can
- * reserve (Change 14, G5). demo-retail.csv (10:00–21:00) stays the fixture for the tests.
+ * imports fixtures/retail/demo-judge-retail.csv: the same stores and row errors, but shared-demo
+ * headroom (Serum 30 ml: Wellness Mart 20, HealthPlus 25; Skin Studio 0) and stores open
+ * 00:00–23:59, so a judge in any timezone can reserve (Change 14, G5). demo-retail.csv
+ * (10:00–22:00) stays the fixture for the tests.
  *
  * Every password: qwikspot-demo-1
  * Usage: npm run seed:demo   (re-runnable; resets the two fixture brands, upserts the users)
@@ -150,8 +154,7 @@ await db.recursiveDelete(db.doc('brands/brd_other'));
 
 await brand(db, 'brd_demo', 'Demo Beauty Co');
 await brand(db, 'brd_other', 'Other Brand Ltd');
-await retailer(db, 'brd_demo', 'rtl_north', 'North Retail');
-await retailer(db, 'brd_demo', 'rtl_pune', 'Pune Retail');
+await retailer(db, 'brd_demo', 'rtl_north', 'Ahmedabad Retail Partners');
 await retailer(db, 'brd_other', 'rtl_other', 'Other Brand Retail');
 
 // brd_demo: exactly what "Reset demo" rebuilds — sync, judge stock fixture, synthetic history.

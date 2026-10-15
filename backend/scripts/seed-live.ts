@@ -3,9 +3,9 @@
  *
  * Builds the judged demo in a REAL project (L1/L3) with the same code paths as the product:
  *   1. the Platform Admin (bootstrap, as seed:platform-admin);
- *   2. the demo brand and its two retailers (fixed ids the judge stock fixture refers to);
+ *   2. the demo brand and its retailer (the fixed id the judge stock fixture refers to);
  *   3. DemoResetService.rebuild(): catalogue sync, judge stock import, synthetic history;
- *   4. the Brand Admin (PlatformAdminService) and the Bandra / Andheri Retail Admins
+ *   4. the Brand Admin (PlatformAdminService) and the Wellness Mart / HealthPlus Retail Admins
  *      (TenantAdminService) — audited like in-product provisioning;
  *   5. the four demo users' password = DEMO_PASSWORD (from the environment, never the repo).
  * Re-runnable: existing users and admins are kept, the demo data is rebuilt.
@@ -93,12 +93,10 @@ const platform = {
   email: plan.emails.platform,
 } as const;
 
-// 2. The demo brand and its retailers (fixed ids: the judge stock fixture names rtl_north / rtl_pune).
+// 2. The demo brand and its retailer (fixed id: the judge stock fixture names rtl_north). A project
+// seeded before L5 keeps its retailer's old name and its old stores (Reset demo sets them INACTIVE).
 if (!(await brands.getById(plan.brandId))) await brands.create({ brandId: plan.brandId, name: 'Demo Beauty Co' });
-for (const [retailerId, name] of [
-  ['rtl_north', 'North Retail'],
-  ['rtl_pune', 'Pune Retail'],
-] as const) {
+for (const [retailerId, name] of [['rtl_north', 'Ahmedabad Retail Partners']] as const) {
   if (!(await retailers.get(plan.brandId, retailerId)))
     await retailers.create({ brandId: plan.brandId, retailerId, name });
 }
@@ -142,8 +140,8 @@ console.log('✔ Brand Admin and Retail Admins (password = DEMO_PASSWORD)');
 // The Cloud Run DEMO_LOGINS value (the password stays a placeholder here).
 const logins = [
   [plan.emails.brandAdmin, 'BRAND_ADMIN', 'Brand Admin — Demo Beauty Co'],
-  [plan.emails.retailAdmins[0]![1], 'RETAIL_ADMIN', 'Retail Admin — Bandra Store'],
-  [plan.emails.retailAdmins[1]![1], 'RETAIL_ADMIN', 'Retail Admin — Andheri Store'],
+  [plan.emails.retailAdmins[0]![1], 'RETAIL_ADMIN', 'Retail Admin — Wellness Mart, Satellite'],
+  [plan.emails.retailAdmins[1]![1], 'RETAIL_ADMIN', 'Retail Admin — HealthPlus Chemist, Navrangpura'],
   [plan.emails.platform, 'PLATFORM_ADMIN', 'Platform Admin'],
 ].map(([email, role, title]) => ({ email, password: '<DEMO_PASSWORD>', role, title, hint: '' }));
 console.log('DEMO_LOGINS for Cloud Run (store it in Secret Manager with the real password):');

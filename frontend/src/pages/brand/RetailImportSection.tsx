@@ -67,7 +67,7 @@ export function RetailImportSection(props: {
         <a href="/samples/retail-stock-sample.csv" download="retail-stock-sample.csv">
           Download sample CSV
         </a>{' '}
-        <span className="muted">— the canonical columns, with synthetic Mumbai and Pune stores.</span>
+        <span className="muted">— the canonical columns, with six synthetic Ahmedabad stores in two areas.</span>
       </p>
       <form className="inline" onSubmit={upload}>
         <input

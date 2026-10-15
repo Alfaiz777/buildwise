@@ -8,8 +8,10 @@
  * that the writer replaces with the IDs it creates.
  *
  * Pattern (visible on the Outcomes screen): weekend lookups for Serum 30 ml are about
- * double; Andheri runs out of it on most Saturdays while Bandra does not; Serum 50 ml is
- * asked for again and again near Andheri, where no store stocks it.
+ * double; Navrangpura (HealthPlus Chemist, its nearest store) runs out of it on most Saturdays
+ * while Satellite (Wellness Mart) does not; Serum 50 ml is asked for again and again in
+ * Navrangpura, where no store stocks it. Skin Studio never has Serum 30 ml. Like the agent (L5),
+ * a lookup searches only its own area's stores.
  */
 import type { NearbyStoresOutput } from '../domain/agentTools.js';
 import { applyWebEvent, type IntentClassification } from '../domain/intentClassification.js';
@@ -47,6 +49,8 @@ export interface HistoryStore {
   latitude: number;
   longitude: number;
   storeHours: StoreHours;
+  /** L5: the store's area ("Satellite"), the locality the insights name. */
+  area?: string | null;
 }
 
 export interface HistoryVariant {
@@ -90,8 +94,8 @@ export function prng(seed: number) {
 
 const HOUR = 60 * 60_000;
 const DAY = 24 * HOUR;
-const ANDHERI_AREA: GeoPoint = { latitude: 19.14, longitude: 72.86 };
-const BANDRA_AREA: GeoPoint = { latitude: 19.06, longitude: 72.83 };
+const NAVRANGPURA = { name: 'Navrangpura', point: { latitude: 23.0365, longitude: 72.5611 } as GeoPoint };
+const SATELLITE = { name: 'Satellite', point: { latitude: 23.027, longitude: 72.526 } as GeoPoint };
 const CUSTOMERS = 14;
 const REFUSALS: RefusalReason[] = ['NOT_ACTUALLY_IN_STOCK', 'DAMAGED', 'STORE_CLOSING_EARLY'];
 
@@ -112,7 +116,7 @@ export function generateDemoHistory(input: DemoHistoryInput): DemoHistory {
   const brandId = input.brandId;
   const tz = input.stores[0]?.storeHours.timezone ?? 'UTC';
   const conversationOf = new Map<string, ConversationRecord>();
-  const andheri = input.stores.find((s) => /andheri/i.test(s.storeName));
+  const busy = input.stores.find((s) => /healthplus/i.test(s.storeName));
   let seq = 0;
 
   const event = (
@@ -139,19 +143,20 @@ export function generateDemoHistory(input: DemoHistoryInput): DemoHistory {
   };
 
   for (let daysAgo = input.days; daysAgo >= 1; daysAgo--) {
-    // UTC midnight of that day; lookups happen 05:00–14:00 UTC (10:30–19:30 in Mumbai), so the
+    // UTC midnight of that day; lookups happen 05:00–14:00 UTC (10:30–19:30 in Ahmedabad), so the
     // store-time weekday of the whole day is the weekday at 10:00 UTC.
     const raw = input.now.getTime() - daysAgo * DAY;
     const dayBase = raw - (raw % DAY);
     const weekday = storeLocalTime(tz, new Date(dayBase + 10 * HOUR)).weekday;
     const weekend = weekday === 'saturday' || weekday === 'sunday';
-    // Andheri's Serum 30 ml stock that day: out on most Saturdays.
-    const andheriOut = weekday === 'saturday' && rnd() < 0.8;
-    const lookups: { variant: HistoryVariant; origin: GeoPoint }[] = [];
+    // Navrangpura's Serum 30 ml stock that day: out on most Saturdays.
+    const busyOut = weekday === 'saturday' && rnd() < 0.8;
+    const lookups: { variant: HistoryVariant; origin: GeoPoint; area: string }[] = [];
     for (let i = 0; i < (weekend ? between(9, 12) : between(4, 6)); i++) {
-      lookups.push({ variant: input.serum30, origin: rnd() < 0.6 ? ANDHERI_AREA : BANDRA_AREA });
+      const area = rnd() < 0.6 ? NAVRANGPURA : SATELLITE;
+      lookups.push({ variant: input.serum30, origin: area.point, area: area.name });
     }
-    if (rnd() < 0.7) lookups.push({ variant: input.serum50, origin: ANDHERI_AREA });
+    if (rnd() < 0.7) lookups.push({ variant: input.serum50, origin: NAVRANGPURA.point, area: NAVRANGPURA.name });
 
     for (const lookup of lookups) {
       seq++;
@@ -253,18 +258,20 @@ export function generateDemoHistory(input: DemoHistoryInput): DemoHistory {
       });
 
       // Store lookup: the live eligibility rules on that day's synthetic stock.
-      const stockOf = (storeId: string) => {
+      const stockOf = (store: HistoryStore) => {
         if (lookup.variant === input.serum50) return 0;
-        if (storeId === andheri?.storeId) return andheriOut ? 0 : 5;
-        return /powai/i.test(input.stores.find((s) => s.storeId === storeId)?.storeName ?? '') ? 0 : 3;
+        if (busyOut && store.area === busy?.area) return 0;
+        if (store.storeId === busy?.storeId) return 5;
+        return /skin studio/i.test(store.storeName) ? 0 : 3;
       };
+      const areaStores = input.stores.filter((s) => !s.area || s.area === lookup.area);
       const result = findEligibleStores({
         origin: lookup.origin,
         radiusKm: 10,
         now: at,
-        candidates: input.stores.map((s) => ({
+        candidates: areaStores.map((s) => ({
           store: { ...s, storeStatus: 'ACTIVE', reservationAvailable: true, pickupAvailable: true },
-          inventory: { quantity: stockOf(s.storeId), reservedQuantity: 0 },
+          inventory: { quantity: stockOf(s), reservedQuantity: 0 },
         })),
       });
       const storeById = new Map(input.stores.map((s) => [s.storeId, s]));
@@ -434,7 +441,7 @@ export function generateDemoHistory(input: DemoHistoryInput): DemoHistory {
                       to: 'CANCELLED',
                       extra: {
                         cancelReason:
-                          store.storeId === andheri?.storeId && weekday === 'saturday'
+                          store.storeId === busy?.storeId && weekday === 'saturday'
                             ? 'NOT_ACTUALLY_IN_STOCK'
                             : pick(REFUSALS),
                       },

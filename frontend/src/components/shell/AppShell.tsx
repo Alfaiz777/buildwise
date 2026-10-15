@@ -9,6 +9,7 @@ import { label } from '../../lib/labels';
 import { Wordmark } from './Wordmark';
 import { CONSOLE_NAME, NAV } from './nav';
 import { RoleBanner } from './RoleBanner';
+import { storeLabel } from '../../lib/storeLabel';
 
 /** Dispatched on window when a page resolves or changes what the nav badge counts. */
 export const WAITING_CHANGED = 'qwikspot:waiting-changed';
@@ -25,7 +26,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { signOut } = useAuth();
   const context =
     me.scope === 'RETAIL'
-      ? `${me.store.store_name} · for ${me.brand_name} via ${me.retailer_name}`
+      ? `${storeLabel(me.store)} · for ${me.brand_name} via ${me.retailer_name}`
       : me.scope === 'BRAND'
         ? me.brand_name
         : 'Qwikspot platform';

@@ -36,6 +36,7 @@ const storeAdminJson = (s: StoreWithStock) => ({
   store_id: s.storeId,
   store_name: s.storeName,
   city: s.city,
+  area: s.area ?? null,
   store_status: s.storeStatus,
   retailer_id: s.retailerId,
   retail_admin_user_id: s.retailAdminUserId,

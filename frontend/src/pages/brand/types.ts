@@ -81,6 +81,8 @@ export interface BrandStore {
   store_id: string;
   store_name: string;
   city: string;
+  /** L5: the store's area ("Satellite"), when the network has areas. */
+  area?: string | null;
   store_status: string;
   retailer_id: string | null;
   retail_admin_user_id: string | null;

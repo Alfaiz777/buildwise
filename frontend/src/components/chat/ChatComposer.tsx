@@ -1,10 +1,10 @@
 import { MapPin, Send } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
-/** Named demo places in Mumbai (synthetic). Near Powai: Powai has no stock, so Andheri is offered. */
+/** Named demo places in Ahmedabad (synthetic), one in each of the demo brand's two areas. */
 export const LOCATION_PRESETS = [
-  { name: 'Near Powai', latitude: 19.12, longitude: 72.9 },
-  { name: 'Near Bandra', latitude: 19.06, longitude: 72.83 },
+  { name: 'Near Satellite', latitude: 23.0285, longitude: 72.5262 },
+  { name: 'Near Navrangpura', latitude: 23.0352, longitude: 72.5602 },
 ] as const;
 
 export type ComposerSend = { type: 'TEXT'; text: string } | { type: 'LOCATION'; latitude: number; longitude: number };

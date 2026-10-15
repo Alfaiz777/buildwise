@@ -40,6 +40,10 @@ export const OPTION = {
   cancel: (reservationId: string) => `cancel:${reservationId}`,
   /** "Talk to a person" on a follow-up (Change 16): the existing human-handoff path. */
   handoff: 'handoff',
+  /** L5: "Satellite" / "Navrangpura" — search stores in that area. */
+  area: (name: string) => `area:${name}`,
+  /** L5: "Check another area" — ask which area again. */
+  askArea: 'areas',
 } as const;
 
 /** The two ways to get it (judge-test fixes): the buttons of a store card. */
@@ -57,6 +61,8 @@ export type ParsedOption =
   | { kind: 'CANCEL'; reservationId: string }
   | { kind: 'RECHECK'; variantId: string }
   | { kind: 'HANDOFF' }
+  | { kind: 'AREA'; area: string }
+  | { kind: 'ASK_AREA' }
   | { kind: 'UNKNOWN' };
 
 /** Reply options → channel options (same ids; description/section kept for lists). */
@@ -76,11 +82,21 @@ export function parseOption(optionId: string): ParsedOption {
   if (optionId.startsWith('cancel:') && optionId.length > 7)
     return { kind: 'CANCEL', reservationId: optionId.slice(7) };
   if (optionId.startsWith('recheck:') && optionId.length > 8) return { kind: 'RECHECK', variantId: optionId.slice(8) };
+  if (optionId.startsWith('area:') && optionId.length > 5) return { kind: 'AREA', area: optionId.slice(5) };
+  if (optionId === OPTION.askArea) return { kind: 'ASK_AREA' };
   return { kind: 'UNKNOWN' };
 }
 
 /** Taps that are complete commands by themselves: decided by rules, never sent to a model. */
-const RULE_TAPS: readonly ParsedOption['kind'][] = ['HOLD', 'CANCEL', 'OTHER_STORES', 'BUY_ONLINE', 'HANDOFF'];
+const RULE_TAPS: readonly ParsedOption['kind'][] = [
+  'HOLD',
+  'CANCEL',
+  'OTHER_STORES',
+  'BUY_ONLINE',
+  'HANDOFF',
+  'AREA',
+  'ASK_AREA',
+];
 export const isRuleTap = (optionId: string) => RULE_TAPS.includes(parseOption(optionId).kind);
 
 export const formatKm = (km: number) => `${km.toFixed(1)} km`;
@@ -122,13 +138,119 @@ export function stockNote(s: Pick<StoreOption, 'stale' | 'stock_updated_at' | 't
     : ` We don't know when ${s.store_name}'s stock was last updated, so it may have changed.`;
 }
 
-/** "Hold at Andheri" — a WhatsApp button label is at most 20 characters. */
+/** "Hold at HealthPlus" — a WhatsApp button label is at most 20 characters. */
 export function holdLabel(storeName: string): string {
   const label = `Hold at ${shortName(storeName)}`;
   return label.length <= 20 ? label : 'Hold here';
 }
 
 const holdOption = (s: StoreOption) => ({ option_id: OPTION.hold(s.store_id), label: holdLabel(s.store_name) });
+
+/** L5: "Pick up: Wellness" (the store's short name; WhatsApp buttons allow 20 characters). */
+export function pickUpLabel(s: Pick<StoreOption, 'store_name' | 'short_name'>): string {
+  const label = `Pick up: ${s.short_name?.trim() || shortName(s.store_name)}`;
+  return label.length <= 20 ? label : PICKUP_LABEL;
+}
+
+/** "Satellite Road" — the first part of the store's address (its street). */
+const streetOf = (s: Pick<StoreOption, 'address'>) => s.address?.split(',')[0]?.trim() || null;
+
+/** "6 in stock" / "Only 2 left" — verified available units. */
+const stockPhrase = (n: number) => (n <= 2 ? `Only ${n} left` : `${n} in stock`);
+
+/** "*Wellness Mart*, Satellite Road · 0.4 km · 6 in stock · open till 22:00" — one store of an area card. */
+const areaStoreLine = (s: StoreOption) =>
+  [
+    `*${s.store_name}*${streetOf(s) ? `, ${streetOf(s)}` : ''}`,
+    formatKm(s.distance_km),
+    stockPhrase(s.available_quantity),
+    ...(s.open_until ? [`open till ${s.open_until}`] : []),
+  ].join(' · ');
+
+/** "street · 0.4 km · 6 in stock" — a list row's description (WhatsApp allows 72 characters). */
+const areaRowDescription = (s: StoreOption) => {
+  const full = [streetOf(s), formatKm(s.distance_km), stockPhrase(s.available_quantity)].filter(Boolean).join(' · ');
+  return full.length <= 72 ? full : `${formatKm(s.distance_km)} · ${stockPhrase(s.available_quantity)}`;
+};
+
+/** "A, B and C" */
+const andList = (names: string[]) =>
+  names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : (names[0] ?? '');
+
+/** Quick-reply buttons for the served areas (at most 3). */
+const areaOptions = (areas: string[]): ReplyOption[] =>
+  areas.slice(0, 3).map((a) => ({ option_id: OPTION.area(a), label: a.slice(0, 20) }));
+
+/**
+ * L5, the area card: the area's eligible stores (up to 3), nearest first, each with its street,
+ * distance, verified stock and closing time; Pick up at the nearest · Home delivery · Other stores.
+ */
+function areaCardReply(input: {
+  variant: VariantView;
+  stores: StoreOption[];
+  area: string;
+  onlineAvailable: boolean;
+  canHold: boolean;
+  prefix?: string;
+}): Reply {
+  const shown = input.stores.slice(0, 3);
+  const best = shown[0]!;
+  const delivery = input.onlineAvailable ? deliveryLine(input.variant) : null;
+  const count = input.stores.length;
+  const lines = [
+    ...(input.prefix ? [input.prefix] : []),
+    `*${variantLabel(input.variant)}* · ${formatPrice(input.variant.price, input.variant.currency)}`,
+    `In stock at ${count} ${count === 1 ? 'store' : 'stores'} in ${input.area}:`,
+    ...shown.map((s, i) => `${i + 1}. ${areaStoreLine(s)}`),
+    ...(delivery ? [`🚚 Or ${delivery.charAt(0).toLowerCase()}${delivery.slice(1)}.`] : []),
+  ];
+  const notes = stockNote(best).trim();
+  if (notes) lines.push(notes);
+  lines.push(
+    input.canHold
+      ? `I can hold one for you at ${best.store_name} to pick up and pay at the store.`
+      : 'You can pick it up and pay at the store.',
+  );
+  const options: ReplyOption[] = input.canHold
+    ? [{ option_id: OPTION.hold(best.store_id), label: pickUpLabel(best) }]
+    : [];
+  if (input.onlineAvailable)
+    options.push({ option_id: OPTION.buyOnline, label: delivery ? DELIVERY_LABEL : 'Buy online' });
+  if (count > 1) options.push({ option_id: OPTION.otherStores, label: 'Other stores' });
+  return { message_type: 'INTERACTIVE', text: lines.join('\n'), options, parts: productImage(input.variant) };
+}
+
+/**
+ * L5: one store's card — the customer typed its name. Pick up there (one more tap: a typo never
+ * holds at the wrong store) · Home delivery · Other stores.
+ */
+export function singleStoreReply(input: {
+  variant: VariantView;
+  store: StoreOption;
+  onlineAvailable: boolean;
+  canHold: boolean;
+  others: number;
+}): Reply {
+  const s = input.store;
+  const delivery = input.onlineAvailable ? deliveryLine(input.variant) : null;
+  const lines = [
+    `*${variantLabel(input.variant)}* · ${formatPrice(input.variant.price, input.variant.currency)}`,
+    `🏬 ${areaStoreLine(s)}`,
+    ...(delivery ? [`🚚 Or ${delivery.charAt(0).toLowerCase()}${delivery.slice(1)}.`] : []),
+  ];
+  const notes = stockNote(s).trim();
+  if (notes) lines.push(notes);
+  lines.push(
+    input.canHold
+      ? `Shall I hold one for you at ${s.store_name}? You pay at the store.`
+      : 'You can pick it up and pay at the store.',
+  );
+  const options: ReplyOption[] = input.canHold ? [{ option_id: OPTION.hold(s.store_id), label: pickUpLabel(s) }] : [];
+  if (input.onlineAvailable)
+    options.push({ option_id: OPTION.buyOnline, label: delivery ? DELIVERY_LABEL : 'Buy online' });
+  if (input.others > 0) options.push({ option_id: OPTION.otherStores, label: 'Other stores' });
+  return { message_type: 'INTERACTIVE', text: lines.join('\n'), options, parts: productImage(input.variant) };
+}
 
 /** The product card's image header, when the catalogue has an image (Change 16). */
 export function productImage(
@@ -162,6 +284,16 @@ export function storeProposalReply(input: {
   const [best, ...others] = input.stores;
   if (!best) throw new Error('storeProposalReply needs at least one eligible store');
   const canHold = input.canHold !== false;
+  if (best.area && !input.farther) {
+    return areaCardReply({
+      variant: input.variant,
+      stores: input.stores,
+      area: best.area,
+      onlineAvailable: input.onlineAvailable,
+      canHold,
+      prefix: input.prefix,
+    });
+  }
   const delivery = input.onlineAvailable ? deliveryLine(input.variant) : null;
   const lines = [
     ...(input.prefix ? [input.prefix] : []),
@@ -206,6 +338,38 @@ export function otherStoresReply(input: {
       message_type: input.onlineAvailable ? 'INTERACTIVE' : 'TEXT',
       text: `${text}\n${shown.map((s) => `• ${s.store_name} — ${describe(s)}`).join('\n')}`,
       ...(input.onlineAvailable ? { options: [{ option_id: OPTION.buyOnline, label: 'Buy online' }] } : {}),
+    };
+  }
+  const area = shown[0]?.area ?? null;
+  if (area) {
+    // L5: every store of the area, by full name (WhatsApp list rows allow 24 characters).
+    const rows: ReplyOption[] = shown.slice(0, 7).map((s) => ({
+      option_id: OPTION.hold(s.store_id),
+      label: s.store_name.slice(0, 24),
+      description: areaRowDescription(s),
+      section: `Stores in ${area}`.slice(0, 24),
+    }));
+    if (input.onlineAvailable) {
+      rows.push({
+        option_id: OPTION.buyOnline,
+        label: input.variant.delivery_days ? DELIVERY_LABEL : 'Buy online',
+        description: input.variant.delivery_days
+          ? `Delivered in ${deliveryPhrase(input.variant.delivery_days)} · order on our website`
+          : 'Order on our website',
+        section: 'Or',
+      });
+    }
+    rows.push({
+      option_id: OPTION.askArea,
+      label: 'Check another area',
+      description: 'Stores in a different area',
+      section: 'Or',
+    });
+    return {
+      message_type: 'INTERACTIVE',
+      text: `Stores in ${area} with *${variantLabel(input.variant)}* today. Tap one to hold it there:`,
+      options: rows,
+      parts: { listButton: 'Choose a store' },
     };
   }
   const options: ReplyOption[] = shown.map((s) => ({
@@ -319,14 +483,26 @@ export function noEligibleStoreReply(input: {
  */
 export function discoveryReply(
   find: NearbyStoresOutput,
-  opts: { canHold: boolean; prefix?: string; farther?: boolean },
+  opts: { canHold: boolean; prefix?: string; farther?: boolean; onlyStoreId?: string; listAll?: boolean },
 ): Reply | null {
   const label = find.variant ? variantLabel(find.variant) : null;
-  if (find.status === 'LOCATION_REQUIRED') return askLocationReply(label);
+  if (find.status === 'LOCATION_REQUIRED') return askLocationReply(label, find.served_areas ?? []);
   if (find.status === 'AMBIGUOUS_AREA') return ambiguousAreaReply(find.ambiguous_areas);
+  if (find.status === 'UNSERVED_AREA') return unservedAreaReply(find.served_areas ?? []);
   if (find.status !== 'OK' || !find.variant || find.eligible.length === 0) return null;
   const onlineAvailable = find.variant.online_url !== null;
-  if (find.skipped_stores.length > 0 && !opts.prefix)
+  const only = opts.onlyStoreId ? find.eligible.find((s) => s.store_id === opts.onlyStoreId) : undefined;
+  if (only) {
+    return singleStoreReply({
+      variant: find.variant,
+      store: only,
+      onlineAvailable,
+      canHold: opts.canHold,
+      others: find.eligible.length - 1,
+    });
+  }
+  // "Other stores": stores were skipped on request, or (L5) the whole area was asked for.
+  if ((find.skipped_stores.length > 0 || opts.listAll) && !opts.prefix)
     return otherStoresReply({ variant: find.variant, stores: find.eligible, onlineAvailable, canHold: opts.canHold });
   return storeProposalReply({
     variant: find.variant,
@@ -348,10 +524,28 @@ export function onlinePurchaseReply(input: { title: string; url: string | null }
   };
 }
 
-export const askLocationReply = (productLabel: string | null): Reply => ({
-  message_type: 'TEXT',
-  text: `To check stores near you${productLabel ? ` for ${productLabel}` : ''}, please share your location or tell me your area.`,
-});
+export const askLocationReply = (productLabel: string | null, areas: string[] = []): Reply =>
+  areas.length > 0
+    ? {
+        // L5: the brand serves named areas — ask which, with one button each.
+        message_type: 'INTERACTIVE',
+        text: `Which area are you in${productLabel ? ` for ${productLabel}` : ''}? We have stores in ${andList(areas)}.`,
+        options: areaOptions(areas),
+      }
+    : {
+        message_type: 'TEXT',
+        text: `To check stores near you${productLabel ? ` for ${productLabel}` : ''}, please share your location or tell me your area.`,
+      };
+
+/** L5: a place the brand has no store in — name the areas it serves, one button each. */
+export const unservedAreaReply = (areas: string[]): Reply =>
+  areas.length > 0
+    ? {
+        message_type: 'INTERACTIVE',
+        text: `We have stores in ${andList(areas)}. Which is closer to you?`,
+        options: areaOptions(areas),
+      }
+    : askLocationReply(null);
 
 export const ambiguousAreaReply = (areas: string[]): Reply => ({
   message_type: 'TEXT',
@@ -394,7 +588,7 @@ const BLOCK_TEXT: Record<string, string> = {
   QUANTITY_LIMIT_EXCEEDED: "can't hold that many units",
 };
 
-/** "Sorry — Bandra Store no longer has it in stock." (the verified reason only). */
+/** "Sorry — Wellness Mart no longer has it in stock." (the verified reason only). */
 export const blockedPrefix = (storeName: string | null, reason: string) =>
   `Sorry — ${storeName ?? 'that store'} ${BLOCK_TEXT[reason] ?? "can't take this reservation right now"}.`;
 

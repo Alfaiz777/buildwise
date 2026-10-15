@@ -90,8 +90,8 @@ describe('retail import routes (upload → process → report)', () => {
     expect(processed.status).toBe(200);
     expect(processed.body).toMatchObject({
       status: 'COMPLETED',
-      rows_processed: 36,
-      rows_valid: 33,
+      rows_processed: 73,
+      rows_valid: 70,
       rows_invalid: 3,
       mappings_failed: 1,
     });
@@ -108,9 +108,10 @@ describe('retail import routes (upload → process → report)', () => {
 
     // Brand Console store list: per-store SKU count and last stock update.
     const stores = await admin.get('/api/brand/stores');
-    const bandra = stores.body.stores.find((s: { store_id: string }) => s.store_id === 'st_north_1');
-    expect(bandra).toMatchObject({ retailer_id: 'rtl_north', retail_admin_user_id: null, sku_count: 10 });
-    expect(bandra.stock_updated_at).toMatch(/^\d{4}-/);
+    const wellness = stores.body.stores.find((s: { store_id: string }) => s.store_id === 'st_north_1');
+    // 12 rows, one rejected (the negative quantity).
+    expect(wellness).toMatchObject({ retailer_id: 'rtl_north', retail_admin_user_id: null, sku_count: 11 });
+    expect(wellness.stock_updated_at).toMatch(/^\d{4}-/);
 
     // The unmapped retail SKU stays visible in the catalogue view.
     const products = await admin.get('/api/products');

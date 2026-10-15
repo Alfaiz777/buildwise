@@ -36,6 +36,8 @@ export const AgentDecisionSchema = z.object({
     /** M5: units to hold (default 1) and the reservation a cancel refers to. */
     quantity: z.number().int().min(1).max(100).optional(),
     reservation_id: z.string().optional(),
+    /** L5: STORE_DISCOVERY for one store the customer named (ONE_STORE), or every store of the area ("Other stores", ALL_STORES). */
+    show: z.enum(['ONE_STORE', 'ALL_STORES']).optional(),
     reason: z.string(),
   }),
   response_strategy: z.object({
@@ -67,6 +69,8 @@ export interface PendingProposalView {
   proposed_at: string;
   expires_at: string;
   offered_stores: string[];
+  /** L5: the offered stores' names, so a typed store name ("GlowUp") can be recognised. */
+  offered_store_names?: { store_id: string; store_name: string; short_name: string | null }[];
 }
 
 /** The controlled context package (docs/04_DATA_MODEL.md §20). Built by the backend only. */
@@ -77,6 +81,8 @@ export interface AgentContext {
     reservation_policy: { reservations_enabled: boolean; hold_minutes: number; max_quantity_per_reservation: number };
     handoff_enabled: boolean;
     online_purchase_available: boolean;
+    /** L5: the areas the brand's stores serve ("Satellite", "Navrangpura"); empty when none. */
+    areas?: string[];
   };
   customer: {
     channel: string;

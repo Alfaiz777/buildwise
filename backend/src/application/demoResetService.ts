@@ -103,6 +103,7 @@ export class DemoResetService {
     const { record } = await this.deps.retailImports.create(brandId, actor, 'demo-judge-retail.csv');
     await this.deps.files.write(record.fileKey, await this.deps.fixtures.read(DEMO_RETAIL_FIXTURE), 'text/csv');
     const report = await this.deps.retailImports.process(brandId, actor, record.importId);
+    await this.retireStoresOutsideNetwork(brandId);
 
     const history = connection ? await this.writeHistory(brandId) : {};
     const total = Object.values(deleted).reduce((a, b) => a + b, 0);
@@ -121,6 +122,35 @@ export class DemoResetService {
     };
   }
 
+  /**
+   * L5: the demo network is the fixture's area stores (Satellite, Navrangpura). A store from an
+   * older network (a Mumbai store, Koregaon Park) is kept — with its retailer, Retail Admin and
+   * history — but set INACTIVE, so it is never offered or held again.
+   */
+  private async retireStoresOutsideNetwork(brandId: string): Promise<void> {
+    const stores = await this.deps.stores.list(brandId);
+    if (!stores.some((s) => s.area)) return;
+    const retired = stores.filter((s) => !s.area && s.storeStatus === 'ACTIVE');
+    if (retired.length === 0) return;
+    await this.deps.stores.upsertFromImport(
+      brandId,
+      retired.map((s) => ({
+        storeId: s.storeId,
+        storeName: s.storeName,
+        city: s.city,
+        address: s.address ?? '',
+        latitude: s.latitude ?? 0,
+        longitude: s.longitude ?? 0,
+        storeHours: s.storeHours ?? {},
+        storeStatus: 'INACTIVE' as const,
+        reservationAvailable: s.reservationAvailable,
+        pickupAvailable: s.pickupAvailable,
+        area: null,
+        shortName: s.shortName ?? null,
+      })),
+    );
+  }
+
   /** 4 weeks of flagged synthetic history (M6), built from the brand's own stores and catalogue. */
   async writeHistory(brandId: string): Promise<Record<string, number>> {
     const now = this.now();
@@ -131,7 +161,9 @@ export class DemoResetService {
     ]);
     const titles = new Map(products.map((p) => [p.productId, p.title]));
     const historyStores: HistoryStore[] = stores
-      .filter((s) => s.city === 'Mumbai' && s.latitude !== null && s.longitude !== null && s.storeHours)
+      .filter(
+        (s) => s.storeStatus === 'ACTIVE' && s.area && s.latitude !== null && s.longitude !== null && s.storeHours,
+      )
       .map((s) => ({
         storeId: s.storeId,
         storeName: s.storeName,
@@ -141,6 +173,7 @@ export class DemoResetService {
         latitude: s.latitude!,
         longitude: s.longitude!,
         storeHours: s.storeHours as StoreHours,
+        area: s.area ?? null,
       }));
     const variant = (sku: string): HistoryVariant => {
       const v = variants.find((x) => x.sku === sku);
