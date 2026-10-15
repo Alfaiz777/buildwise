@@ -5,7 +5,6 @@
  * 8 TOOLS (guardrail-approved writes, then the reply from verified results). The fixed
  * order is enforced by ConversationPipeline.
  */
-import { performance } from 'node:perf_hooks';
 import { whatsappDisplayRef } from '../../domain/whatsappNumbers.js';
 import { isWriteTool, type NearbyStoresOutput } from '../../domain/agentTools.js';
 import { isRuleTap, parseOption, toOutboundOptions, type Reply } from '../../domain/agentReplies.js';
@@ -384,6 +383,8 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
     name: 'AGENT',
     async run(context) {
       if (context.data.policy?.reply !== 'AUTOMATED') return CONTINUE;
+      // The 12 s decision ceiling counts from here: building the context uses the model's time.
+      const stageStarted = performance.now();
       const brand = need(context.data.brand, 'brand');
       const customer = need(context.data.customer, 'customer');
       const conversation = need(context.data.conversation, 'conversation');
@@ -447,9 +448,11 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
       const ruleTap =
         Boolean(backupAgent) && ((content.type === 'INTERACTIVE_REPLY' && isRuleTap(content.optionId)) || typedStore);
       const agentStarted = performance.now();
+      // The model gets what is left of the budget after the context build, minus the backup's slot.
+      const modelBudget = Math.max(0, budget - backupBudget - Math.round(performance.now() - stageStarted));
       const result = ruleTap
         ? await runAgentRuntime(backupAgent!, input, tools, budget)
-        : await runAgentRuntime(deps.agent, input, tools, budget - backupBudget);
+        : await runAgentRuntime(deps.agent, input, tools, modelBudget);
       const agentMs = Math.round(performance.now() - agentStarted);
       context.data.repaired = result.repaired;
       // The configured runtime failed: the backup runtime answers the same message with the

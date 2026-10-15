@@ -7,13 +7,22 @@ import {
   type ToolExecutor,
 } from '../../ports/agent.js';
 
-/** docs/03_TECH_ARCHITECTURE.md §16.1: total AI decision budget per inbound message. */
-export const AI_DECISION_BUDGET_MS = 20_000;
+/**
+ * docs/03_TECH_ARCHITECTURE.md §16.1: the AI decision for one inbound message — the configured
+ * runtime and, if it fails, the backup — ends within 12 s, counted from the start of the agent
+ * stage (a slow context build shortens the model's turn, never the backup's).
+ *
+ * L5 (measured 2026-10-16, docs/05 §16): Gemini's median turn is 5.1 s; a request that has not
+ * answered in 7 s has usually stalled. So Gemini gets at most 9 s (GEMINI_DEADLINE_MS) and the
+ * backup the last 2 s.
+ */
+export const AI_DECISION_BUDGET_MS = 12_000;
 /**
  * Time kept inside that budget for the backup runtime (docs/03 §16.2): when the configured
- * runtime fails, the deterministic mock answers the same message with the same tools.
+ * runtime fails, the deterministic mock answers the same message with the same tools. It runs
+ * in-process; its few Firestore reads take tens of milliseconds, so 2 s is ample.
  */
-export const AI_BACKUP_BUDGET_MS = 3_000;
+export const AI_BACKUP_BUDGET_MS = 2_000;
 
 export type AgentRunResult =
   | { ok: true; decision: AgentDecision; repaired: boolean }

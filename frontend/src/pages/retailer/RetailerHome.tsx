@@ -255,9 +255,7 @@ export function StoreStock({ autoPoll = false }: { autoPoll?: boolean }) {
       <Card title="Your store">
         <dl className="settings-list">
           <dt>Store</dt>
-          <dd>
-            {storeLabel(store)} <span className="muted small mono">{store.store_id}</span>
-          </dd>
+          <dd>{storeLabel(store)}</dd>
           <dt>Retailer</dt>
           <dd>{me.retailer_name}</dd>
           <dt>Brand</dt>

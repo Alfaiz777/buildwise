@@ -1,4 +1,3 @@
-import { performance } from 'node:perf_hooks';
 import {
   AGENT_PROMPT_VERSION,
   QWIKSPOT_AGENT_PROMPT,
@@ -43,23 +42,31 @@ export interface GeminiRuntimeOptions {
   logger?: Logger;
   /** Tool calls allowed per decision. */
   maxToolCalls?: number;
-  /** Time for the whole decide, kept well under the pipeline's 20 s budget so the backup runtime still has time. */
+  /** Time for the whole decide, kept under the pipeline's 12 s budget so the backup runtime still has its 2 s. */
   deadlineMs?: number;
   /** Time for one model request. */
   requestTimeoutMs?: number;
+  /** A retry starts only if at least this much of the deadline is left. */
+  minAttemptMs?: number;
   temperature?: number;
 }
 
 export const GEMINI_MAX_TOOL_CALLS = 5;
 /**
- * Measured on the global endpoint (2026-10-13, docs/05 §16): a request usually takes 2–7 s,
- * about one in ten stalls for 10–30 s. So each request is cut off at 8 s and tried once more, and the
- * whole decision stops at 15 s — which leaves the backup runtime (the mock) its 3 s inside
- * the pipeline's 20 s budget.
+ * Measured on the global endpoint (docs/05 §16): a request usually takes 2–7 s and about one
+ * in ten stalls for 10–30 s; a whole Gemini turn has a median of 5.1 s (2026-10-16). A request
+ * that has not answered in 7 s has usually stalled, so each request is cut off at 7 s, and the
+ * whole decision stops at 9 s — which leaves the backup runtime (the mock) its 2 s inside the
+ * pipeline's 12 s ceiling (AI_DECISION_BUDGET_MS).
+ *
+ * A failed request (a timeout, 429, 5xx) is tried once more only while the deadline still
+ * leaves GEMINI_MIN_ATTEMPT_MS for it: a model request has never answered faster than about
+ * 2.5 s, so a retry with less time could only time out again — the backup answers sooner.
  */
-export const GEMINI_DEADLINE_MS = 15_000;
-export const GEMINI_REQUEST_TIMEOUT_MS = 8_000;
+export const GEMINI_DEADLINE_MS = 9_000;
+export const GEMINI_REQUEST_TIMEOUT_MS = 7_000;
 export const GEMINI_REQUEST_ATTEMPTS = 2;
+export const GEMINI_MIN_ATTEMPT_MS = 2_500;
 export const GEMINI_TEMPERATURE = 0.2;
 
 /** Intent types the conversation may refine a bound intent to (the type only, never the stage). */
@@ -207,6 +214,8 @@ export class AdkGeminiAgentRuntime implements AgentRuntime {
         return await Promise.race([this.options.client.generate(request, controller.signal), timeout]);
       } catch (err) {
         if (attempt >= GEMINI_REQUEST_ATTEMPTS || !isTransient(err)) throw err;
+        // No time left for a real second attempt: give up now, so the backup answers sooner.
+        if (deadline - performance.now() < (this.options.minAttemptMs ?? GEMINI_MIN_ATTEMPT_MS)) throw err;
         onRetry();
       } finally {
         clearTimeout(timer);
