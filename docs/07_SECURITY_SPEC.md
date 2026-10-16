@@ -190,6 +190,13 @@ Can see:
 
 Never sees, even in aggregates: customers or customer refs, channel identities, phone numbers, emails (including Store Admins'), messages or conversation content, customer locations, pickup codes, individual stock lines (SKU, quantity, price), or any user's identity beyond its role. A test asserts these responses contain none of them.
 
+**What Platform's AI can see (L7, Ask Qwikspot, docs/05 §18.2).** The platform agent sees no more than the Platform pages, and less:
+- **Sees:** the Overview totals; per brand its status, setup progress (Brand Admin provisioned yes/no, catalogue synced or failed, product count, stores with stock, SKU mappings needing attention, Store Admins provisioned), last activity and network numbers; health-flag counts and flagged stores (store name, city, flags, stock freshness); the latest audit events (action, actor role, target brand, result, reason, time).
+- **Never sees:** customers or customer refs, conversations or messages, phone numbers, emails, pickup codes, stock lines (SKU, quantity, price), store or brand ids, actor ids or Store Admin identities, locations.
+- **Enforced:** the pack is built from the platform service's aggregate functions only and walked for private field names and value patterns before every Gemini call. If anything is found, the call fails closed. Tests walk the pack and the Gemini request.
+- **Refuses** to show any brand's customer-level data, even when asked, and changes nothing: it points to the Brands page buttons.
+- **Records** each question as an `ASSISTANT_QUESTION` event with role `PLATFORM`, without its text.
+
 Must not see, by default:
 
 - full customer profiles (`Customer` records)

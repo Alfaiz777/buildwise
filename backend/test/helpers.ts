@@ -51,6 +51,7 @@ import { PlatformAdminService } from '../src/application/platformAdminService.js
 import { DemoResetService } from '../src/application/demoResetService.js';
 import { BrandAssistantService } from '../src/application/brandAssistantService.js';
 import { StoreAssistantService } from '../src/application/storeAssistantService.js';
+import { PlatformAssistantService } from '../src/application/platformAssistantService.js';
 import { AssistantRunner } from '../src/application/assistantRunner.js';
 import type { AssistantModel } from '../src/ports/assistant.js';
 import type { ConversationSummaryStore, StoredConversationSummary } from '../src/ports/brandAssistant.js';
@@ -896,6 +897,25 @@ export function buildTestWorld(
     now: options.now,
   });
   const account = new AccountService({ stores, inventory, products, brands, now: options.now });
+  const platformAdmin = new PlatformAdminService({
+    brands,
+    users,
+    identity,
+    audit,
+    stores,
+    connections,
+    mappings,
+    inventory,
+    reader: new MemoryInsightsReader({ intents, conversations, recommendations, events, reservations, outcomes }),
+    retailers,
+    reservations,
+    now: options.now,
+  });
+  const platformAssistant = new PlatformAssistantService({
+    runner: assistantRunner,
+    platform: platformAdmin,
+    now: options.now,
+  });
   const storeAssistant = new StoreAssistantService({
     runner: assistantRunner,
     account,
@@ -914,20 +934,8 @@ export function buildTestWorld(
     verifier: new FakeVerifier(emailOf),
     repositories: { users, brands, retailers, stores },
     services: {
-      platformAdmin: new PlatformAdminService({
-        brands,
-        users,
-        identity,
-        audit,
-        stores,
-        connections,
-        mappings,
-        inventory,
-        reader: new MemoryInsightsReader({ intents, conversations, recommendations, events, reservations, outcomes }),
-        retailers,
-        reservations,
-        now: options.now,
-      }),
+      platformAdmin,
+      platformAssistant,
       tenantAdmin,
       account,
       commerceSync,

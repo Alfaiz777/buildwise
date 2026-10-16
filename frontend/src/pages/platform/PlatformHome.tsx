@@ -4,7 +4,10 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../../api/apiContext';
 import { ConsoleShell, useLoad } from '../../components/ConsoleShell';
 import { Card, ErrorState, KpiTile, Skeleton } from '../../components/ui';
+import { AiBriefCard } from '../brand/AiCards';
+import { AskScope } from '../brand/askQwikspot';
 import { formatPrice } from '../brand/types';
+import { PLATFORM_BRIEF_PATH } from './platformAsk';
 import { nextStep, pctText, type Brand, type NetworkResponse } from './platformTypes';
 
 /** Period and synthetic-history controls shared by the platform's aggregate pages. */
@@ -66,6 +69,7 @@ export function PlatformHome() {
   return (
     <ConsoleShell>
       <PeriodControls days={days} onDays={setDays} includeHistory={includeHistory} onHistory={setIncludeHistory} />
+      <AskScope days={days} includeHistory={includeHistory} />
       {network.error && <ErrorState message={network.error} onRetry={network.reload} />}
       {!t && !network.error && <Skeleton lines={2} label="Loading results" />}
       {t && (
@@ -104,6 +108,9 @@ export function PlatformHome() {
           activity. Counts only — the platform never sees customers.
         </p>
       )}
+
+      {/* L7: "Network today" loads after the page (the tiles never wait for it). */}
+      {t && <AiBriefCard url={PLATFORM_BRIEF_PATH} title="Network today" days={days} includeHistory={includeHistory} />}
 
       <Card title="Brands needing attention">
         {!brands.data ? (

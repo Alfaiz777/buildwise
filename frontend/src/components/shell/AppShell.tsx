@@ -12,12 +12,16 @@ import { RoleBanner } from './RoleBanner';
 import { storeLabel } from '../../lib/storeLabel';
 import { AskQwikspotProvider, BRAND_ASK } from '../../pages/brand/askQwikspot';
 import { storeAsk } from '../../pages/retailer/storeAsk';
+import { PLATFORM_ASK } from '../../pages/platform/platformAsk';
 
 /** Dispatched on window when a page resolves or changes what the nav badge counts. */
 export const WAITING_CHANGED = 'qwikspot:waiting-changed';
 
 /** Dispatched on window when a page changed what the nav counts (UI-4). */
 export const QUEUE_CHANGED = 'qs:queue-changed';
+
+/** Whose data "Ask Qwikspot" answers from, per console (the header button's label). */
+const ASK_DATA_OF = { BRAND: "your brand's", RETAIL: "your store's", PLATFORM: "the platform's" } as const;
 
 /**
  * The frame of every console (UI-0): header, left sidebar on desktop, bottom tab bar on
@@ -109,7 +113,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               type="button"
               className="ui-button ui-button--secondary ui-button--sm"
               onClick={openAsk}
-              aria-label={`Ask Qwikspot about ${me.scope === 'RETAIL' ? "your store's" : "your brand's"} data`}
+              aria-label={`Ask Qwikspot about ${ASK_DATA_OF[me.scope]} data`}
             >
               <Sparkles size={16} aria-hidden="true" />
               Ask Qwikspot
@@ -162,9 +166,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
     </div>
   );
-  // L5/L6: the Brand and Store Consoles carry "Ask Qwikspot" — the header button, the drawer,
-  // "Ask about this". The Platform Console does not.
-  const askConfig = me.scope === 'BRAND' ? BRAND_ASK : me.scope === 'RETAIL' ? storeConfig : null;
+  // L5/L6/L7: every console carries "Ask Qwikspot" — the header button and the drawer (and
+  // "Ask about this" on the Brand Console's pages).
+  const askConfig = me.scope === 'BRAND' ? BRAND_ASK : me.scope === 'RETAIL' ? storeConfig : PLATFORM_ASK;
   return askConfig ? (
     <AskQwikspotProvider config={askConfig}>{(open) => shell(open)}</AskQwikspotProvider>
   ) : (

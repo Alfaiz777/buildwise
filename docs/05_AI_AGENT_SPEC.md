@@ -493,7 +493,7 @@ The run also found one ungrounded claim. Asked "is it original?", Gemini once an
 
 ---
 
-# 18. Ask Qwikspot — the brand agent (L5) and the store agent (L6)
+# 18. Ask Qwikspot — the brand agent (L5), the store agent (L6) and the platform agent (L7)
 
 > The shopper agent turns online intent into store visits. The brand agent tells the brand what happened, why, and what to do next, using only the brand's own Qwikspot data.
 
@@ -576,3 +576,35 @@ The same agent pattern, for a Retail Admin in the Store Console. The code is sha
 - **Store share:** the brief and five questions, all six answered by Gemini, in 2.1–7.8 s (median 2.5 s).
 - **Hinglish:** "Mere kitne hold wait kar rahe hain?" was answered in Hinglish.
 - **Stock up before Saturday:** the answer named the two low products (2 left each) and that stock updates come from the brand's file.
+
+## 18.2 The platform agent (L7)
+
+The same agent pattern for the Qwikspot team (PLATFORM_ADMIN) in the Platform Console, on the shared code of §18.1. Only the pack, the prompt and the rules answers are platform-specific (`domain/platformAssistant.ts`, `application/platformAssistantService.ts`).
+
+**Where it appears.**
+- **Ask Qwikspot drawer:** the header button on every Platform Console page, with four questions:
+  - "Which brands need attention?"
+  - "Which brand's setup is incomplete?"
+  - "Which stores have stock data older than a day?"
+  - "What changed in the audit log today?"
+- **Network today:** a card on Platform Home. It loads after the tiles and follows the page's period and synthetic-history choice: how the network did, which brands need attention and why, one next action. If Gemini is slow it shows the rules text.
+- **Links:** next actions and "Based on" go to `/platform`, `/platform/brands`, `/platform/network` and `/platform/audit`.
+
+**The platform pack.** It is built only from what `PlatformAdminService` already returns to the Platform pages, so its numbers are the pages' own:
+- **Totals:** the Overview tiles (`network().totals`, the `/api/platform/network` totals).
+- **Flag counts:** stores per health flag across all brands, counted from the same store rows `/api/platform/brands/:id/network` returns. The flags mean what they mean on the Retail network page (no stock upload, stale stock, no Store Admin, low fill rate, high refusal rate, stale holds).
+- **Per brand:** name, status, the Brands page's next step (the same words as the page, "Live." when complete), setup (Brand Admin provisioned, catalogue synced or failed, products, stores with stock, SKU mappings needing attention, Store Admins provisioned of stores with a retailer), last activity, the network row's numbers, its flag counts and up to 15 flagged stores (name, city, flags, stock freshness, hours since the stock update).
+- **Audit:** the latest 20 platform audit events: action, actor role, target brand, target type, result, reason, time. Never the actor's id or email.
+- **Fail closed:** before anything is sent, the pack is walked for private field names (customer, conversation, message, phone, email, pickup code, SKU, quantity, price, user or actor ids, location) and values (an email, a phone number, a 6+ digit run, a masked customer label). If anything is found, the question fails and nothing reaches Gemini.
+
+**Rules.**
+- **Same as the other agents:** the number checker, Gemini 17 s inside a 20 s ceiling, the "Quick summary" fallback, 20 questions a minute, English or Hinglish.
+- **Event:** an `ASSISTANT_QUESTION` event with `console: PLATFORM` and `role: PLATFORM`, recorded under the platform scope (not a brand), without the question text.
+- **Read-only:** it never creates a brand, provisions an admin or changes a status. Asked to "create a new brand", it changes nothing and points to "New brand" on the Brands page ("Provision Brand Admin" and "Suspend" / "Reactivate" on a brand's row).
+- **No customer-level data:** asked for any brand's customers, chats, phone numbers or pickup codes, it says the Platform Console sees totals and flags only. The pack has none to give.
+
+**Live run (2026-10-16, `gemini-3.8-flash` on `global`, 1 run, with the brand and store questions).** 28 answers: 23 by Gemini, 5 Quick summaries, all on brand questions (3 timeouts, 1 error, 1 number not in the data); p50 3.2 s, p95 17.0 s overall.
+- **Per console:** brand 15 answers, p50 4.9 s, p95 17.0 s; store 6, p50 3.2 s, p95 5.1 s; platform 7, p50 2.3 s, p95 3.6 s.
+- **Platform share:** "Network today" and six questions, all seven answered by Gemini in 1.8–3.6 s.
+- **Hinglish:** "Kaunse brands ko dhyan chahiye?" was answered in Hinglish.
+- **Refusal:** asked for Demo Beauty Co's customers and phone numbers, it said the Platform Console has totals and flags only.
