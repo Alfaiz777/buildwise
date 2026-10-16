@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../../api/apiContext';
 import { ConsoleShell, Section, useLoad } from '../../components/ConsoleShell';
 import { label } from '../../lib/labels';
+import { AskAboutThis } from './AiCards';
 import { humanize } from './conversationTypes';
 import { FunnelChart, WeekdayChart } from './InsightCharts';
 import type { BrandStore } from './types';
@@ -208,6 +209,10 @@ export function InsightsPage() {
                           Open {store.store_name} →
                         </Link>
                       ))}
+                      <AskAboutThis
+                        label={`Ask Qwikspot about: ${s.text}`}
+                        question={`About this suggestion: "${s.text}" Why is this happening, and what should I do first?`}
+                      />
                     </div>
                     <details className="small">
                       <summary>Technical details</summary>

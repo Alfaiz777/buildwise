@@ -490,3 +490,49 @@ Almost all of the time is the model. A taps-first purchase answers in millisecon
 The same share of typed turns goes to the backup (15 of 74, about one in five): the slow Gemini requests are the same ones, they are just cut 6 s sooner. A backup answer at about 7 s means the first request stalled past 7 s and no retry fitted in the deadline.
 
 The run also found one ungrounded claim. Asked "is it original?", Gemini once answered (EDUCATE) that every product was "100% genuine and original". Nothing verified says so. Prompt V2 now forbids authenticity and safety claims without a verified attribute and offers a person instead; that line was added after this run.
+
+---
+
+# 18. Ask Qwikspot — the brand agent (L5)
+
+> The shopper agent turns online intent into store visits. The brand agent tells the brand what happened, why, and what to do next, using only the brand's own Qwikspot data.
+
+**Where it appears in the Brand Console.**
+- **The drawer, on all six pages:** the header's **Ask Qwikspot** button. Its suggested questions follow the page, e.g. Overview "How did we do this week?" and Network "Which store needs attention?".
+- **Overview brief:** "This week in brief" at the top of Overview. It covers what happened, the biggest win and the biggest problem, with one next-action button to the page that fixes it.
+- **Conversation summary:** above each conversation, two lines on what the shopper wanted and what happened. A handed-off chat adds a **handoff brief** for the person taking over.
+- **Ask about this:** a button on each Insights suggestion and each Network store, which opens the drawer with that question asked.
+
+Settings gets no AI content: settings stay in the brand's own hands.
+
+**How it answers.**
+- **The data pack:** about a second to build, from the same numbers the console shows:
+  - totals for 7 days, per store (stock age, fill rate, refusals, Store Admin);
+  - unmet demand by product and area, the rules' suggestions;
+  - holds right now (waiting, oldest wait, expiring within the hour, by store) and conversation counts.
+  - It holds store and product names and counts only: no customer, no phone number, no pickup code.
+- **One Gemini call,** with at most 2 rounds of two read-only tools: `get_store` and `list_conversations`.
+- **Conversation summaries** send the last 20 messages with phone numbers, emails, 6-digit codes and a name the shopper gives ("my name is …", "mera naam …") redacted, plus the decisions and the hold. The customer's reference is never sent.
+
+**Guardrails, enforced by the backend (`application/brandAssistantService.ts`).**
+- **Every number in an AI answer must appear in the data** (the pack, a tool result or the question). Dates and ids don't count as a source. An answer with any other number is not shown.
+- **No phone number, email or pickup code may appear in an answer.**
+- **Read-only:** the tools only read this brand's records, and the agent can only explain and suggest.
+- **Deadline:** Gemini stops at 17 s (`GEMINI_BRAND_DEADLINE_MS`), within a 20 s ceiling.
+- **Fallback:** a timeout, an error, an ungrounded number or PII shows the rules **Quick summary** from the same data instead. The UI labels it "Quick summary"; Gemini's answers are labelled "AI summary". Each shows links to the console pages its data came from.
+- **Logging:** one `brand_assistant.answer` line per answer: surface, page, source, failure reason, `latency_ms`, `gemini_ms`, tools. Never the question or the text.
+- **Without Gemini** (`AGENT_RUNTIME=mock`, local): every answer is a Quick summary.
+
+**Speed and cost.** The page never waits for the AI: the brief and summaries load after the page.
+- **Brief:** cached 10 minutes per brand (1 minute after a Quick summary, so Gemini is retried soon); Reset demo clears it.
+- **Conversation summary:** stored on the conversation until a new message arrives. A Quick summary is not stored.
+- **Drawer:** shows "Reading your data…", then "Writing the answer…".
+
+**Every AI piece shows its label and its data.** "AI summary" or "Quick summary", with links to where the data is shown: the console pages for the drawer and the brief, the conversation's Messages and "Why Qwikspot did this" for a summary.
+
+**Live evaluation.** `RUN_GEMINI_EVAL=1 VERTEX_PROJECT=<project> npm run eval:brand --workspace backend` asks every suggested question of the six pages, the Overview brief and a handoff conversation's summary against real Gemini on the Ahmedabad demo world. It prints who answered (AI / Quick summary, with the reason), the time and the answer, with p50 / p95. It fails if an answer misses the 20 s ceiling or contains the shopper's phone number or name.
+
+**First live run (2026-10-16, `gemini-3.8-flash` on `global`, 1 run, from a laptop in India).**
+- **Answers:** 14 of 14 within the ceiling, none with a phone number or name. 10 were written by Gemini; 4 were Quick summaries (3 timeouts at the 17 s deadline, 1 answer with a number not in the data).
+- **Time:** p50 6.7 s, p95 17.0 s against a target of ≤ 6 s / ≤ 15 s. The p95 is the deadline itself: the slow answers are the ones that time out.
+- **Honest gaps:** when the data does not cover a question ("Which store is slowest to accept?"), Gemini says what is missing rather than guessing.

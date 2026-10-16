@@ -6,6 +6,7 @@ import { useApi } from '../../api/apiContext';
 import { ConsoleShell, errorMessage, useLoad } from '../../components/ConsoleShell';
 import { Card, ErrorState, KpiTile, Skeleton, useToast } from '../../components/ui';
 import type { ConversationRow, ReservationRow } from './conversationTypes';
+import { AiBriefCard } from './AiCards';
 import { DemoGuide } from './DemoGuide';
 import { storesNamedIn, type InsightsResponse } from './InsightsPage';
 import { attentionItems, kpis } from './overview';
@@ -83,6 +84,8 @@ export function BrandHome() {
           {error}
         </p>
       )}
+
+      <AiBriefCard />
 
       <div className="overview-head">
         <div className="filters" role="group" aria-label="Period">

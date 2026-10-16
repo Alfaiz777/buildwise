@@ -40,6 +40,8 @@ import { connectionsRouter, integrationsRouter, productsRouter } from './routes/
 import { brandConversationsRouter, simulatorRouter } from './routes/conversations.js';
 import { demoStorefrontRouter } from './routes/demoStorefront.js';
 import { brandDemoRouter, demoRouter } from './routes/demo.js';
+import { brandAssistantRouter } from './routes/brandAssistant.js';
+import type { BrandAssistantService } from './application/brandAssistantService.js';
 import { shopperRouter } from './routes/shopper.js';
 import { internalRouter } from './routes/internal.js';
 import type { ScheduledWorkService } from './application/scheduledWork.js';
@@ -83,6 +85,8 @@ export interface AppDeps {
     fulfilment: FulfilmentService;
     handoff: HandoffService;
     insights: InsightsService;
+    /** L5: "Ask Qwikspot" — the brand agent (read-only). */
+    brandAssistant?: BrandAssistantService;
     /** UI-3: the read-only Settings page. */
     brandSettings: BrandSettingsQuery;
     /** L4: the editable list of storefronts allowed to send shopper events. */
@@ -220,8 +224,15 @@ export function createApp(deps: AppDeps): Express {
     brandConversationsRouter(services.conversations, services.followUps, services.handoff),
   );
   tenant.use('/brand', requireScope('BRAND'), insightsRouter(services.insights));
+  if (services.brandAssistant)
+    tenant.use('/brand', requireScope('BRAND'), brandAssistantRouter(services.brandAssistant));
   tenant.use('/brand', requireScope('BRAND'), brandSettingsRouter(services.brandSettings, services.storefrontOrigins));
-  if (services.demoReset) tenant.use('/brand', requireScope('BRAND'), brandDemoRouter(services.demoReset));
+  if (services.demoReset)
+    tenant.use(
+      '/brand',
+      requireScope('BRAND'),
+      brandDemoRouter(services.demoReset, (brandId) => services.brandAssistant?.forget(brandId)),
+    );
   tenant.use('/channels/simulator', requireScope('BRAND'), simulatorRouter(services.simulator, services.conversations));
   if (localUploads) tenant.use('/local-files', requireScope('BRAND'), localFilesRouter(localUploads));
   // Retailer Console: store-scoped, RETAIL_ADMIN only.

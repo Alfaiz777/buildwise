@@ -14,6 +14,7 @@ import {
   type IntentSummary,
 } from './conversationTypes';
 import { DecisionTrace } from './DecisionTrace';
+import { ConversationSummary } from './AiCards';
 import { HandoffPanel, waitingFor } from './HandoffPanel';
 import { IntentPanel } from './IntentPanel';
 import { buildJourney } from './journey';
@@ -296,6 +297,7 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
                 }
                 description={selectedRow?.intent?.product_title ?? undefined}
               >
+                <ConversationSummary conversationId={detail.conversation_id} refreshKey={detail.messages.length} />
                 {detail.human_handoff && (
                   <HandoffPanel
                     conversationId={detail.conversation_id}
@@ -322,12 +324,16 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
                   />
                 )}
               </Card>
-              <Card title="Messages" description="Exactly what the customer saw, with who sent each message.">
+              <Card
+                id="conversation-messages"
+                title="Messages"
+                description="Exactly what the customer saw, with who sent each message."
+              >
                 <div className="transcript">
                   <ChatThread messages={detail.messages} mode="brand" />
                 </div>
               </Card>
-              <Card>
+              <Card id="conversation-decisions">
                 <DecisionTrace recommendations={detail.recommendations} />
                 {detail.recommendations.length === 0 && (
                   <p className="muted small">Qwikspot has not made a decision in this conversation yet.</p>

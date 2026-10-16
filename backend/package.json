@@ -14,6 +14,7 @@
     "test": "vitest run --exclude \"test/emulator/**\"",
     "test:emulator": "vitest run test/emulator",
     "eval:gemini": "vitest run test/eval/gemini.eval.test.ts",
+    "eval:brand": "vitest run test/eval/brandAssistant.eval.test.ts",
     "seed:platform-admin": "tsx --env-file-if-exists=.env scripts/seed-platform-admin.ts",
     "seed:demo": "tsx --env-file-if-exists=.env scripts/seed-demo.ts",
     "demo:check": "tsx scripts/demoCheck.ts",

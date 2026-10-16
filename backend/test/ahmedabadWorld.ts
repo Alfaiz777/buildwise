@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import type { Logger } from '../src/lib/logger.js';
 import type { AgentRuntime } from '../src/ports/agent.js';
+import type { BrandAssistantModel } from '../src/ports/brandAssistant.js';
 import { bearer, buildTestWorld } from './helpers.js';
 
 const SYSTEM = { type: 'SYSTEM' as const, id: 'test' };
@@ -15,7 +16,14 @@ export const WEDNESDAY_NOON_IST = new Date('2026-10-14T06:30:00.000Z');
 let n = 0;
 
 export async function ahmedabadWorld(
-  options: { agent?: AgentRuntime; backupAgent?: AgentRuntime; logger?: Logger; aiBudgetMs?: number } = {},
+  options: {
+    agent?: AgentRuntime;
+    backupAgent?: AgentRuntime;
+    logger?: Logger;
+    aiBudgetMs?: number;
+    brandModel?: BrandAssistantModel;
+    brandDeadlineMs?: number;
+  } = {},
 ) {
   const world = buildTestWorld({ now: () => WEDNESDAY_NOON_IST, ...options });
   world.retailers.retailers.push({
