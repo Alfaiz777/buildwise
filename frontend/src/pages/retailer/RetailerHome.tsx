@@ -10,6 +10,8 @@ import { formatDateTime, formatPrice } from '../brand/types';
 import { itemLabel, RetailerQueue, type QueueReservation } from './RetailerQueue';
 import { playNewHoldTone, useNewHoldTitle, useStoreSound } from './storeAlert';
 import { storeLabel } from '../../lib/storeLabel';
+import { AiBriefCard } from '../brand/AiCards';
+import { storeBriefPath } from './storeAsk';
 
 const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -117,6 +119,8 @@ export function RetailerHome({ autoPoll = false }: { autoPoll?: boolean }) {
   return (
     <ConsoleShell>
       <div onClick={() => unseen && setUnseen(0)} onKeyDown={() => unseen && setUnseen(0)} role="presentation">
+        {/* L6: loads after the page; Gemini's brief, or the rules text when Gemini is slow. */}
+        <AiBriefCard url={storeBriefPath(me.store.store_id)} title="Today at your store" days={7} includeHistory />
         <ValueStrip storeId={me.store.store_id} reloadKey={reloadKey} />
         <div className="today-tools">
           <label className="small sound-toggle">

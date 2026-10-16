@@ -6,6 +6,7 @@ import { ConsoleShell, useLoad } from '../../components/ConsoleShell';
 import { Card, EmptyState, ErrorState, Skeleton } from '../../components/ui';
 import { WeekdayChart } from '../brand/InsightCharts';
 import { REFUSAL_LABEL } from './RetailerQueue';
+import { AskScope } from '../brand/askQwikspot';
 
 export interface StoreInsights {
   store_id: string;
@@ -74,6 +75,7 @@ export function StoreDemand() {
 
   return (
     <ConsoleShell>
+      <AskScope days={days} includeHistory={includeHistory} />
       <Card
         title="Demand near you"
         description={`What shoppers asked ${me.brand_name} for near ${me.store.store_name}, from the brand's records. Counts only — never a customer.`}

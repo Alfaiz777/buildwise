@@ -493,7 +493,7 @@ The run also found one ungrounded claim. Asked "is it original?", Gemini once an
 
 ---
 
-# 18. Ask Qwikspot — the brand agent (L5)
+# 18. Ask Qwikspot — the brand agent (L5) and the store agent (L6)
 
 > The shopper agent turns online intent into store visits. The brand agent tells the brand what happened, why, and what to do next, using only the brand's own Qwikspot data.
 
@@ -539,3 +539,40 @@ Settings gets no AI content: settings stay in the brand's own hands.
 - **Time:** p50 6.7 s, p95 17.0 s against a target of ≤ 6 s / ≤ 15 s. The p95 is the deadline itself: the slow answers are the ones that time out.
 - **After the period / synthetic-history fix (same day, 15 answers incl. a live-only brief):** 14 by Gemini, 1 Quick summary (a number not in the data); p50 4.6 s, p95 13.6 s, within the ≤ 6 s / ≤ 15 s target. The live-only brief says "live activity" and uses the live tiles' numbers.
 - **Honest gaps:** when the data does not cover a question ("Which store is slowest to accept?"), Gemini says what is missing rather than guessing.
+
+## 18.1 The store agent (L6)
+
+The same agent pattern, for a Retail Admin in the Store Console. The code is shared, not copied:
+- `domain/assistant.ts`: redaction, the number check, the answer schema and the rules every agent carries;
+- `application/assistantRunner.ts`: the 17 s deadline, the checks, the Quick summary fallback, the log line, the event and the brief cache;
+- `adapters/agent/geminiAssistant.ts`: one Gemini adapter, with the prompt and tools as inputs;
+- the frontend drawer and brief card, configured per console.
+
+**Where it appears.**
+- **Ask Qwikspot drawer:** the header button on every Store Console page, with four questions:
+  - "How is my store doing this week?"
+  - "Which holds are waiting for me?"
+  - "What are shoppers near me asking for that I don't have?"
+  - "What should I stock up before Saturday?"
+- **Today at your store:** a card on the store's home page. It loads after the page: what needs doing now (holds waiting, the longest wait), how the period went, one thing to watch. If Gemini is slow it shows the rules text.
+
+**Scope.**
+- The store is only the signed-in Retail Admin's. Another store in the path is `404`, and a store id in the question is ignored.
+- The pack has no other store's or brand-wide numbers. The brand's suggestions are only those for this store.
+
+**The store pack** (about a second), for the page's period and synthetic-history choice. The Demand page uses its own toggles; the other pages use 7 days with history included.
+- **Today tiles:** holds, picked up, completion, refused, expired, value of pickups, with the tiles' own function.
+- **Holds right now:** waiting for you, confirmed, ready. Waiting holds include how long each has waited and when it expires; the customer appears only as the console's masked label ("Customer •••• 4CEF").
+- **Stock needing attention:** available ≤ 2, or older than the brand's freshness limit (24 h by default).
+- **Demand near your store,** refusals, the busiest weekdays (shoppers this store was nearest to) and the brand's suggestions for this store.
+- **One Gemini call:** no tools are needed, because the pack covers the store's questions.
+
+**Rules.**
+- **Same as the brand agent:** the number checker, no phone, email, pickup code or typed name, Gemini 17 s inside a 20 s ceiling, the "Quick summary" fallback, 20 questions a minute, and the `ASSISTANT_QUESTION` event without the text.
+- **Language:** English, or Hinglish when the question is in Hinglish (both agents).
+- **Read-only:** asked to "confirm all my holds", it changes nothing and says to use Confirm on Today.
+
+**Live run (2026-10-16, `gemini-3.8-flash` on `global`, 1 run, together with the brand questions).** 21 answers: 19 by Gemini, 2 Quick summaries (1 timeout, 1 number not in the data); p50 4.4 s, p95 7.8 s.
+- **Store share:** the brief and five questions, all six answered by Gemini, in 2.1–7.8 s (median 2.5 s).
+- **Hinglish:** "Mere kitne hold wait kar rahe hain?" was answered in Hinglish.
+- **Stock up before Saturday:** the answer named the two low products (2 left each) and that stock updates come from the brand's file.

@@ -1281,6 +1281,22 @@ Read-only, BRAND_ADMIN, the principal's own brand only (`requireScope('BRAND')`)
 
 Every answer arrives within 20 s: Gemini's (17 s deadline) or the rules "Quick summary" from the same data (`05` §18).
 
+Each question (brand or store) also records a CommerceEvent `ASSISTANT_QUESTION` (`source: QWIKSPOT`, `entity_reference`: the store id for a store question, else null; payload `{ console: BRAND | STORE, page, source: AI | QUICK_SUMMARY, failure, latency_ms }`). The question's text is never stored or logged. A brief is not a question and records nothing.
+
+## 14.13 Ask Qwikspot — the store agent (L6)
+
+Read-only, RETAIL_ADMIN, the principal's own store only (mounted under `/api/retail` behind `requireScope('RETAIL')`). Same answer shape as §14.12, with `next_action.page` one of `TODAY | HISTORY | STOCK | DEMAND`.
+
+| Route | Purpose |
+|---|---|
+| `POST /api/retail/stores/:storeId/assistant` `{ question (2–300 chars), page: TODAY \| HISTORY \| STOCK \| DEMAND, days: 7 \| 28 (default 7), include_history: boolean (default true) }` | A question from the Store Console drawer. 20 per user per minute → `429 RATE_LIMITED`. Not audited: nothing is written |
+| `GET /api/retail/stores/:storeId/assistant/brief?days=7\|28&include_history=true\|false[&refresh=true]` | "Today at your store", cached 10 min per store and choice (1 min after a Quick summary); Reset demo clears them |
+
+- **Scope:** another store's id in the path → `404`, including another store of the same retailer. A Brand Admin → `403`. A store id written in the question is ignored: the data is only the principal's store.
+- **Read-only:** the agent never confirms a hold or changes stock; it names the button (Confirm on Today) or the page (Stock) instead.
+- **Tiles:** `GET /api/retail/stores/:storeId/summary` (the Today tiles) and the store agent share one function (`application/storeSummary.ts`). The summary's numbers and the agent's totals are the same by construction.
+
+
 # 15. Provider isolation rule
 
 The rest of Qwikspot must not depend directly on:

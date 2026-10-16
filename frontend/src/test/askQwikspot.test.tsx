@@ -81,7 +81,7 @@ function apiFor(me: MeResponse, extra: Record<string, unknown> = {}, ask?: (body
     throw new Error(`unexpected GET ${path}`);
   });
   const post = vi.fn(async (path: string, body: unknown) => {
-    if (path === '/api/brand/assistant/ask') return ask ? ask(body) : answer();
+    if (path === '/api/brand/assistant/ask' || path.endsWith('/assistant')) return ask ? ask(body) : answer();
     throw new Error(`unexpected POST ${path}`);
   });
   return { get, post, patch: vi.fn(), put: vi.fn() } as unknown as ApiClient & {
@@ -174,10 +174,87 @@ describe('Ask Qwikspot — the drawer', () => {
     );
   });
 
-  it('only in the Brand Console: the Store Console has no Ask Qwikspot', async () => {
-    renderAt('/store', apiFor(RETAIL, { '/api/reservations?view=active': { reservations: [] } }));
-    await screen.findAllByText(/Wellness Mart/);
+  it('the Store Console has its own Ask Qwikspot: the 4 store questions, asked about the own store', async () => {
+    const api = apiFor(
+      RETAIL,
+      {
+        '/api/reservations?view=active': { reservations: [] },
+        '/api/retail/stores/st_1/assistant/brief?days=7&include_history=true': answer({
+          answer: '2 holds are waiting for you to confirm.',
+          source: 'QUICK_SUMMARY',
+          next_action: { label: 'Confirm waiting holds', page: 'TODAY', path: '/store' },
+          used: ['waiting_holds'],
+        }),
+      },
+      async () =>
+        answer({
+          answer: 'Shoppers near you asked for Vitamin C Glow Serum 50 ml 3 times.',
+          source: 'QUICK_SUMMARY',
+          next_action: { label: 'See demand near you', page: 'DEMAND', path: '/store/demand' },
+          used: ['demand_near_you', 'stock_attention'],
+        }),
+    );
+    renderAt('/store', api);
+    // "Today at your store": loads after the page, labelled, with its next action.
+    const brief = (await screen.findByText('2 holds are waiting for you to confirm.')).closest('section')!;
+    expect(within(brief).getByText('Today at your store')).toBeInTheDocument();
+    expect(within(brief).getByText('Quick summary')).toBeInTheDocument();
+    expect(within(brief).getByRole('link', { name: 'Confirm waiting holds →' })).toHaveAttribute('href', '/store');
     expect(screen.queryByRole('button', { name: "Ask Qwikspot about your brand's data" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: "Ask Qwikspot about your store's data" }));
+    const drawer = await screen.findByRole('dialog', { name: 'Ask Qwikspot' });
+    expect(within(drawer).getByText(/only from your store's Qwikspot data/)).toBeInTheDocument();
+    const chips = within(within(drawer).getByRole('group', { name: 'Suggested questions' })).getAllByRole('button');
+    expect(chips.map((c) => c.textContent)).toEqual([
+      'How is my store doing this week?',
+      'Which holds are waiting for me?',
+      "What are shoppers near me asking for that I don't have?",
+      'What should I stock up before Saturday?',
+    ]);
+    fireEvent.click(chips[2]!);
+    expect(
+      await within(drawer).findByText('Shoppers near you asked for Vitamin C Glow Serum 50 ml 3 times.'),
+    ).toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledWith('/api/retail/stores/st_1/assistant', {
+      question: "What are shoppers near me asking for that I don't have?",
+      page: 'TODAY',
+      days: 7,
+      include_history: true,
+    });
+    expect(within(drawer).getByText('Quick summary')).toBeInTheDocument();
+    expect(within(drawer).getByRole('link', { name: 'See demand near you →' })).toHaveAttribute(
+      'href',
+      '/store/demand',
+    );
+    // "Based on": the store pages the data came from.
+    expect(within(drawer).getByRole('link', { name: 'Demand' })).toHaveAttribute('href', '/store/demand');
+    expect(within(drawer).getByRole('link', { name: 'Stock' })).toHaveAttribute('href', '/store/stock');
+  });
+
+  it('Store Console → Demand: the drawer asks for the period and history choice of the page', async () => {
+    const api = apiFor(RETAIL, {
+      '/api/reservations?view=active': { reservations: [] },
+      '/api/retail/stores/st_1/insights?days=7&include_history=true': {
+        store_id: 'st_1',
+        period: { days: 7, from: '', to: '', timezone: 'Asia/Kolkata' },
+        demo_history: { included: true },
+        missed: [],
+        fill_rate: [],
+        refusals: {},
+        suggestions: [],
+      },
+    });
+    renderAt('/store/demand', api);
+    fireEvent.click(await screen.findByRole('button', { name: "Ask Qwikspot about your store's data" }));
+    const drawer = await screen.findByRole('dialog', { name: 'Ask Qwikspot' });
+    fireEvent.click(within(drawer).getByRole('button', { name: 'What should I stock up before Saturday?' }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        '/api/retail/stores/st_1/assistant',
+        expect.objectContaining({ page: 'DEMAND', days: 7, include_history: true }),
+      ),
+    );
   });
 });
 

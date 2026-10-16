@@ -4,7 +4,10 @@
  * grounding check, PII redaction, the model instruction and the rules summaries ("Quick
  * summary") that answer when Gemini is slow, fails or writes a number it was not given.
  */
-import { z } from 'zod';
+import { answerSchemaFor, jsonSchemaOf, money, plural, SHARED_RULES, type ModelAnswer } from './assistant.js';
+
+// The shared grounding helpers, re-exported for the brand agent's callers.
+export { numbersOf, redactPII, ungroundedNumbers } from './assistant.js';
 
 export const CONSOLE_PAGES = ['OVERVIEW', 'CONVERSATIONS', 'RESERVATIONS', 'INSIGHTS', 'NETWORK', 'SETTINGS'] as const;
 export type ConsolePage = (typeof CONSOLE_PAGES)[number];
@@ -85,50 +88,7 @@ export interface ConversationPack {
   message_count: number;
 }
 
-const PHONE = /(?:\+?\d[\d\s().-]{7,}\d)/g;
-const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
-const PICKUP_CODE = /\b\d{6}\b/g;
-
-/** A name the shopper types about themselves: "my name is Priya Shah", "mera naam Priya hai". */
-// No `i` flag: with it \p{Lu} matches lowercase too, and "hai" would pass for a surname.
-const OWN_NAME = /\b([Mm]y name is|[Mm]y name's|I am called|[Mm]era naam(?: hai)?)\s+\p{L}+(?:\s+\p{Lu}\p{Ll}+)?/gu;
-
-/** Phone numbers, emails, pickup codes and a name the shopper gives never go to the model. */
-export const redactPII = (text: string) =>
-  text
-    .replace(EMAIL, '[email]')
-    .replace(PHONE, '[phone]')
-    .replace(PICKUP_CODE, '[code]')
-    .replace(OWN_NAME, '$1 [name]');
-
-const ISO = /^\d{4}-\d{2}-\d{2}T/;
-const ID_LIKE = /^[a-z]+_[\w-]+$/i;
-const NUMBER = /\d[\d,]*(?:\.\d+)?/g;
-
-const toNumber = (raw: string) => Number(raw.replace(/,/g, ''));
-
-/** Every number the data shows: numeric values, and numbers inside texts (not dates or ids). */
-export function numbersOf(data: unknown, into = new Set<number>()): Set<number> {
-  if (typeof data === 'number') into.add(Math.round(data * 10) / 10);
-  else if (typeof data === 'string') {
-    if (!ISO.test(data) && !ID_LIKE.test(data)) for (const m of data.match(NUMBER) ?? []) into.add(toNumber(m));
-  } else if (Array.isArray(data)) for (const v of data) numbersOf(v, into);
-  else if (data && typeof data === 'object') for (const v of Object.values(data)) numbersOf(v, into);
-  return into;
-}
-
-/**
- * The grounding rule: every number in an AI answer must appear in the data it was given (the
- * pack, a tool result or the question). Returns the numbers that do not.
- */
-export function ungroundedNumbers(answer: string, ...sources: unknown[]): number[] {
-  const known = new Set<number>();
-  for (const s of sources) numbersOf(s, known);
-  const found = [...answer.matchAll(NUMBER)].map((m) => toNumber(m[0]));
-  return [...new Set(found.filter((n) => !known.has(n) && !known.has(Math.round(n * 10) / 10)))];
-}
-
-export const BRAND_ASSISTANT_PROMPT_VERSION = 'ASK_QWIKSPOT_V1';
+export const BRAND_ASSISTANT_PROMPT_VERSION = 'ASK_QWIKSPOT_V2';
 
 export const BRAND_ASSISTANT_PROMPT = `You are "Ask Qwikspot", the analyst inside a brand's Qwikspot console. Qwikspot turns shoppers' online intent into store pickups through the brand's WhatsApp. You tell the brand's team what happened, why, and what to do next.
 
@@ -141,12 +101,8 @@ TOOLS (read-only, at most 2 rounds)
 Call a tool only when the pack does not already answer the question.
 
 RULES
-- Use only the data you were given. Every number you write must appear in the data or a tool result: never compute a new percentage, total or average, never estimate. If the data does not answer, say so in one sentence and say what would.
-- The data covers data.period_days days. When data.synthetic_history_included is false it is live activity only: say "live" or "this week's real activity", never mention demo or synthetic data otherwise.
-- Use the totals with their meaning: pickups_collected_in_store are pickups, online_orders are online orders, value_of_purchases is the value of purchases, conversion_percent is conversion. Never write a data field name (say "fill rate", not "fill_rate_percent").
-- Never name or describe a shopper, never repeat a phone number, email or pickup code.
-- You cannot change anything: you only explain and suggest. Suggest at most one next action, and only one the data supports.
-- Plain, warm, specific English for a busy shop owner: name the store, the product, the area. No headings, no tables, no jargon ("intent", "guardrail", "funnel" only if they used it).
+${SHARED_RULES}
+- Use the totals with their meaning: pickups_collected_in_store are pickups, online_orders are online orders, value_of_purchases is the value of purchases, conversion_percent is conversion. Name the store, the product, the area.
 
 LENGTH
 - ANSWER: 2–4 sentences. BRIEF: 3–4 sentences — what happened this period, the biggest win, the biggest problem, then next_action. SUMMARY: summary in 2 short sentences — what the shopper wanted, what happened and why; handoff_brief (only when the conversation was handed to a person): 2–3 sentences for the person taking over — what they want, what was offered, what is open.
@@ -154,25 +110,10 @@ LENGTH
 OUTPUT
 One JSON object: answer (the text; for SUMMARY the 2-sentence summary), handoff_brief (SUMMARY only, else null), next_action ({label ≤ 40 characters, page: one of ${CONSOLE_PAGES.join(', ')}} or null), used (the data sections you relied on, e.g. ["totals","stores"]).`;
 
-export const BrandAnswerSchema = z.object({
-  answer: z.string().min(1).max(1200),
-  handoff_brief: z.string().max(800).nullable().optional(),
-  next_action: z
-    .object({ label: z.string().min(1).max(60), page: z.enum(CONSOLE_PAGES) })
-    .nullable()
-    .optional(),
-  used: z.array(z.string().max(40)).max(10).optional(),
-});
-export type BrandAnswer = z.infer<typeof BrandAnswerSchema>;
+export const BrandAnswerSchema = answerSchemaFor(CONSOLE_PAGES);
+export type BrandAnswer = ModelAnswer;
 
-export const brandAnswerJsonSchema = (): Record<string, unknown> => {
-  const { $schema: _s, ...schema } = z.toJSONSchema(BrandAnswerSchema) as Record<string, unknown>;
-  return schema;
-};
-
-const money = (amount: number, currency: string | null) =>
-  currency === 'INR' || currency === null ? `₹${amount.toLocaleString('en-IN')}` : `${currency} ${amount}`;
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+export const brandAnswerJsonSchema = (): Record<string, unknown> => jsonSchemaOf(BrandAnswerSchema);
 
 /** The rules brief for the Overview page: the same shape as the AI brief, from the pack only. */
 export function quickBrief(pack: BrandPack): BrandAnswer {

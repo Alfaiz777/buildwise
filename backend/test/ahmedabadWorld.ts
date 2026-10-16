@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import type { Logger } from '../src/lib/logger.js';
 import type { AgentRuntime } from '../src/ports/agent.js';
-import type { BrandAssistantModel } from '../src/ports/brandAssistant.js';
+import type { AssistantModel } from '../src/ports/assistant.js';
 import { bearer, buildTestWorld } from './helpers.js';
 
 const SYSTEM = { type: 'SYSTEM' as const, id: 'test' };
@@ -21,8 +21,8 @@ export async function ahmedabadWorld(
     backupAgent?: AgentRuntime;
     logger?: Logger;
     aiBudgetMs?: number;
-    brandModel?: BrandAssistantModel;
-    brandDeadlineMs?: number;
+    assistantModel?: AssistantModel;
+    assistantDeadlineMs?: number;
   } = {},
 ) {
   const world = buildTestWorld({ now: () => WEDNESDAY_NOON_IST, ...options });

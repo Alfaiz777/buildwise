@@ -5,7 +5,7 @@
  */
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { GeminiBrandAssistant } from '../src/adapters/agent/geminiBrandAssistant.js';
+import { GeminiAssistant } from '../src/adapters/agent/geminiAssistant.js';
 import type { GeminiClient, GeminiRequest } from '../src/adapters/agent/geminiClient.js';
 import {
   numbersOf,
@@ -15,39 +15,15 @@ import {
   type BrandAnswer,
   type BrandPack,
 } from '../src/domain/brandAssistant.js';
-import type { Logger } from '../src/lib/logger.js';
-import type { BrandAssistantModel, BrandModelInput, BrandModelTools } from '../src/ports/brandAssistant.js';
 import { ahmedabadWorld } from './ahmedabadWorld.js';
+import { answerLogs, FakeAssistantModel } from './fakeAssistant.js';
 import { bearer } from './helpers.js';
 
-/** A fake brand model: answers what `reply` returns for the input it was given, counting calls. */
-class FakeBrandModel implements BrandAssistantModel {
-  readonly model = 'fake-brand-model';
-  inputs: BrandModelInput[] = [];
-  constructor(
-    private readonly reply: (input: BrandModelInput, tools: BrandModelTools) => Promise<BrandAnswer> | BrandAnswer,
-  ) {}
-  async generate(input: BrandModelInput, tools: BrandModelTools, signal: AbortSignal) {
-    this.inputs.push(input);
-    const answer = await this.reply(input, tools);
-    if (signal.aborted) throw new Error('aborted');
-    return { answer, toolOutputs: [], toolCalls: [] };
-  }
-}
-
-const logs = () => {
-  const lines: { message: string; fields: Record<string, unknown> }[] = [];
-  const logger: Logger = {
-    debug() {},
-    warn() {},
-    error() {},
-    info: (message, fields) => lines.push({ message, fields: fields ?? {} }),
-  };
-  return { lines, logger, answers: () => lines.filter((l) => l.message === 'brand_assistant.answer') };
-};
+const FakeBrandModel = FakeAssistantModel;
+const logs = () => answerLogs('brand_assistant.answer');
 
 /** The Ahmedabad world with a little activity: a hold, an unmet 50 ml request, a handoff with a phone number. */
-async function busyWorld(options: Parameters<typeof ahmedabadWorld>[0] & { brandDeadlineMs?: number } = {}) {
+async function busyWorld(options: Parameters<typeof ahmedabadWorld>[0] & { assistantDeadlineMs?: number } = {}) {
   const s = await ahmedabadWorld(options);
   await s.say('c1', 'I need Vitamin C Glow Serum 30 ml today near Satellite');
   await s.tap('c1', 'hold:st_north_1');
@@ -106,7 +82,7 @@ describe('Ask Qwikspot — the drawer (POST /api/brand/assistant/ask)', () => {
         used: ['holds_now'],
       };
     });
-    const s = await busyWorld({ brandModel: model });
+    const s = await busyWorld({ assistantModel: model });
     const res = await s
       .as()
       .post('/api/brand/assistant/ask', { question: 'What should I fix first?', page: 'OVERVIEW' });
@@ -120,7 +96,7 @@ describe('Ask Qwikspot — the drawer (POST /api/brand/assistant/ask)', () => {
 
   it('the pack sent to Gemini holds no shopper: no customer ref, no phone number, no pickup code', async () => {
     const model = new FakeBrandModel(() => ({ answer: 'All good.' }));
-    const s = await busyWorld({ brandModel: model });
+    const s = await busyWorld({ assistantModel: model });
     await s.as().post('/api/brand/assistant/ask', { question: 'How did we do this week?', page: 'OVERVIEW' });
     const sent = JSON.stringify(model.inputs[0]);
     const pickupCode = s.world.reservations.reservations[0]!.pickupCode;
@@ -134,7 +110,7 @@ describe('Ask Qwikspot — the drawer (POST /api/brand/assistant/ask)', () => {
     ['a phone number', { answer: 'Call the shopper on +91 98765 43210.' }, 'PII'],
   ] as const)('Gemini writes %s → the Quick summary instead, and the reason is logged', async (_c, answer, failure) => {
     const log = logs();
-    const s = await busyWorld({ brandModel: new FakeBrandModel(() => answer), logger: log.logger });
+    const s = await busyWorld({ assistantModel: new FakeBrandModel(() => answer), logger: log.logger });
     const res = await s.as().post('/api/brand/assistant/ask', { question: 'How did we do?', page: 'OVERVIEW' });
     expect(res.body.source).toBe('QUICK_SUMMARY');
     expect(res.body.answer).not.toContain(answer.answer);
@@ -147,7 +123,7 @@ describe('Ask Qwikspot — the drawer (POST /api/brand/assistant/ask)', () => {
     const slow = new FakeBrandModel(
       () => new Promise<BrandAnswer>((r) => setTimeout(() => r({ answer: 'late' }), 2_000)),
     );
-    const s = await busyWorld({ brandModel: slow, brandDeadlineMs: 50, logger: log.logger });
+    const s = await busyWorld({ assistantModel: slow, assistantDeadlineMs: 50, logger: log.logger });
     const started = Date.now();
     const res = await s.as().post('/api/brand/assistant/ask', { question: 'How did we do?', page: 'OVERVIEW' });
     expect(Date.now() - started).toBeLessThan(1_500);
@@ -155,7 +131,7 @@ describe('Ask Qwikspot — the drawer (POST /api/brand/assistant/ask)', () => {
     expect(log.answers().at(-1)!.fields).toMatchObject({ failure: 'TIMEOUT' });
 
     const broken = await busyWorld({
-      brandModel: new FakeBrandModel(() => {
+      assistantModel: new FakeBrandModel(() => {
         throw new Error('503');
       }),
       logger: log.logger,
@@ -201,8 +177,8 @@ describe('the Gemini adapter: one call with the pack, at most 2 tool rounds', ()
         return answer('Wellness Mart has 1 hold waiting; it was created 0 minutes ago.');
       },
     };
-    const model = new GeminiBrandAssistant({ client, model: 'gemini-test' });
-    const s = await busyWorld({ brandModel: model });
+    const model = new GeminiAssistant({ client, model: 'gemini-test' });
+    const s = await busyWorld({ assistantModel: model });
     const res = await s
       .as()
       .post('/api/brand/assistant/ask', { question: 'Which store needs attention?', page: 'NETWORK' });
@@ -230,7 +206,7 @@ describe('the Overview brief (GET /api/brand/assistant/brief)', () => {
       answer: 'A quiet week with 1 hold.',
       next_action: { label: 'See insights', page: 'INSIGHTS' },
     }));
-    const s = await busyWorld({ brandModel: model });
+    const s = await busyWorld({ assistantModel: model });
     const first = await s.as().get('/api/brand/assistant/brief');
     const second = await s.as().get('/api/brand/assistant/brief');
     expect(first.body).toMatchObject({ source: 'AI', answer: 'A quiet week with 1 hold.' });
@@ -259,7 +235,7 @@ describe('the conversation summary (GET /api/brand/conversations/:id/summary)', 
         ? { answer: 'The shopper wanted to talk to a person.', handoff_brief: 'They want a call back; no hold.' }
         : { answer: 'ok' },
     );
-    const s = await busyWorld({ brandModel: model });
+    const s = await busyWorld({ assistantModel: model });
     const id = s.conversationOf('c3');
     const first = await s.as().get(`/api/brand/conversations/${id}/summary`);
     expect(first.body).toMatchObject({
@@ -311,7 +287,7 @@ describe('the pack is about what the page shows: its period and the synthetic-hi
 
   it('with history hidden: live records only, the totals equal the tiles, and the Quick brief says so', async () => {
     const model = new FakeBrandModel(() => ({ answer: 'ok' }));
-    const s = await busyWorld({ brandModel: model });
+    const s = await busyWorld({ assistantModel: model });
     // c1's conversation and hold become synthetic demo history.
     const c1 = s.conversationOf('c1');
     const conversation = s.world.conversations.conversations.find((c) => c.conversationId === c1)!;
@@ -345,7 +321,7 @@ describe('the pack is about what the page shows: its period and the synthetic-hi
 
   it('a brief is cached per period and switch, not one per brand', async () => {
     const model = new FakeBrandModel(() => ({ answer: 'A brief.' }));
-    const s = await busyWorld({ brandModel: model });
+    const s = await busyWorld({ assistantModel: model });
     await s.as().get('/api/brand/assistant/brief?days=7&include_history=true');
     await s.as().get('/api/brand/assistant/brief?days=7&include_history=false');
     await s.as().get('/api/brand/assistant/brief?days=28&include_history=false');
@@ -419,5 +395,20 @@ describe('quick answers follow the page', () => {
     expect(quickAnswer('Which product is losing the most demand?', 'INSIGHTS', pack).answer).toMatch(
       /^Vitamin C Glow Serum 50 ml was asked for 6 times in Navrangpura with no store in stock\./,
     );
+  });
+});
+
+describe('the ASSISTANT_QUESTION event (brand)', () => {
+  it('a question is recorded with the page and who answered — never its text; a brief is not a question', async () => {
+    const s = await busyWorld();
+    await s.as().post('/api/brand/assistant/ask', { question: 'Which holds are at risk?', page: 'RESERVATIONS' });
+    await s.as().get('/api/brand/assistant/brief');
+    const events = s.world.events.events.filter((e) => e.eventType === 'ASSISTANT_QUESTION');
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      entityReference: null,
+      payload: { console: 'BRAND', page: 'RESERVATIONS', source: 'QUICK_SUMMARY' },
+    });
+    expect(JSON.stringify(events[0])).not.toContain('at risk');
   });
 });

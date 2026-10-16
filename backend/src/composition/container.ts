@@ -1,9 +1,11 @@
 import { AdkGeminiAgentRuntime } from '../adapters/agent/adkGeminiAgentRuntime.js';
 import { VertexGeminiClient } from '../adapters/agent/geminiClient.js';
-import { GeminiBrandAssistant } from '../adapters/agent/geminiBrandAssistant.js';
+import { GeminiAssistant } from '../adapters/agent/geminiAssistant.js';
 import { FirestoreConversationSummaryStore } from '../adapters/firestore/conversationSummaryStore.js';
 import { BrandAssistantService } from '../application/brandAssistantService.js';
-import type { BrandAssistantModel } from '../ports/brandAssistant.js';
+import { StoreAssistantService } from '../application/storeAssistantService.js';
+import { AssistantRunner } from '../application/assistantRunner.js';
+import type { AssistantModel } from '../ports/assistant.js';
 import { MockAgentRuntime } from '../adapters/agent/mockAgentRuntime.js';
 import { HttpWhatsAppGraphApi } from '../adapters/messaging/whatsappGraphApi.js';
 import { WhatsAppMessagingProvider } from '../adapters/messaging/whatsappMessagingProvider.js';
@@ -104,8 +106,8 @@ export interface Providers {
    * AGENT_RUNTIME=mock — the mock has no backup layer.
    */
   backupAgent?: AgentRuntime;
-  /** L5: Gemini for "Ask Qwikspot" (the brand agent); absent with AGENT_RUNTIME=mock. */
-  brandModel?: BrandAssistantModel;
+  /** L5/L6: Gemini for "Ask Qwikspot" (the brand and store agents); absent with AGENT_RUNTIME=mock. */
+  assistantModel?: AssistantModel;
   files: FileStorageProvider;
   events: EventSink;
 }
@@ -152,11 +154,11 @@ function geminiRuntime(config: GcpProviderConfig, logger: Logger): AgentRuntime 
   });
 }
 
-/** L5: the brand agent on the same Vertex model and credentials as the shopper agent. */
-function geminiBrandModel(config: GcpProviderConfig, logger: Logger): BrandAssistantModel {
+/** L5/L6: Ask Qwikspot on the same Vertex model and credentials as the shopper agent. */
+function geminiAssistantModel(config: GcpProviderConfig, logger: Logger): AssistantModel {
   const vertex = config.vertex;
   if (!vertex) throw new Error('AGENT_RUNTIME=adk_gemini needs the Vertex settings (VERTEX_MODEL, VERTEX_LOCATION)');
-  return new GeminiBrandAssistant({
+  return new GeminiAssistant({
     client: new VertexGeminiClient({ project: vertex.project, location: vertex.location }),
     model: vertex.model,
     logger,
@@ -190,7 +192,7 @@ export function createProviders(
     agent: adapters.agentRuntime === 'mock' ? new MockAgentRuntime() : geminiRuntime(config, logger),
     ...(adapters.agentRuntime === 'mock'
       ? {}
-      : { backupAgent: new MockAgentRuntime(), brandModel: geminiBrandModel(config, logger) }),
+      : { backupAgent: new MockAgentRuntime(), assistantModel: geminiAssistantModel(config, logger) }),
     files:
       adapters.fileStorage === 'local'
         ? new LocalFileStorageProvider(localDataDir)
@@ -411,16 +413,29 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     products,
     now: options.now ?? (() => new Date()),
   });
-  // L5: "Ask Qwikspot" — Gemini when AGENT_RUNTIME=adk_gemini, else the rules summaries only.
+  // L5/L6: "Ask Qwikspot" — Gemini when AGENT_RUNTIME=adk_gemini, else the rules summaries only.
+  const assistantRunner = new AssistantRunner({
+    ...(providers.assistantModel ? { model: providers.assistantModel } : {}),
+    logger,
+    recordEvent: (event) => conversation.recorder.record(event),
+    now: options.now,
+  });
   const brandAssistant = new BrandAssistantService({
+    runner: assistantRunner,
     insights,
     tenantAdmin,
     reservations: conversation.reservations,
     conversations: conversation.queries,
     summaries: new FirestoreConversationSummaryStore(db),
     brands,
-    ...(providers.brandModel ? { model: providers.brandModel } : {}),
-    logger,
+    now: options.now,
+  });
+  const account = new AccountService({ stores, inventory, products, brands, now: options.now });
+  const storeAssistant = new StoreAssistantService({
+    runner: assistantRunner,
+    account,
+    reservations: conversation.reservations,
+    insights,
     now: options.now,
   });
 
@@ -450,7 +465,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
           now: options.now,
         }),
         tenantAdmin,
-        account: new AccountService({ stores, inventory, products, brands, now: options.now }),
+        account,
         commerceSync,
         catalog: new CatalogService({ products, mappings, inventory }),
         retailImports,
@@ -470,6 +485,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         }),
         insights,
         brandAssistant,
+        storeAssistant,
         demoStorefront: conversation.demoStorefront,
         shopper: conversation.shopper,
         demoReset,

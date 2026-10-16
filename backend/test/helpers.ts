@@ -50,11 +50,10 @@ import { CommerceSyncService } from '../src/application/commerceSyncService.js';
 import { PlatformAdminService } from '../src/application/platformAdminService.js';
 import { DemoResetService } from '../src/application/demoResetService.js';
 import { BrandAssistantService } from '../src/application/brandAssistantService.js';
-import type {
-  BrandAssistantModel,
-  ConversationSummaryStore,
-  StoredConversationSummary,
-} from '../src/ports/brandAssistant.js';
+import { StoreAssistantService } from '../src/application/storeAssistantService.js';
+import { AssistantRunner } from '../src/application/assistantRunner.js';
+import type { AssistantModel } from '../src/ports/assistant.js';
+import type { ConversationSummaryStore, StoredConversationSummary } from '../src/ports/brandAssistant.js';
 import { BundledFixtureSource } from '../src/adapters/fixtures/bundledFixtureSource.js';
 import type { DemoDataStore, DemoHistory } from '../src/ports/demoData.js';
 import { RetailImportService } from '../src/application/retailImportService.js';
@@ -651,9 +650,9 @@ export function buildTestWorld(
     agent?: AgentRuntime;
     /** L3: the backup runtime behind `agent` (as the container wires the mock behind Gemini). */
     backupAgent?: AgentRuntime;
-    /** L5: the brand agent's model ("Ask Qwikspot"); absent = the rules summaries only. */
-    brandModel?: BrandAssistantModel;
-    brandDeadlineMs?: number;
+    /** L5/L6: Ask Qwikspot's model (brand and store agents); absent = the rules summaries only. */
+    assistantModel?: AssistantModel;
+    assistantDeadlineMs?: number;
     aiBudgetMs?: number;
     pickupCode?: () => string;
     /** M7: replace the simulator provider (e.g. one that fails) and the retry backoff. */
@@ -879,16 +878,29 @@ export function buildTestWorld(
     now: options.now ?? (() => new Date()),
   });
   const summaries = new MemoryConversationSummaries();
+  const assistantRunner = new AssistantRunner({
+    ...(options.assistantModel ? { model: options.assistantModel } : {}),
+    ...(options.assistantDeadlineMs ? { deadlineMs: options.assistantDeadlineMs } : {}),
+    logger: options.logger,
+    recordEvent: (event) => conversation.recorder.record(event),
+    now: options.now,
+  });
   const brandAssistant = new BrandAssistantService({
+    runner: assistantRunner,
     insights,
     tenantAdmin,
     reservations: conversation.reservations,
     conversations: conversation.queries,
     summaries,
     brands,
-    ...(options.brandModel ? { model: options.brandModel } : {}),
-    ...(options.brandDeadlineMs ? { deadlineMs: options.brandDeadlineMs } : {}),
-    logger: options.logger,
+    now: options.now,
+  });
+  const account = new AccountService({ stores, inventory, products, brands, now: options.now });
+  const storeAssistant = new StoreAssistantService({
+    runner: assistantRunner,
+    account,
+    reservations: conversation.reservations,
+    insights,
     now: options.now,
   });
 
@@ -917,7 +929,7 @@ export function buildTestWorld(
         now: options.now,
       }),
       tenantAdmin,
-      account: new AccountService({ stores, inventory, products, brands, now: options.now }),
+      account,
       commerceSync,
       catalog: new CatalogService({ products, mappings, inventory }),
       retailImports,
@@ -937,6 +949,7 @@ export function buildTestWorld(
       }),
       insights,
       brandAssistant,
+      storeAssistant,
       demoStorefront: conversation.demoStorefront,
       shopper: conversation.shopper,
       demoReset,
