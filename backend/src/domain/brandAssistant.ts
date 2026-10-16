@@ -64,8 +64,17 @@ export interface BrandPack {
     active: number;
     waiting_for_store: number;
     oldest_waiting_minutes: number | null;
+    /** The window of expiring_within_60_min (60): a definition, given as a value so it is grounded. */
+    expiry_window_minutes: number;
     expiring_within_60_min: number;
-    by_store: { store: string; waiting: number; confirmed: number; ready: number }[];
+    /** oldest_waiting_minutes: how long the store's oldest unconfirmed hold has waited (null = none waiting). */
+    by_store: {
+      store: string;
+      waiting: number;
+      oldest_waiting_minutes: number | null;
+      confirmed: number;
+      ready: number;
+    }[];
   };
   conversations_now: {
     total: number;
@@ -95,10 +104,10 @@ export const BRAND_ASSISTANT_PROMPT = `You are "Ask Qwikspot", the analyst insid
 WHAT YOU RECEIVE
 One JSON object: task (ANSWER a question, BRIEF for the Overview page, or SUMMARY of one conversation), page (where the team member is), question (for ANSWER), and data: the brand's own data pack (totals for the period, stores, unmet demand, suggestions, holds right now, conversations) or one conversation.
 
-TOOLS (read-only, at most 2 rounds)
+TOOLS (read-only, offered only when the pack cannot answer; at most 2 rounds)
 - get_store: one store's details and its current holds, by store_id.
 - list_conversations: recent conversations with what happened (no shopper details), filtered.
-Call a tool only when the pack does not already answer the question.
+Call a tool only when the pack does not already answer the question. When no tool is offered, answer from the pack.
 
 RULES
 ${SHARED_RULES}
@@ -154,6 +163,25 @@ const DEMAND = /\b(demand|product|products|losing|asked|restock|saturday|weekday
 const CHATS = /\b(chat|chats|conversation|conversations|refus\w*|handoff|person)\b/i;
 
 /** The rules answer to a question: the pack sections the question is about, in plain sentences. */
+/** A question asking to see particular chats (not their counts, which the pack has). */
+const CHAT_LIST =
+  /\b(show|list|find|open|see|give|dikhao|batao)\b[^?]*\b(chats?|conversations?)\b|\b(which|kaun ?se)\s+(chats?|conversations?)\b/i;
+const HOLD_WORDS = /\b(holds?|reservations?|orders?|pickups?)\b/i;
+
+/**
+ * The read tools a brand question needs; none when the pack already answers it — then Gemini
+ * answers in one call. Particular chats need list_conversations; one named store's holds (their
+ * products and ages) need get_store. Everything else — totals, stores, demand, holds right now,
+ * conversation counts — is in the pack.
+ */
+export function brandToolsFor(question: string, pack: BrandPack): string[] {
+  const tools: string[] = [];
+  if (CHAT_LIST.test(question)) tools.push('list_conversations');
+  const q = question.toLowerCase();
+  if (HOLD_WORDS.test(question) && pack.stores.some((s) => q.includes(s.name.toLowerCase()))) tools.push('get_store');
+  return tools;
+}
+
 export function quickAnswer(question: string, page: ConsolePage, pack: BrandPack): BrandAnswer {
   const lines: string[] = [];
   const h = pack.holds_now;

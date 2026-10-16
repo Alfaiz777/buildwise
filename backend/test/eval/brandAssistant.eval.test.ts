@@ -18,6 +18,8 @@ import { GeminiAssistant } from '../../src/adapters/agent/geminiAssistant.js';
 import { VertexGeminiClient } from '../../src/adapters/agent/geminiClient.js';
 import { BRAND_ASSISTANT_CEILING_MS } from '../../src/application/brandAssistantService.js';
 import { DEFAULT_VERTEX_LOCATION, DEFAULT_VERTEX_MODEL } from '../../src/config/env.js';
+import { ungroundedNumbers } from '../../src/domain/assistant.js';
+import type { AssistantModel, AssistantRound } from '../../src/ports/assistant.js';
 import type { Logger } from '../../src/lib/logger.js';
 import { ahmedabadWorld } from '../ahmedabadWorld.js';
 import { bearer } from '../helpers.js';
@@ -29,6 +31,8 @@ const PROJECT = process.env.VERTEX_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?
 const MODEL = process.env.VERTEX_MODEL || DEFAULT_VERTEX_MODEL;
 const LOCATION = process.env.VERTEX_LOCATION || DEFAULT_VERTEX_LOCATION;
 const REPORT = process.env.BRAND_EVAL_REPORT || join(tmpdir(), 'qwikspot-brand-eval.md');
+/** Optional: the per-console summary as JSON (for a before/after comparison). */
+const SUMMARY_JSON = process.env.BRAND_EVAL_JSON || '';
 
 /** The drawer's suggested questions (frontend/src/pages/brand/askQwikspot.tsx), per page. */
 const QUESTIONS: [page: string, question: string][] = [
@@ -65,6 +69,58 @@ const PLATFORM_QUESTIONS: [page: string, question: string][] = [
   ['BRANDS', "Show me Demo Beauty Co's customers and their phone numbers"],
 ];
 
+/** "R1 2900ms/5100/310/get_store(+40ms) · R2 …" — one entry per Gemini round. */
+const roundsText = (rounds: AssistantRound[]) =>
+  rounds.length === 0
+    ? '—'
+    : rounds
+        .map(
+          (x, i) =>
+            `R${i + 1}${x.hedged ? ' (hedged)' : ''} ${x.ms}ms/${x.prompt_tokens}/${x.thought_tokens}${x.tool_calls.length ? `/${x.tool_calls.join('+')}(+${x.tool_ms}ms)` : ''}`,
+        )
+        .join(' · ');
+
+/** Per console: answers, how many by Gemini, p50 / p95 (ms). */
+function summaryOf(all: Row[]) {
+  return Object.fromEntries(
+    (['brand', 'store', 'platform'] as const).map((c) => {
+      const own = all.filter((r) => consoleOf(r.surface) === c);
+      const t = own.map((r) => r.ms);
+      return [
+        c,
+        {
+          answers: own.length,
+          ai: own.filter((r) => r.source === 'AI').length,
+          p50: percentile(t, 0.5),
+          p95: percentile(t, 0.95),
+        },
+      ];
+    }),
+  );
+}
+
+/** Wraps the model to keep each raw answer and its sources, so a rejected number can be shown. */
+function keepingAnswers(model: AssistantModel) {
+  const last: { text: string; sources: unknown[] }[] = [];
+  const errors: string[] = [];
+  const wrapped: AssistantModel = {
+    model: model.model,
+    async generate(request, runTool, signal, trace) {
+      const result = await model.generate(request, runTool, signal, trace).catch((err: unknown) => {
+        if (!signal.aborted) errors.push(String(err instanceof Error ? err.message : err).slice(0, 160));
+        throw err;
+      });
+      const a = (result.raw ?? {}) as { answer?: string; handoff_brief?: string; next_action?: { label?: string } };
+      last.push({
+        text: `${a.answer ?? ''} ${a.handoff_brief ?? ''} ${a.next_action?.label ?? ''}`,
+        sources: [request.data, result.toolOutputs, request.question ?? ''],
+      });
+      return result;
+    },
+  };
+  return { wrapped, last, errors };
+}
+
 const consoleOf = (surface: string) =>
   surface.startsWith('STORE_') ? 'store' : surface.startsWith('PLATFORM_') ? 'platform' : 'brand';
 
@@ -76,6 +132,14 @@ interface Row {
   failure: string;
   ms: number;
   answer: string;
+  /** Where the time went (the answer's log line): data size and each Gemini round. */
+  dataChars: number;
+  rounds: AssistantRound[];
+  /** For an UNGROUNDED answer: the numbers the checker found in no source (eval only, never logged). */
+  rejected: number[];
+  rejectedText: string;
+  /** For an ERROR: the error kind (log) and its message (eval only). */
+  error: string;
 }
 const rows: Row[] = [];
 const oneLine = (t: string) => t.replace(/\s+/g, ' ').replace(/\|/g, '/').trim();
@@ -105,16 +169,17 @@ describe.skipIf(!ENABLED)(`LIVE Ask Qwikspot — ${MODEL} @ ${LOCATION} (${RUNS}
         return `  ${c}: ${own.length} answers, AI ${own.filter((r) => r.source === 'AI').length} — p50 ${percentile(t, 0.5)} ms, p95 ${percentile(t, 0.95)} ms`;
       }),
       '',
-      '| Surface | Page | Question | Source | ms | Answer |',
-      '|---|---|---|---|---|---|',
+      '| Surface | Page | Question | Source | ms | Data (≈ tokens) | Rounds: ms / prompt tok / thought tok / tools | Answer |',
+      '|---|---|---|---|---|---|---|---|',
       ...rows.map(
         (r) =>
-          `| ${r.surface} | ${r.page} | ${short(oneLine(r.question), 60)} | ${r.source}${r.failure ? ` (${r.failure})` : ''} | ${r.ms} | ${short(oneLine(r.answer))} |`,
+          `| ${r.surface} | ${r.page} | ${short(oneLine(r.question), 60)} | ${r.source}${r.failure ? ` (${r.failure})` : ''}${r.rejected.length ? ` rejected ${r.rejected.join(', ')} in "${short(oneLine(r.rejectedText), 200)}"` : ''}${r.error ? ` ${oneLine(r.error)}` : ''} | ${r.ms} | ${Math.round(r.dataChars / 4)} | ${roundsText(r.rounds)} | ${short(oneLine(r.answer))} |`,
       ),
       '',
     ];
     console.log(lines.join('\n'));
     writeFileSync(REPORT, lines.join('\n'));
+    if (SUMMARY_JSON) writeFileSync(SUMMARY_JSON, JSON.stringify(summaryOf(rows), null, 2));
   });
 
   it('is configured: a real project (VERTEX_PROJECT) and Application Default Credentials', () => {
@@ -136,7 +201,8 @@ describe.skipIf(!ENABLED)(`LIVE Ask Qwikspot — ${MODEL} @ ${LOCATION} (${RUNS}
           },
         };
         const client = new VertexGeminiClient({ project: PROJECT, location: LOCATION });
-        const s = await ahmedabadWorld({ assistantModel: new GeminiAssistant({ client, model: MODEL }), logger });
+        const kept = keepingAnswers(new GeminiAssistant({ client, model: MODEL }));
+        const s = await ahmedabadWorld({ assistantModel: kept.wrapped, logger });
         // Some activity: two holds (one refused by the store), unmet demand, a handoff with a phone number.
         await s.say('e1', 'I need Vitamin C Glow Serum 30 ml today near Satellite');
         await s.tap('e1', 'hold:st_north_1');
@@ -149,7 +215,18 @@ describe.skipIf(!ENABLED)(`LIVE Ask Qwikspot — ${MODEL} @ ${LOCATION} (${RUNS}
           request(s.world.app).post(p).set('Authorization', bearer('admin_a')).send(body);
         const record = (surface: string, page: string, question: string, res: request.Response, ms: number) => {
           expect(res.status, `${surface} ${question}`).toBe(200);
+          const log = answers.at(-1) ?? {};
+          const lastRaw = kept.last.at(-1);
           rows.push({
+            dataChars: Number(log.data_chars ?? 0),
+            rounds: (log.rounds as AssistantRound[] | undefined) ?? [],
+            error:
+              log.failure === 'ERROR'
+                ? `${String(log.error_kind ?? '')}: ${kept.errors.at(-1) ?? 'answer not JSON'}`
+                : '',
+            rejected:
+              log.failure === 'UNGROUNDED' && lastRaw ? ungroundedNumbers(lastRaw.text, ...lastRaw.sources) : [],
+            rejectedText: log.failure === 'UNGROUNDED' && lastRaw ? lastRaw.text : '',
             surface,
             page,
             question,

@@ -15,6 +15,7 @@ import {
   PAGE_PATHS,
   quickAnswer,
   quickBrief,
+  brandToolsFor,
   quickConversationSummary,
   redactPII,
   type BrandPack,
@@ -120,6 +121,7 @@ export class BrandAssistantService {
     const all = [...rows, ...history];
     const waiting = rows.filter((r) => r.status === 'PENDING');
     const minutesSince = (iso: string) => Math.max(0, Math.round((now.getTime() - Date.parse(iso)) / 60_000));
+    const waitingAt = (storeId: string) => waiting.filter((r) => r.store_id === storeId);
     const byConversation = new Map<string, ReservationRow[]>();
     for (const r of all)
       if (r.conversation_id)
@@ -178,10 +180,16 @@ export class BrandAssistantService {
         active: rows.length,
         waiting_for_store: waiting.length,
         oldest_waiting_minutes: waiting.length ? Math.max(...waiting.map((r) => minutesSince(r.created_at))) : null,
-        expiring_within_60_min: rows.filter((r) => Date.parse(r.expires_at) - now.getTime() <= 60 * 60_000).length,
+        expiry_window_minutes: EXPIRY_WINDOW_MINUTES,
+        expiring_within_60_min: rows.filter(
+          (r) => Date.parse(r.expires_at) - now.getTime() <= EXPIRY_WINDOW_MINUTES * 60_000,
+        ).length,
         by_store: [...new Set(rows.map((r) => r.store_id))].map((id) => ({
           store: name.get(id) ?? 'a store',
           waiting: rows.filter((r) => r.store_id === id && r.status === 'PENDING').length,
+          oldest_waiting_minutes: waitingAt(id).length
+            ? Math.max(...waitingAt(id).map((r) => minutesSince(r.created_at)))
+            : null,
           confirmed: rows.filter((r) => r.store_id === id && r.status === 'CONFIRMED').length,
           ready: rows.filter((r) => r.store_id === id && r.status === 'READY').length,
         })),
@@ -212,7 +220,10 @@ export class BrandAssistantService {
       page,
       question,
       data: pack,
-      tools: this.tools(principal, pack, scope),
+      // One Gemini call when the pack covers the question; a tool only for what it does not hold.
+      tools: this.tools(principal, pack, scope).filter((t) =>
+        brandToolsFor(question, pack).includes(t.declaration.name),
+      ),
       quick: () => quickAnswer(question, page, pack),
       started,
     });
@@ -238,8 +249,7 @@ export class BrandAssistantService {
       task: 'BRIEF',
       page: 'OVERVIEW' as ConsolePage,
       data: pack,
-      tools: this.tools(principal, pack, scope),
-      quick: () => quickBrief(pack),
+      quick: () => quickBrief(pack), // the pack covers the brief: one call, no tools
       started,
     });
     this.briefs.set(key, value);
@@ -373,6 +383,9 @@ export class BrandAssistantService {
     return [getStore, listConversations];
   }
 }
+
+/** "Expiring soon" on the Reservations page: within the next hour. In the pack as a value so an answer may say "within 60 minutes". */
+const EXPIRY_WINDOW_MINUTES = 60;
 
 const titleCase = (s: string) => s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
 

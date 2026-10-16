@@ -5,9 +5,16 @@
  */
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { GeminiAssistant } from '../src/adapters/agent/geminiAssistant.js';
+import {
+  FINAL_ROUND_RESERVE_MS,
+  GeminiAssistant,
+  HEDGE_AFTER_MS,
+  HEDGE_MIN_LEFT_MS,
+} from '../src/adapters/agent/geminiAssistant.js';
+import type { AssistantRound } from '../src/ports/assistant.js';
 import type { GeminiClient, GeminiRequest } from '../src/adapters/agent/geminiClient.js';
 import {
+  brandToolsFor,
   numbersOf,
   quickAnswer,
   redactPII,
@@ -181,11 +188,200 @@ describe('the Gemini adapter: one call with the pack, at most 2 tool rounds', ()
     const s = await busyWorld({ assistantModel: model });
     const res = await s
       .as()
-      .post('/api/brand/assistant/ask', { question: 'Which store needs attention?', page: 'NETWORK' });
+      .post('/api/brand/assistant/ask', { question: 'What holds does Wellness Mart have right now?', page: 'NETWORK' });
     expect(res.body.source).toBe('AI');
     expect(requests).toHaveLength(3);
-    expect(requests.map((r) => r.tools.length)).toEqual([2, 2, 0]); // the third request must answer
+    expect(requests.map((r) => r.tools.map((t) => t.name))).toEqual([['get_store'], ['get_store'], []]); // the third must answer
+    // JSON mode only on the round with no tools (Vertex may reject JSON mode with function calling).
+    expect(requests.map((r) => r.responseSchema !== null)).toEqual([false, false, true]);
     expect(requests[0]!.system).toMatch(/Every number you write must appear in the data or a tool result/);
+  });
+});
+
+describe('L8: one Gemini call when the pack covers the question', () => {
+  const recording = () => {
+    const requests: GeminiRequest[] = [];
+    const client: GeminiClient = {
+      async generate(req) {
+        requests.push(req);
+        return {
+          functionCalls: [],
+          text: JSON.stringify({ answer: 'Wellness Mart has 1 hold waiting.', next_action: null, used: ['holds_now'] }),
+          raw: {},
+          usage: { promptTokens: 1, outputTokens: 1 },
+        };
+      },
+    };
+    return { requests, model: new GeminiAssistant({ client, model: 'gemini-test' }) };
+  };
+
+  it.each([
+    ['OVERVIEW', 'How did we do this week?'],
+    ['OVERVIEW', 'What should I fix first?'],
+    ['CONVERSATIONS', 'Why did chats end without a hold this week?'],
+    ['RESERVATIONS', 'Which holds are at risk?'],
+    ['RESERVATIONS', 'Which store is slowest to accept?'],
+    ['INSIGHTS', 'Compare Satellite and Navrangpura'],
+    ['NETWORK', 'Which store needs attention?'],
+    ['SETTINGS', 'What does Qwikspot do automatically for me?'],
+  ])('%s "%s": exactly one Gemini call, no tools, JSON mode', async (page, question) => {
+    const { requests, model } = recording();
+    const s = await busyWorld({ assistantModel: model });
+    const res = await s.as().post('/api/brand/assistant/ask', { question, page });
+    expect(res.body.source).toBe('AI');
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.tools).toEqual([]);
+    expect(requests[0]!.responseSchema).not.toBeNull();
+  });
+
+  it('the Overview brief is one call with no tools', async () => {
+    const { requests, model } = recording();
+    const s = await busyWorld({ assistantModel: model });
+    await s.as().get('/api/brand/assistant/brief?refresh=true');
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.tools).toEqual([]);
+  });
+
+  it("tools only for what the pack does not hold: particular chats, one named store's holds", () => {
+    const pack = { stores: [{ name: 'Wellness Mart' }, { name: 'HealthPlus Chemist' }] } as unknown as BrandPack;
+    expect(brandToolsFor('Show me chats where the shopper refused a store', pack)).toEqual(['list_conversations']);
+    expect(brandToolsFor('Which conversations went to a person?', pack)).toEqual(['list_conversations']);
+    expect(brandToolsFor('What holds does HealthPlus Chemist have?', pack)).toEqual(['get_store']);
+    expect(brandToolsFor('How many chats did we get this week?', pack)).toEqual([]);
+    expect(brandToolsFor('Which holds are at risk?', pack)).toEqual([]);
+    expect(brandToolsFor('Which store needs attention?', pack)).toEqual([]);
+  });
+
+  it('the pack has each store\'s oldest waiting hold ("slowest to accept" needs no tool)', async () => {
+    const model = new FakeAssistantModel(() => ({ answer: 'ok' }));
+    const s = await busyWorld({ assistantModel: model });
+    await s
+      .as()
+      .post('/api/brand/assistant/ask', { question: 'Which store is slowest to accept?', page: 'RESERVATIONS' });
+    const pack = model.inputs.at(-1)!.data as BrandPack;
+    expect(pack.holds_now.by_store).toContainEqual(
+      expect.objectContaining({ store: 'Wellness Mart', waiting: 1, oldest_waiting_minutes: 0 }),
+    );
+  });
+
+  it('"0 holds expire within 60 minutes" is grounded: the window is in the pack; an invented number is still rejected', async () => {
+    const answers = [
+      'There are 0 holds expiring within 60 minutes; 1 is waiting at Wellness Mart.',
+      'There are 0 holds expiring within 45 minutes.',
+    ];
+    const sources: string[] = [];
+    for (const text of answers) {
+      const s = await busyWorld({ assistantModel: new FakeAssistantModel(() => ({ answer: text })) });
+      const res = await s
+        .as()
+        .post('/api/brand/assistant/ask', { question: 'Which holds are at risk?', page: 'RESERVATIONS' });
+      sources.push(res.body.source);
+    }
+    expect(sources).toEqual(['AI', 'QUICK_SUMMARY']);
+  });
+
+  it('a stalled request is sent once more after the hedge delay; the first answer wins, the other is cancelled', async () => {
+    expect([HEDGE_AFTER_MS, HEDGE_MIN_LEFT_MS]).toEqual([7_000, 6_000]);
+    const run = async (finishInMs: number) => {
+      const signals: AbortSignal[] = [];
+      const client: GeminiClient = {
+        generate(_req, signal) {
+          signals.push(signal);
+          if (signals.length === 1) return new Promise<never>(() => undefined); // Vertex never answers
+          return Promise.resolve({
+            functionCalls: [],
+            text: '{"answer":"ok"}',
+            raw: {},
+            usage: { promptTokens: 1, outputTokens: 1 },
+          });
+        },
+      };
+      const model = new GeminiAssistant({ client, model: 'gemini-test', hedgeAfterMs: 20 });
+      const request = {
+        prompt: 'p',
+        promptVersion: 'v',
+        answerSchema: {},
+        task: 'ANSWER' as const,
+        page: 'OVERVIEW',
+        data: {},
+        tools: [],
+      };
+      const trace = { rounds: [] as AssistantRound[] };
+      const controller = new AbortController();
+      const outcome = await Promise.race([
+        model
+          .generate({ ...request, finishBy: Date.now() + finishInMs }, async () => ({}), controller.signal, trace)
+          .then(() => 'answered'),
+        new Promise((r) => setTimeout(() => r('still waiting'), 300)),
+      ]);
+      controller.abort();
+      return {
+        outcome,
+        requests: signals.length,
+        firstCancelled: signals[0]!.aborted,
+        hedged: trace.rounds[0]?.hedged,
+      };
+    };
+    expect(await run(15_000)).toEqual({ outcome: 'answered', requests: 2, firstCancelled: true, hedged: true });
+    // Less than 6 s left: a second request could not answer in time, so none is sent.
+    expect(await run(5_000)).toMatchObject({ outcome: 'still waiting', requests: 1 });
+  });
+
+  it('a 429 is retried once when an answer round still fits; not when it does not', async () => {
+    const run = async (finishInMs: number) => {
+      let calls = 0;
+      const client: GeminiClient = {
+        async generate() {
+          calls++;
+          if (calls === 1) throw Object.assign(new Error('Resource exhausted'), { status: 429 });
+          return { functionCalls: [], text: '{"answer":"ok"}', raw: {}, usage: { promptTokens: 1, outputTokens: 1 } };
+        },
+      };
+      const model = new GeminiAssistant({ client, model: 'gemini-test' });
+      const request = {
+        prompt: 'p',
+        promptVersion: 'v',
+        answerSchema: {},
+        task: 'ANSWER' as const,
+        page: 'OVERVIEW',
+        data: {},
+        tools: [],
+      };
+      const result = await model
+        .generate({ ...request, finishBy: Date.now() + finishInMs }, async () => ({}), new AbortController().signal)
+        .then(
+          () => 'answered',
+          (err: { status?: number }) => `failed ${err.status}`,
+        );
+      return { result, calls };
+    };
+    expect(await run(15_000)).toEqual({ result: 'answered', calls: 2 });
+    expect(await run(5_000)).toEqual({ result: 'failed 429', calls: 1 });
+  });
+
+  it('no tool round is started that would leave the answer round less than 8 s before the deadline', async () => {
+    expect(FINAL_ROUND_RESERVE_MS).toBe(8_000);
+    const requests: GeminiRequest[] = [];
+    const client: GeminiClient = {
+      async generate(req) {
+        requests.push(req);
+        return { functionCalls: [], text: '{"answer":"ok"}', raw: {}, usage: { promptTokens: 1, outputTokens: 1 } };
+      },
+    };
+    const model = new GeminiAssistant({ client, model: 'gemini-test' });
+    const tool = { name: 'get_store', description: 'd', parameters: { type: 'object' } };
+    const base = {
+      prompt: 'p',
+      promptVersion: 'v',
+      answerSchema: {},
+      task: 'ANSWER' as const,
+      page: 'NETWORK',
+      data: {},
+    };
+    const signal = new AbortController().signal;
+    await model.generate({ ...base, tools: [tool], finishBy: Date.now() + 7_000 }, async () => ({}), signal);
+    await model.generate({ ...base, tools: [tool], finishBy: Date.now() + 15_000 }, async () => ({}), signal);
+    expect(requests.map((r) => r.tools.length)).toEqual([0, 1]);
   });
 });
 
@@ -381,6 +577,7 @@ describe('quick answers follow the page', () => {
       active: 0,
       waiting_for_store: 0,
       oldest_waiting_minutes: null,
+      expiry_window_minutes: 60,
       expiring_within_60_min: 0,
       by_store: [],
     },

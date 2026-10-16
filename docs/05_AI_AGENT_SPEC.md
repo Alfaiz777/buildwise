@@ -513,7 +513,7 @@ Settings gets no AI content: settings stay in the brand's own hands.
   - unmet demand by product and area, the rules' suggestions;
   - holds right now (waiting, oldest wait, expiring within the hour, by store) and conversation counts.
   - It holds store and product names and counts only: no customer, no phone number, no pickup code.
-- **One Gemini call,** with at most 2 rounds of two read-only tools: `get_store` and `list_conversations`.
+- **One Gemini call** when the pack covers the question (L8, §18.3). The two read-only tools, `get_store` and `list_conversations`, are offered only for what the pack does not hold — particular chats, or one named store's holds — with at most 2 rounds.
 - **Conversation summaries** send the last 20 messages with phone numbers, emails, 6-digit codes and a name the shopper gives ("my name is …", "mera naam …") redacted, plus the decisions and the hold. The customer's reference is never sent.
 
 **Guardrails, enforced by the backend (`application/brandAssistantService.ts`).**
@@ -608,3 +608,34 @@ The same agent pattern for the Qwikspot team (PLATFORM_ADMIN) in the Platform Co
 - **Platform share:** "Network today" and six questions, all seven answered by Gemini in 1.8–3.6 s.
 - **Hinglish:** "Kaunse brands ko dhyan chahiye?" was answered in Hinglish.
 - **Refusal:** asked for Demo Beauty Co's customers and phone numbers, it said the Platform Console has totals and flags only.
+
+## 18.3 Speed (L8)
+
+In the L7 live run the brand agent answered 10 of 15 questions with Gemini (3 timeouts, 1 error, 1 rejected number; p95 17.0 s), while store and platform were fast. The eval now prints, per answer, the data size and every Gemini round (time, prompt and thinking tokens, tools called, whether it was hedged), and the error kind or the rejected number.
+
+**What the numbers showed.**
+- **Not the pack:** about 970 tokens of data, about 2,400 prompt tokens per round. The pack was not trimmed.
+- **Extra rounds:** 7–8 of 11 measured brand questions called a tool the pack made unnecessary (`list_conversations` for "How did we do this week?"), so most brand answers took 2–3 rounds of 2–3 s each — and each round is another chance of a slow one.
+- **The errors:** Vertex rejects JSON mode together with function calling, intermittently (`400 Function calling with a response mime type: 'application/json' is unsupported`). Only the brand agent offers tools, and the brief offered them too.
+- **The rejected number:** "0 holds expiring within 60 minutes" — 60 is the window of `expiring_within_60_min`, a field name, which the checker does not read. Not invented; the pack now holds it as a value (`expiry_window_minutes: 60`). The checker is unchanged: an invented window ("within 45 minutes") is still rejected.
+- **Stalls:** some requests are never answered by Vertex (no round finished in 17 s), on any console, at random; and an occasional `429 Resource exhausted`.
+
+**The fixes (shared code, docs/05 §18.1).**
+- **One call when the pack covers it:** the brand agent offers a tool only for particular chats ("show me chats where…") or one named store's holds; everything else, and every brief, is one call. Each store's oldest waiting hold is in the pack, so "Which store is slowest to accept?" needs no tool.
+- **JSON mode only without tools:** a round that offers tools asks for the JSON answer in the text; the final round uses JSON mode.
+- **Tool rounds capped by time:** no tool round starts with less than 8 s left before the 17 s deadline, so the answer round always has time.
+- **Hedged rounds:** a round not answered after 7 s is sent once more (only with ≥ 6 s left); the first answer wins and the other is cancelled. Live rounds take p50 2.8 s, p90 4.9 s, p95 6.5 s; in the 2-run evals 6–7 of 56 answers were hedged. A 5 s hedge was tried and was worse on a slow day (it resent a quarter of the rounds).
+- **One 429 retry,** after 0.5 s, only when an answer round still fits.
+- Unchanged: the number checker, the 17 s Gemini deadline and the 20 s ceiling.
+
+**Live runs (2026-10-16, `gemini-3.8-flash` on `global`).**
+
+| Console | Before (L7 run) | Before (this branch, measured) | After (2 runs) |
+|---|---|---|---|
+| Brand | 10 / 15 by Gemini, p95 17.0 s | 9 / 15, p95 16.1 s (5 × 400 error, 1 rejected, 1 timeout) | 30 / 30, p50 3.1 s, p95 10.2 s |
+| Store | 6 / 6, p95 5.1 s | 6 / 6, p95 4.0 s | 12 / 12, p50 2.5 s, p95 3.2 s |
+| Platform | 7 / 7, p95 3.6 s | 5 / 7, p95 17.0 s (1 × 429, 1 timeout) | 14 / 14, p50 2.7 s, p95 7.7 s |
+
+- **Brand rounds:** before, 3–4 of 11 measured questions answered in one round; after, 26 of 28 (the two that need a tool take two).
+- **Hedged:** 7 of 56 answers, in 7.0–10.3 s. Without the hedge each would have waited on a request that was slow or never answered (before, those ended as 17 s Quick summaries). They set the after p95s (brand 10.2 s, platform 7.7 s); unhedged rounds are as fast as before.
+- Vertex latency varies a lot between runs: the earlier single runs on this branch gave brand p95 6.6–7.7 s, and one 2-run hedge-at-7 s run gave 29 / 30 at p95 11.1 s.
