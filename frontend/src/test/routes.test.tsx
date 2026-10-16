@@ -373,7 +373,8 @@ describe('scope routing — each of the three roles lands in its own console are
     expect(within(wellness).getByText('owner@north.test')).toBeInTheDocument();
     // L5: internal store ids are not shown in the stores table.
     expect(within(wellness.closest('table')!).queryByText(/^st_\w+$/)).not.toBeInTheDocument();
-    expect(within(wellness).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(wellness).queryByRole('button', { name: /Provision/ })).not.toBeInTheDocument();
+    expect(within(wellness).getByRole('button', { name: 'Ask Qwikspot about Wellness Mart' })).toBeInTheDocument();
 
     const healthPlus = screen.getByText('HealthPlus Chemist').closest('tr')!;
     expect(within(healthPlus).getByText('Not provisioned')).toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { ExternalLink, LogOut } from 'lucide-react';
+import { ExternalLink, LogOut, Sparkles } from 'lucide-react';
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useMe } from '../../account/meContext';
@@ -10,6 +10,7 @@ import { Wordmark } from './Wordmark';
 import { CONSOLE_NAME, NAV } from './nav';
 import { RoleBanner } from './RoleBanner';
 import { storeLabel } from '../../lib/storeLabel';
+import { AskQwikspotProvider } from '../../pages/brand/askQwikspot';
 
 /** Dispatched on window when a page resolves or changes what the nav badge counts. */
 export const WAITING_CHANGED = 'qwikspot:waiting-changed';
@@ -90,7 +91,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(QUEUE_CHANGED, onChange);
   }, [reloadWaiting]);
 
-  return (
+  const shell = (openAsk: (() => void) | null) => (
     <div className={`shell shell--${me.scope.toLowerCase()}`}>
       <header className="shell-top">
         <div className="shell-top__brand">
@@ -99,6 +100,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="shell-top__context">{context}</span>
         </div>
         <div className="shell-top__user">
+          {openAsk && (
+            <button
+              type="button"
+              className="ui-button ui-button--secondary ui-button--sm"
+              onClick={openAsk}
+              aria-label="Ask Qwikspot about your brand's data"
+            >
+              <Sparkles size={16} aria-hidden="true" />
+              Ask Qwikspot
+            </button>
+          )}
           {shopperDemo && me.scope === 'BRAND' && (
             <a
               className="ui-button ui-button--accent ui-button--sm"
@@ -146,4 +158,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
     </div>
   );
+  // L5: the Brand Console carries "Ask Qwikspot" — the header button, the drawer, "Ask about this".
+  return me.scope === 'BRAND' ? <AskQwikspotProvider>{(open) => shell(open)}</AskQwikspotProvider> : shell(null);
 }

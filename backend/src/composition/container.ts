@@ -1,5 +1,9 @@
 import { AdkGeminiAgentRuntime } from '../adapters/agent/adkGeminiAgentRuntime.js';
 import { VertexGeminiClient } from '../adapters/agent/geminiClient.js';
+import { GeminiBrandAssistant } from '../adapters/agent/geminiBrandAssistant.js';
+import { FirestoreConversationSummaryStore } from '../adapters/firestore/conversationSummaryStore.js';
+import { BrandAssistantService } from '../application/brandAssistantService.js';
+import type { BrandAssistantModel } from '../ports/brandAssistant.js';
 import { MockAgentRuntime } from '../adapters/agent/mockAgentRuntime.js';
 import { HttpWhatsAppGraphApi } from '../adapters/messaging/whatsappGraphApi.js';
 import { WhatsAppMessagingProvider } from '../adapters/messaging/whatsappMessagingProvider.js';
@@ -100,6 +104,8 @@ export interface Providers {
    * AGENT_RUNTIME=mock — the mock has no backup layer.
    */
   backupAgent?: AgentRuntime;
+  /** L5: Gemini for "Ask Qwikspot" (the brand agent); absent with AGENT_RUNTIME=mock. */
+  brandModel?: BrandAssistantModel;
   files: FileStorageProvider;
   events: EventSink;
 }
@@ -146,6 +152,17 @@ function geminiRuntime(config: GcpProviderConfig, logger: Logger): AgentRuntime 
   });
 }
 
+/** L5: the brand agent on the same Vertex model and credentials as the shopper agent. */
+function geminiBrandModel(config: GcpProviderConfig, logger: Logger): BrandAssistantModel {
+  const vertex = config.vertex;
+  if (!vertex) throw new Error('AGENT_RUNTIME=adk_gemini needs the Vertex settings (VERTEX_MODEL, VERTEX_LOCATION)');
+  return new GeminiBrandAssistant({
+    client: new VertexGeminiClient({ project: vertex.project, location: vertex.location }),
+    model: vertex.model,
+    logger,
+  });
+}
+
 type GcpProviderConfig = Pick<Config, 'adapters' | 'localDataDir'> &
   Partial<Pick<Config, 'projectId' | 'vertex'>> & { gcp?: Pick<GcpSettings, 'gcsBucket' | 'bigQueryDataset'> | null };
 
@@ -171,7 +188,9 @@ export function createProviders(
     commerce: new MockCommerceProvider(),
     messaging,
     agent: adapters.agentRuntime === 'mock' ? new MockAgentRuntime() : geminiRuntime(config, logger),
-    ...(adapters.agentRuntime === 'mock' ? {} : { backupAgent: new MockAgentRuntime() }),
+    ...(adapters.agentRuntime === 'mock'
+      ? {}
+      : { backupAgent: new MockAgentRuntime(), brandModel: geminiBrandModel(config, logger) }),
     files:
       adapters.fileStorage === 'local'
         ? new LocalFileStorageProvider(localDataDir)
@@ -384,6 +403,27 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         })
       : undefined;
 
+  const tenantAdmin = new TenantAdminService({ users, retailers, stores, inventory, identity, audit });
+  const insights = new InsightsService({
+    reader: insightsReader,
+    stores,
+    retailers,
+    products,
+    now: options.now ?? (() => new Date()),
+  });
+  // L5: "Ask Qwikspot" — Gemini when AGENT_RUNTIME=adk_gemini, else the rules summaries only.
+  const brandAssistant = new BrandAssistantService({
+    insights,
+    tenantAdmin,
+    reservations: conversation.reservations,
+    conversations: conversation.queries,
+    summaries: new FirestoreConversationSummaryStore(db),
+    brands,
+    ...(providers.brandModel ? { model: providers.brandModel } : {}),
+    logger,
+    now: options.now,
+  });
+
   return {
     config,
     providers,
@@ -409,7 +449,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
           reservations: reservationRepo,
           now: options.now,
         }),
-        tenantAdmin: new TenantAdminService({ users, retailers, stores, inventory, identity, audit }),
+        tenantAdmin,
         account: new AccountService({ stores, inventory, products, brands, now: options.now }),
         commerceSync,
         catalog: new CatalogService({ products, mappings, inventory }),
@@ -428,13 +468,8 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
           channelMode: channelModeOf(config),
           commerceMode: config.adapters.commerce === 'shopify' ? 'SHOPIFY' : 'MOCK',
         }),
-        insights: new InsightsService({
-          reader: insightsReader,
-          stores,
-          retailers,
-          products,
-          now: options.now ?? (() => new Date()),
-        }),
+        insights,
+        brandAssistant,
         demoStorefront: conversation.demoStorefront,
         shopper: conversation.shopper,
         demoReset,

@@ -1,0 +1,72 @@
+/* L5 Ask Qwikspot: the drawer, the AI cards on the pages ("AI summary" / "Quick summary"). */
+.ask-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+}
+.ask-chip {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  text-align: left;
+}
+.ask-chip:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+.ask-chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.ask-form {
+  display: flex;
+  gap: var(--space-2);
+}
+.ask-form input {
+  flex: 1;
+  min-width: 0;
+}
+.ask-result {
+  margin-top: var(--space-4);
+}
+.ask-question {
+  color: var(--color-text-muted);
+  margin: 0 0 var(--space-2);
+}
+.ask-answer,
+.ai-card__body {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+.ask-answer p,
+.ai-card__body p {
+  margin: 0;
+  line-height: 1.5;
+}
+.ask-used {
+  margin: 0;
+}
+.ai-card {
+  border-left: 3px solid var(--color-primary);
+}
+.ai-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.ai-card__handoff {
+  border-top: 1px dashed var(--color-border);
+  padding-top: var(--space-2);
+  width: 100%;
+}
+.ask-about {
+  margin-left: var(--space-2);
+}

@@ -893,3 +893,27 @@ NetworkPage / RetailerHome   the grey store id next to the store name is gone (k
 ### Teach-back
 
 A deadline is a promise to the customer, not to the model. Measure it from when they are waiting, give the model what is left, and keep the backup's slot untouchable.
+
+## L5 — Ask Qwikspot, the brand agent in the Brand Console
+
+### What changed
+
+```text
+domain/brandAssistant.ts              data pack types, ungroundedNumbers, redactPII, the prompt, Quick summaries
+adapters/agent/geminiBrandAssistant   one Gemini call, ≤ 2 read-tool rounds (get_store, list_conversations)
+application/brandAssistantService.ts  the pack, 17 s deadline, grounding + PII check, brief cache, stored summaries
+routes/brandAssistant.ts              POST /brand/assistant/ask, GET /brand/assistant/brief, GET /brand/conversations/:id/summary
+frontend askQwikspot.tsx / AiCards    the drawer on all six pages, the Overview brief, conversation summaries, "Ask about this"
+```
+
+### What can fail?
+
+- A model asked to "summarise the week" will compute: "holds are up 40%". The rule is blunt: every number in the answer must appear in the data, and dates and ids don't count as a source. A computed number means the Quick summary, never an invented trend.
+- The pack must not carry a shopper. Reservation rows hold a masked customer and a pickup code, and messages can hold a phone number the shopper typed. The pack keeps counts and names only, and transcripts are redacted before they leave the backend. A test checks the exact payload sent.
+- A brief written once and cached would describe the old data after Reset demo, so Reset clears it. A brief that fell back to the rules is kept for only a minute, so a slow Gemini moment does not stick for ten.
+- An AI summary stored on a conversation goes stale when the conversation moves on, so it remembers the message count it was written at.
+- "Ask about this" buttons inside existing tables broke a test that said a store row has no buttons. The test now says what it meant: no *Provision* button.
+
+### Teach-back
+
+The brand agent doesn't need to read charts. It reads the numbers behind them, in one pack, and it may only repeat them: explain, point, suggest. If it can't do that in time or within the rules, the console says the same thing in plain rules language.

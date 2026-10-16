@@ -49,6 +49,12 @@ import { CatalogService } from '../src/application/catalogService.js';
 import { CommerceSyncService } from '../src/application/commerceSyncService.js';
 import { PlatformAdminService } from '../src/application/platformAdminService.js';
 import { DemoResetService } from '../src/application/demoResetService.js';
+import { BrandAssistantService } from '../src/application/brandAssistantService.js';
+import type {
+  BrandAssistantModel,
+  ConversationSummaryStore,
+  StoredConversationSummary,
+} from '../src/ports/brandAssistant.js';
 import { BundledFixtureSource } from '../src/adapters/fixtures/bundledFixtureSource.js';
 import type { DemoDataStore, DemoHistory } from '../src/ports/demoData.js';
 import { RetailImportService } from '../src/application/retailImportService.js';
@@ -645,6 +651,9 @@ export function buildTestWorld(
     agent?: AgentRuntime;
     /** L3: the backup runtime behind `agent` (as the container wires the mock behind Gemini). */
     backupAgent?: AgentRuntime;
+    /** L5: the brand agent's model ("Ask Qwikspot"); absent = the rules summaries only. */
+    brandModel?: BrandAssistantModel;
+    brandDeadlineMs?: number;
     aiBudgetMs?: number;
     pickupCode?: () => string;
     /** M7: replace the simulator provider (e.g. one that fails) and the retry backoff. */
@@ -861,6 +870,28 @@ export function buildTestWorld(
     now: options.now,
   });
 
+  const tenantAdmin = new TenantAdminService({ users, retailers, stores, inventory, identity, audit });
+  const insights = new InsightsService({
+    reader: new MemoryInsightsReader({ intents, conversations, recommendations, events, reservations, outcomes }),
+    stores,
+    retailers,
+    products,
+    now: options.now ?? (() => new Date()),
+  });
+  const summaries = new MemoryConversationSummaries();
+  const brandAssistant = new BrandAssistantService({
+    insights,
+    tenantAdmin,
+    reservations: conversation.reservations,
+    conversations: conversation.queries,
+    summaries,
+    brands,
+    ...(options.brandModel ? { model: options.brandModel } : {}),
+    ...(options.brandDeadlineMs ? { deadlineMs: options.brandDeadlineMs } : {}),
+    logger: options.logger,
+    now: options.now,
+  });
+
   const app = createApp({
     config: {
       corsAllowedOrigins: options.corsAllowedOrigins ?? [],
@@ -885,7 +916,7 @@ export function buildTestWorld(
         reservations,
         now: options.now,
       }),
-      tenantAdmin: new TenantAdminService({ users, retailers, stores, inventory, identity, audit }),
+      tenantAdmin,
       account: new AccountService({ stores, inventory, products, brands, now: options.now }),
       commerceSync,
       catalog: new CatalogService({ products, mappings, inventory }),
@@ -904,13 +935,8 @@ export function buildTestWorld(
         channelMode: options.whatsapp ? 'WHATSAPP' : 'SIMULATOR',
         commerceMode: options.shopify ? 'SHOPIFY' : 'MOCK',
       }),
-      insights: new InsightsService({
-        reader: new MemoryInsightsReader({ intents, conversations, recommendations, events, reservations, outcomes }),
-        stores,
-        retailers,
-        products,
-        now: options.now ?? (() => new Date()),
-      }),
+      insights,
+      brandAssistant,
       demoStorefront: conversation.demoStorefront,
       shopper: conversation.shopper,
       demoReset,
@@ -1032,5 +1058,16 @@ export class FakeOidcVerifier implements OidcTokenVerifier {
     if (!claims) throw new Error('invalid signature');
     if (claims.audience !== audience) throw new Error('wrong audience');
     return claims;
+  }
+}
+
+/** L5: conversation summaries in memory (the Firestore adapter keeps them on the conversation). */
+export class MemoryConversationSummaries implements ConversationSummaryStore {
+  readonly rows = new Map<string, StoredConversationSummary>();
+  async get(brandId: string, conversationId: string) {
+    return this.rows.get(`${brandId}/${conversationId}`) ?? null;
+  }
+  async put(brandId: string, conversationId: string, summary: StoredConversationSummary) {
+    this.rows.set(`${brandId}/${conversationId}`, summary);
   }
 }

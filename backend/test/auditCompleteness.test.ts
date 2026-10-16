@@ -65,6 +65,8 @@ function declaredMutatingRoutes(): string[] {
  */
 const EXEMPT: Record<string, string> = {
   'localFiles.ts PUT /uploads/:uploadId': 'storage transport only; RETAIL_IMPORT_CREATED / _PROCESSED are audited',
+  'brandAssistant.ts POST /assistant/ask':
+    'read-only: a question in a body, nothing is written (logged as brand_assistant.answer)',
 };
 
 type Step = (s: ScenarioWorld, ctx: Record<string, string>) => Promise<request.Response>;

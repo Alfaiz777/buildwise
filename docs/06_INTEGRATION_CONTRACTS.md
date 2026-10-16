@@ -1269,6 +1269,18 @@ UI-4: for a `RETAIL_ADMIN`, reservation rows (list and `GET /api/reservations/:i
 
 ---
 
+## 14.12 Ask Qwikspot — the brand agent (L5)
+
+Read-only, BRAND_ADMIN, the principal's own brand only (`requireScope('BRAND')`). Each answer has the same shape: `{ answer, handoff_brief, next_action: { label, page, path } | null, used: string[], source: 'AI' | 'QUICK_SUMMARY', generated_at, latency_ms }`.
+
+| Route | Purpose |
+|---|---|
+| `POST /api/brand/assistant/ask` `{ question (2–300 chars), page: OVERVIEW \| CONVERSATIONS \| RESERVATIONS \| INSIGHTS \| NETWORK \| SETTINGS }` | The drawer's question. POST so the question is a body, never a URL. 20 per user per minute → `429 RATE_LIMITED`. Not audited: nothing is written (`auditCompleteness` exemption) |
+| `GET /api/brand/assistant/brief[?refresh=true]` | The Overview brief, cached 10 min per brand (1 min after a Quick summary); Reset demo clears it |
+| `GET /api/brand/conversations/:id/summary` | The conversation's summary and, when a person took over, the handoff brief. An AI summary is stored on the conversation (`ai_summary`) and reused until a new message; another brand's id → `404` |
+
+Every answer arrives within 20 s: Gemini's (17 s deadline) or the rules "Quick summary" from the same data (`05` §18).
+
 # 15. Provider isolation rule
 
 The rest of Qwikspot must not depend directly on:

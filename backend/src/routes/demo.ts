@@ -42,7 +42,7 @@ export function demoRouter(demo: DemoConfig | undefined, shopperDemoBrand: strin
  * this brand; POST resets it — DEMO_MODE off → 404, not an allowlisted demo brand → 403,
  * at most once per minute per brand → 429. Audited as DEMO_RESET.
  */
-export function brandDemoRouter(demoReset: DemoResetService): Router {
+export function brandDemoRouter(demoReset: DemoResetService, afterReset?: (brandId: string) => void): Router {
   const router = Router();
   const perBrand = new RateLimiter(1, 60_000);
 
@@ -62,6 +62,7 @@ export function brandDemoRouter(demoReset: DemoResetService): Router {
       throw new AppError(429, 'RATE_LIMITED', 'The demo was just reset. Try again in a minute.', true);
     }
     const r = await demoReset.reset(principal.brandId, actor);
+    afterReset?.(principal.brandId); // L5: the cached AI brief described the old data
     res.json({
       brand_id: r.brandId,
       deleted: r.deleted,

@@ -9,6 +9,7 @@ import { CatalogSection } from './CatalogSection';
 import { RetailImportSection } from './RetailImportSection';
 import { formatDateTime, type BrandStore, type CatalogResponse, type RetailImport } from './types';
 import { storeLabel } from '../../lib/storeLabel';
+import { AskAboutThis } from './AiCards';
 
 export interface BrandUser {
   user_id: string;
@@ -174,7 +175,13 @@ export function NetworkPage() {
                         id={`store-${s.store_id}`}
                         className={target === `store-${s.store_id}` ? 'is-target' : undefined}
                       >
-                        <td>{storeLabel(s)}</td>
+                        <td>
+                          {storeLabel(s)}
+                          <AskAboutThis
+                            label={`Ask Qwikspot about ${s.store_name}`}
+                            question={`How is ${s.store_name} doing, and does it need attention?`}
+                          />
+                        </td>
                         <td>{s.city}</td>
                         <td>{label(s.store_status)}</td>
                         <td>{s.sku_count}</td>
