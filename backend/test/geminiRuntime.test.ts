@@ -581,10 +581,10 @@ describe('L3: the mock agent is the backup brain behind Gemini (docs/03 §16.2)'
   });
   const lastTrace = (s: Awaited<ReturnType<typeof buildScenarioWorld>>) => s.lastRecommendation().trace!;
 
-  it('time is kept for the backup: Gemini stops at 15 s (8 s per request, one retry), the backup has 3 s of the 20 s budget', () => {
-    expect(GEMINI_DEADLINE_MS).toBe(15_000);
-    expect(GEMINI_REQUEST_TIMEOUT_MS).toBe(8_000);
-    expect(AI_BACKUP_BUDGET_MS).toBe(3_000);
+  it('time is kept for the backup: Gemini stops at 9 s (7 s per request), the backup has 2 s of the 12 s ceiling', () => {
+    expect(GEMINI_DEADLINE_MS).toBe(9_000);
+    expect(GEMINI_REQUEST_TIMEOUT_MS).toBe(7_000);
+    expect(AI_BACKUP_BUDGET_MS).toBe(2_000);
     expect(GEMINI_DEADLINE_MS + AI_BACKUP_BUDGET_MS).toBeLessThan(AI_DECISION_BUDGET_MS);
   });
 

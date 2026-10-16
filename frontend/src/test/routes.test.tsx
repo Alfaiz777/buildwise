@@ -371,6 +371,8 @@ describe('scope routing — each of the three roles lands in its own console are
     renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin));
     const wellness = (await screen.findByText('Wellness Mart')).closest('tr')!;
     expect(within(wellness).getByText('owner@north.test')).toBeInTheDocument();
+    // L5: internal store ids are not shown in the stores table.
+    expect(within(wellness.closest('table')!).queryByText(/^st_\w+$/)).not.toBeInTheDocument();
     expect(within(wellness).queryByRole('button')).not.toBeInTheDocument();
 
     const healthPlus = screen.getByText('HealthPlus Chemist').closest('tr')!;
@@ -403,6 +405,8 @@ describe('scope routing — each of the three roles lands in its own console are
       'You run Wellness Mart for Brand A via Ahmedabad Retail Partners.',
     );
     expect(screen.getByText('Wellness Mart', { selector: 'dd' })).toBeInTheDocument();
+    // L5: the internal store id is not shown next to the name.
+    expect(screen.queryByText(/^st_1$/)).not.toBeInTheDocument();
     expect(screen.getByText('Ahmedabad Retail Partners', { selector: 'dd' })).toBeInTheDocument();
     expect(screen.getByText('Satellite Road, Satellite')).toBeInTheDocument();
     expect(screen.getByText('mon 10:00-21:00 (Asia/Kolkata)')).toBeInTheDocument();

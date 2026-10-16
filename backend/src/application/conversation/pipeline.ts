@@ -1,4 +1,3 @@
-import { performance } from 'node:perf_hooks';
 import type { DecisionSource, GuardrailStatus } from '../../domain/ai.js';
 import type { InboundPolicyDecision } from '../../domain/conversationPolicy.js';
 import type { AgentContext, AgentDecision } from '../../ports/agent.js';

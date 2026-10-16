@@ -869,3 +869,27 @@ test/eval/conversations.fixtures  43 shopper messages, run on the mock in npm te
 ### Teach-back
 
 A shop assistant who answers "thanks, maybe later" with three options and a question sounds like a machine. Let the model sound human only where nothing can go wrong, check what it wrote, and keep every fact on the rails the backend builds.
+
+## L5 — every reply within 12 seconds; no internal ids in the consoles
+
+### What changed
+
+```text
+agentStage.ts                AI_DECISION_BUDGET_MS 20 s → 12 s; AI_BACKUP_BUDGET_MS 3 s → 2 s
+adkGeminiAgentRuntime.ts     GEMINI_DEADLINE_MS 15 s → 9 s; GEMINI_REQUEST_TIMEOUT_MS 8 s → 7 s;
+                             a retry only if ≥ 2.5 s of the deadline is left (GEMINI_MIN_ATTEMPT_MS)
+stages.ts                    the model's slot = 12 s − 2 s − the time the context build took
+NetworkPage / RetailerHome   the grey store id next to the store name is gone (kept in the import report)
+```
+
+### What can fail?
+
+- A budget measured from when the runtime is called is not the time the customer waits. The ceiling now counts from the start of the agent stage, and a slow context build is taken from the model's slot, never from the backup's.
+- A retry that starts with 2 s left can only time out again, because no Gemini request has answered in under 2.5 s. Skipping it lets the backup answer at about 7 s instead of 9 s.
+- `import { performance } from 'node:perf_hooks'` is not the object fake timers replace. The runtime looked at real time while the test's clock had moved 7 s, so it retried when it should not have. The global `performance` is the same object in Node and is what fake timers patch.
+- A test regex written through a bash heredoc lost its ``: it became a backspace character, so the "id not shown" check could never fail. A test that should fail without the fix has to be run once without the fix.
+- Live (EVAL_RUNS=2): p95 15.0 s → 9.0 s, max 15.2 s → 10.0 s, all 86 messages passed. The backup share did not change (about one typed turn in five). Only the wait got shorter.
+
+### Teach-back
+
+A deadline is a promise to the customer, not to the model. Measure it from when they are waiting, give the model what is left, and keep the backup's slot untouchable.

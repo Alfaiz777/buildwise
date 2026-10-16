@@ -174,9 +174,7 @@ export function NetworkPage() {
                         id={`store-${s.store_id}`}
                         className={target === `store-${s.store_id}` ? 'is-target' : undefined}
                       >
-                        <td>
-                          {storeLabel(s)} <span className="muted small mono">{s.store_id}</span>
-                        </td>
+                        <td>{storeLabel(s)}</td>
                         <td>{s.city}</td>
                         <td>{label(s.store_status)}</td>
                         <td>{s.sku_count}</td>

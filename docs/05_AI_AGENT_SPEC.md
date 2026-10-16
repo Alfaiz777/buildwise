@@ -268,12 +268,12 @@ The agent is reached only through the `ConversationPipeline` (`03_TECH_ARCHITECT
   - **Tools.** Only the READ tools are declared to the model, whatever the pipeline declares. Every call goes through the `ToolExecutor`; a name that is not an offered read tool is answered with an error and never executed. At most **5** tool calls per decision.
   - **Output.** The model fills a small *proposal* under a response schema (JSON mode): `intent_type`, `confidence`, `action`, `reason`, `variant_id`, `store_id`, `quantity`, `cancel_reservation_id`, `reply_text`, `quick_replies`. The runtime turns it into the `AgentDecision`: `runtime` and `tool_calls` come from what actually ran; the **write tools follow from the action** (`STORE_RESERVATION` → `create_reservation`, `HUMAN_HANDOFF` → `request_human_handoff`, a cancel id → `cancel_reservation`, the `record_customer_intent` rules of the mock) — the model never names one; ids the backend did not show the model in this turn are dropped; a store search reports the searched variant and its nearest eligible store from the tool result.
   - **Replies.** Unchanged forward dispatch (`replyComposer.ts`): store cards, holds, cancellations and online purchase are rebuilt from verified tool results. Gemini's own text reaches the customer for clarifications, `EDUCATE` and `COMPARE` only, in the customer's language (English, Hindi or Hinglish).
-  - **Limits.** Temperature 0.2, the lowest thinking level the model allows. Each request is cut off at 8 s and tried once more on a timeout or a transient error (429, 5xx); the whole decision stops at 15 s, which leaves the backup runtime its 3 s inside the pipeline's 20 s budget. Invalid output is returned as invalid, so the pipeline makes its single repair attempt (the model is told its own validation error) and then uses the deterministic fallback.
+  - **Limits.** Temperature 0.2, the lowest thinking level the model allows. Each request is cut off at 7 s; a timeout or a transient error (429, 5xx) is tried once more only while the 9 s decision deadline still leaves 2.5 s for it (a request has never answered faster). The whole decision stops at 9 s, which leaves the backup runtime its 2 s inside the 12 s ceiling (L5; before: 8 s / 15 s / 20 s). Invalid output is returned as invalid, so the pipeline makes its single repair attempt (the model is told its own validation error) and then uses the deterministic fallback.
   - **Logging.** One line per decision, `agent.gemini_decision`: runtime, model, prompt version, latency, requests, retries, tool names, token counts, action. Never message text, replies or customer references.
   - **Backup.** A Gemini turn that is too slow, fails, or is still invalid after the repair is decided by `MockAgentRuntime` instead (`decision_source = AGENT_BACKUP`, `runtime = MOCK`, `03` §16.2), so the customer still gets a useful automatic answer and the conversation is not handed to a person. The console labels it "Mock AI (backup after Gemini timeout)".
   - **Button taps.** A tapped hold, cancel, "Other stores", "Buy online" or "Talk to a person" never reaches Gemini: the rules decide it (`decision_source = RULES_TAP`, `03` §16.2; the console shows "Rules (button tap)"). Gemini decides typed text, shared locations and unknown option ids.
   - **Rollback.** `AGENT_RUNTIME=mock` stays available in the `gcp` profile while `GCP_STAGED_ROLLOUT=true` (`12` §6).
-- Test hooks (constructor options only, never reachable from customer input) simulate a slow runtime (the 20 s budget → fallback) and invalid output (one repair attempt → fallback).
+- Test hooks (constructor options only, never reachable from customer input) simulate a slow runtime (the 12 s budget → fallback) and invalid output (one repair attempt → fallback).
 - Mock results are never used as evidence of AI quality. The final AI evaluation (§16, `08_TEST_PLAN.md` §7) runs on `AdkGeminiAgentRuntime`.
 
 ---
@@ -453,7 +453,7 @@ For a reader new to Qwikspot: what Gemini can and cannot do, and what happens wh
 - **It cannot invent a price, stock level or store.** A store card, a hold confirmation, a comparison or an order link is rebuilt by `replyComposer` from this turn's tool results, never from the model's words. Gemini's own text appears only on NO_ACTION turns (thanks, later, a greeting, a complaint, a clarifying question). There, a validator rejects any price, stock count, store name, distance, delivery time, discount or promise, and the deterministic reply is sent instead (§16).
 - **The backend decides every action.** Gemini proposes; it is offered read tools only. A hold, a cancellation, a handoff and an order link are executed by the backend after the guardrail re-checks fresh data: the store was offered, it is open, it has the stock, the quantity is within policy. Ids the model was never shown are dropped.
 - **Button taps never call the model.** A tap ("Pick up: Wellness", "Other stores", an area, Cancel) and a typed store name from the card just shown are decided by the rules (`RULES_TAP`): the same answer every time, in milliseconds.
-- **A slow or failing model never leaves the customer waiting.** Each Gemini request is cut off at 8 s (one retry), the whole decision at 15 s. Then the rule-based backup answers the same message with the same tools. Only if that fails too does a fixed "please try again" reply go out.
+- **A slow or failing model never leaves the customer waiting.** Gemini gets at most 9 s per message (7 s per request, a retry only if time is left for one); then the rule-based backup answers the same message with the same tools, in its own 2 s slot. The whole decision ends within 12 s of the agent stage starting — a slow context build shortens Gemini's turn, never the backup's. Only if that fails too does a fixed "please try again" reply go out.
 
 **Where reply time goes, and what keeps it low.** One `conversation.reply_timing` log line per inbound message (no PII) records:
 - `total_ms` (the whole pipeline) and `gemini_ms` (the model, tool calls included);
@@ -463,9 +463,9 @@ Almost all of the time is the model. Firestore reads and writes and the guardrai
 - **Taps skip the model:** most of a purchase is taps.
 - **Fewer tool calls:** the product sheet travels in the context, so product questions need none; at most 5 per decision.
 - **Short output:** a short conversational reply.
-- **Hard deadlines:** the 8 s / 15 s limits, then the backup.
+- **Hard deadlines:** 7 s per request, 9 s for Gemini, 2 s for the backup, 12 s in all.
 
-The Cloud Run request timeout (60 s) is far above the worst case: a 20 s agent budget plus the guardrail, tools and the send.
+The Cloud Run request timeout (60 s) is far above the worst case: the 12 s decision plus the guardrail, tools and the send. An emulator test checks that the backup's store search, typed store name and closing each decide in under 1 s against Firestore (`reply-timing.emulator.test.ts`).
 
 **Measured (live eval, 2026-10-16, `gemini-3.8-flash` on `global`, `EVAL_RUNS=2`, from a laptop in India).** The conversation test set passed 86 of 86 messages.
 
@@ -477,5 +477,16 @@ The Cloud Run request timeout (60 s) is far above the worst case: a 20 s agent b
 | All messages | 86 | p50 5.1 s, p95 15.0 s |
 
 Almost all of the time is the model. A taps-first purchase answers in milliseconds, and about one typed turn in six waits for the deadline before the backup answers. The next step for steadier latency is Provisioned Throughput or a smaller model for conversational turns (`VERTEX_MODEL`), measured with the same set.
+
+**With the 12 s ceiling (L5, same day, same set, `EVAL_RUNS=2`).** Gemini 9 s (7 s per request), backup 2 s. 86 of 86 messages passed.
+
+| Who answered | Turns | Reply time |
+|---|---|---|
+| Rules | 12 | median 9 ms, max 14 ms |
+| Gemini | 59 | median 4.3 s (2.0–8.8 s) |
+| Backup | 15 | median 9.0 s (7.0–10.0 s) |
+| All messages | 86 | **p50 4.5 s, p95 9.0 s, max 10.0 s** (before: p95 15.0 s, max 15.2 s) |
+
+The same share of typed turns goes to the backup (15 of 74, about one in five): the slow Gemini requests are the same ones, they are just cut 6 s sooner. A backup answer at about 7 s means the first request stalled past 7 s and no retry fitted in the deadline.
 
 The run also found one ungrounded claim. Asked "is it original?", Gemini once answered (EDUCATE) that every product was "100% genuine and original". Nothing verified says so. Prompt V2 now forbids authenticity and safety claims without a verified attribute and offers a person instead; that line was added after this run.
