@@ -8,7 +8,7 @@ import { containsPII, ungroundedNumbers, type ModelAnswer } from '../domain/assi
 import { newId } from '../lib/ids.js';
 import type { Logger } from '../lib/logger.js';
 import { silentLogger } from '../lib/logger.js';
-import type { AssistantModel, AssistantTask, AssistantToolDeclaration } from '../ports/assistant.js';
+import type { AssistantModel, AssistantTask, AssistantToolDeclaration, AssistantTrace } from '../ports/assistant.js';
 import type { EventInput } from './eventRecorder.js';
 import type { z } from 'zod';
 
@@ -98,6 +98,9 @@ export class AssistantRunner {
     let ai: ModelAnswer | null = null;
     let toolCalls: string[] = [];
     let geminiMs: number | null = null;
+    /** For an ERROR: the error's kind and HTTP status (never its message, which may quote data). */
+    let errorKind: string | null = null;
+    const trace: AssistantTrace = { rounds: [] };
     const model = this.deps.model;
     if (!model) failure = 'NO_MODEL';
     else {
@@ -105,12 +108,13 @@ export class AssistantRunner {
       const controller = new AbortController();
       let timer: NodeJS.Timeout | undefined;
       const tools = new Map((spec.tools ?? []).map((t) => [t.declaration.name, t]));
+      const deadlineMs = this.deps.deadlineMs ?? GEMINI_ASSISTANT_DEADLINE_MS;
       try {
         const deadline = new Promise<never>((_, reject) => {
           timer = setTimeout(() => {
             reject(new DeadlineExceeded());
             controller.abort();
-          }, this.deps.deadlineMs ?? GEMINI_ASSISTANT_DEADLINE_MS);
+          }, deadlineMs);
         });
         const result = await Promise.race([
           model.generate(
@@ -123,9 +127,11 @@ export class AssistantRunner {
               ...(spec.question !== undefined ? { question: spec.question } : {}),
               data: spec.data,
               tools: [...tools.values()].map((t) => t.declaration),
+              finishBy: geminiStarted + deadlineMs,
             },
             async (name, args) => tools.get(name)?.run(args) ?? { error: 'TOOL_NOT_AVAILABLE' },
             controller.signal,
+            trace,
           ),
           deadline,
         ]);
@@ -142,6 +148,10 @@ export class AssistantRunner {
         }
       } catch (err) {
         failure = err instanceof DeadlineExceeded ? 'TIMEOUT' : 'ERROR';
+        if (failure === 'ERROR') {
+          const status = (err as { status?: unknown }).status;
+          errorKind = `${err instanceof Error ? err.name : typeof err}${typeof status === 'number' ? ` ${status}` : ''}`;
+        }
       } finally {
         clearTimeout(timer);
         geminiMs = Date.now() - geminiStarted;
@@ -161,6 +171,10 @@ export class AssistantRunner {
       latency_ms: latency,
       gemini_ms: geminiMs,
       tool_calls: toolCalls,
+      ...(errorKind ? { error_kind: errorKind } : {}),
+      // Where the time went: the data's size and each Gemini round (a cut-off round is not listed).
+      data_chars: JSON.stringify(spec.data ?? null).length,
+      rounds: trace.rounds,
     });
     if (spec.task === 'ANSWER' && this.deps.recordEvent) {
       const at = this.now().toISOString();

@@ -26,8 +26,12 @@ export interface GeminiRequest {
   turns: GeminiTurn[];
   /** Read tools the model may call in this request; empty = it must answer now. */
   tools: { name: string; description: string; parameters: unknown }[];
-  /** JSON Schema of the final answer. */
-  responseSchema: Record<string, unknown>;
+  /**
+   * JSON Schema of the final answer (JSON mode). null = plain text: Vertex may reject JSON mode
+   * together with function calling (400 "Function calling with a response mime type:
+   * 'application/json' is unsupported"), so a round that offers tools can ask for text instead.
+   */
+  responseSchema: Record<string, unknown> | null;
   temperature: number;
 }
 
@@ -36,7 +40,8 @@ export interface GeminiResponse {
   text: string | null;
   /** The model content to append to the turns before the tool results. */
   raw: unknown;
-  usage: { promptTokens: number; outputTokens: number };
+  /** outputTokens includes the thinking tokens; thoughtTokens is that part alone. */
+  usage: { promptTokens: number; outputTokens: number; thoughtTokens?: number };
 }
 
 export interface GeminiClient {
@@ -79,8 +84,9 @@ export class VertexGeminiClient implements GeminiClient {
         abortSignal: signal,
         // The decision is small and time-bound: the lowest thinking level this model family allows.
         thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        responseMimeType: 'application/json',
-        responseJsonSchema: request.responseSchema,
+        ...(request.responseSchema
+          ? { responseMimeType: 'application/json', responseJsonSchema: request.responseSchema }
+          : {}),
         ...(hasTools
           ? {
               tools: [
@@ -110,6 +116,7 @@ export class VertexGeminiClient implements GeminiClient {
         promptTokens: response.usageMetadata?.promptTokenCount ?? 0,
         outputTokens:
           (response.usageMetadata?.candidatesTokenCount ?? 0) + (response.usageMetadata?.thoughtsTokenCount ?? 0),
+        thoughtTokens: response.usageMetadata?.thoughtsTokenCount ?? 0,
       },
     };
   }

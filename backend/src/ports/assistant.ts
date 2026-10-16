@@ -23,6 +23,8 @@ export interface AssistantRequest {
   data: unknown;
   /** Read-only tools (at most 2 rounds); empty = one call. */
   tools: AssistantToolDeclaration[];
+  /** When the caller stops waiting (epoch ms): no tool round is started that would not leave time to answer. */
+  finishBy?: number;
 }
 
 export interface AssistantModelResult {
@@ -33,11 +35,30 @@ export interface AssistantModelResult {
   toolCalls: string[];
 }
 
+/** One model call of an answer: how long it took, its tokens and the tools it asked for. */
+export interface AssistantRound {
+  ms: number;
+  prompt_tokens: number;
+  output_tokens: number;
+  thought_tokens: number;
+  tool_calls: string[];
+  /** Time spent running those tools before the next round. */
+  tool_ms: number;
+  /** The round's request was sent a second time because the first had not answered (HEDGE_AFTER_MS). */
+  hedged: boolean;
+}
+
+/** Filled in as the rounds finish, so a run cut off by its deadline still shows what it did. */
+export interface AssistantTrace {
+  rounds: AssistantRound[];
+}
+
 export interface AssistantModel {
   readonly model: string;
   generate(
     request: AssistantRequest,
     runTool: (name: string, args: Record<string, unknown>) => Promise<unknown>,
     signal: AbortSignal,
+    trace?: AssistantTrace,
   ): Promise<AssistantModelResult>;
 }

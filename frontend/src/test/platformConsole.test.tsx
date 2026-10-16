@@ -356,7 +356,8 @@ describe('Ask Qwikspot (L7)', () => {
   it('if the brief fails the Overview still renders, without the card', async () => {
     renderAt('/platform'); // no brief endpoint → it fails
     expect(await screen.findByRole('region', { name: 'Across all brands' })).toBeInTheDocument();
-    expect(screen.queryByText('Network today')).not.toBeInTheDocument();
+    // While it loads the card shows a skeleton; once the brief fails it is gone.
+    await waitFor(() => expect(screen.queryByText('Network today')).not.toBeInTheDocument());
   });
 
   it('the header button opens the drawer with the 4 platform questions; answers link to the platform pages', async () => {
