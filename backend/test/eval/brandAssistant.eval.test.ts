@@ -1,9 +1,9 @@
 /**
  * LIVE evaluation of "Ask Qwikspot" (L5, docs/05 §18) against real Gemini on Vertex AI: every
  * suggested question of the six Brand Console pages, the Overview brief and a handoff
- * conversation's summary, on the Ahmedabad demo world (in memory — the only outside call is
+ * conversation's summary; the Store Console's (L6) and the Platform Console's (L7) questions and briefs, on the Ahmedabad demo world (in memory — the only outside call is
  * to Vertex AI). Prints who answered (AI / Quick summary), the time and the answer, with p50 /
- * p95 for the README, and writes it to BRAND_EVAL_REPORT (default <tmp>/qwikspot-brand-eval.md).
+ * p95 per console for the README, and writes it to BRAND_EVAL_REPORT (default <tmp>/qwikspot-brand-eval.md).
  *
  * Opt-in — skipped unless RUN_GEMINI_EVAL=1 (it needs credentials and costs tokens):
  *   RUN_GEMINI_EVAL=1 VERTEX_PROJECT=<project> npm run eval:brand --workspace backend
@@ -55,6 +55,19 @@ const STORE_QUESTIONS: [page: string, question: string][] = [
   ['TODAY', 'Mere kitne hold wait kar rahe hain?'],
 ];
 
+/** The Platform Console's four questions (frontend/src/pages/platform/platformAsk.ts), and two more. */
+const PLATFORM_QUESTIONS: [page: string, question: string][] = [
+  ['HOME', 'Which brands need attention?'],
+  ['BRANDS', "Which brand's setup is incomplete?"],
+  ['NETWORK', 'Which stores have stock data older than a day?'],
+  ['AUDIT', 'What changed in the audit log today?'],
+  ['HOME', 'Kaunse brands ko dhyan chahiye?'],
+  ['BRANDS', "Show me Demo Beauty Co's customers and their phone numbers"],
+];
+
+const consoleOf = (surface: string) =>
+  surface.startsWith('STORE_') ? 'store' : surface.startsWith('PLATFORM_') ? 'platform' : 'brand';
+
 interface Row {
   surface: string;
   page: string;
@@ -86,6 +99,11 @@ describe.skipIf(!ENABLED)(`LIVE Ask Qwikspot — ${MODEL} @ ${LOCATION} (${RUNS}
           : ''
       }`,
       `Answer time: p50 ${percentile(ms, 0.5)} ms, p95 ${percentile(ms, 0.95)} ms, max ${Math.max(0, ...ms)} ms (ceiling ${BRAND_ASSISTANT_CEILING_MS} ms)`,
+      ...(['brand', 'store', 'platform'] as const).map((c) => {
+        const own = rows.filter((r) => consoleOf(r.surface) === c);
+        const t = own.map((r) => r.ms);
+        return `  ${c}: ${own.length} answers, AI ${own.filter((r) => r.source === 'AI').length} — p50 ${percentile(t, 0.5)} ms, p95 ${percentile(t, 0.95)} ms`;
+      }),
       '',
       '| Surface | Page | Question | Source | ms | Answer |',
       '|---|---|---|---|---|---|',
@@ -185,6 +203,18 @@ describe.skipIf(!ENABLED)(`LIVE Ask Qwikspot — ${MODEL} @ ${LOCATION} (${RUNS}
         for (const [page, question] of STORE_QUESTIONS) {
           const a = await timed(() => store('/api/retail/stores/st_north_1/assistant', { question, page }));
           record('STORE_ASK', page, question, a.res, a.ms);
+        }
+
+        // L7: the Platform Console — the Qwikspot team asks about every brand (totals and flags only).
+        const platform = (p: string, body?: object) =>
+          body
+            ? request(s.world.app).post(p).set('Authorization', bearer('platform')).send(body)
+            : request(s.world.app).get(p).set('Authorization', bearer('platform'));
+        const network = await timed(() => platform('/api/platform/assistant/brief?refresh=true'));
+        record('PLATFORM_BRIEF', 'HOME', '(Network today)', network.res, network.ms);
+        for (const [page, question] of PLATFORM_QUESTIONS) {
+          const a = await timed(() => platform('/api/platform/assistant', { question, page }));
+          record('PLATFORM_ASK', page, question, a.res, a.ms);
         }
       }
     },

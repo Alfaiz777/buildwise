@@ -1281,7 +1281,7 @@ Read-only, BRAND_ADMIN, the principal's own brand only (`requireScope('BRAND')`)
 
 Every answer arrives within 20 s: Gemini's (17 s deadline) or the rules "Quick summary" from the same data (`05` §18).
 
-Each question (brand or store) also records a CommerceEvent `ASSISTANT_QUESTION` (`source: QWIKSPOT`, `entity_reference`: the store id for a store question, else null; payload `{ console: BRAND | STORE, page, source: AI | QUICK_SUMMARY, failure, latency_ms }`). The question's text is never stored or logged. A brief is not a question and records nothing.
+Each question (brand, store or platform) also records a CommerceEvent `ASSISTANT_QUESTION` (`source: QWIKSPOT`, `entity_reference`: the store id for a store question, else null; payload `{ console: BRAND | STORE | PLATFORM, role: BRAND | STORE | PLATFORM, page, source: AI | QUICK_SUMMARY, failure, latency_ms }`). A platform question is about no brand: its event is kept under the scope id `platform` (`brands/platform/commerceEvents`, a parent that is never a brand document). The question's text is never stored or logged. A brief is not a question and records nothing.
 
 ## 14.13 Ask Qwikspot — the store agent (L6)
 
@@ -1295,6 +1295,18 @@ Read-only, RETAIL_ADMIN, the principal's own store only (mounted under `/api/ret
 - **Scope:** another store's id in the path → `404`, including another store of the same retailer. A Brand Admin → `403`. A store id written in the question is ignored: the data is only the principal's store.
 - **Read-only:** the agent never confirms a hold or changes stock; it names the button (Confirm on Today) or the page (Stock) instead.
 - **Tiles:** `GET /api/retail/stores/:storeId/summary` (the Today tiles) and the store agent share one function (`application/storeSummary.ts`). The summary's numbers and the agent's totals are the same by construction.
+
+## 14.14 Ask Qwikspot — the platform agent (L7)
+
+Read-only, PLATFORM_ADMIN only (mounted under `/api/platform` behind `requireScope('PLATFORM')`; a Brand or Retail Admin → `403`). Same answer shape as §14.12, with `next_action.page` one of `HOME | BRANDS | NETWORK | AUDIT | SYSTEM` (paths `/platform`, `/platform/brands`, `/platform/network`, `/platform/audit`, `/platform/system`).
+
+| Route | Purpose |
+|---|---|
+| `POST /api/platform/assistant` `{ question (2–300 chars), page: HOME \| BRANDS \| NETWORK \| AUDIT \| SYSTEM (default HOME), days: 7 \| 28 (default 7), include_history: boolean (default true) }` | A question from the Platform Console drawer. 20 per user per minute → `429 RATE_LIMITED`. Not audited: nothing is written |
+| `GET /api/platform/assistant/brief?days=7\|28&include_history=true\|false[&refresh=true]` | "Network today", cached 10 min per choice (1 min after a Quick summary) |
+
+- **Data:** only what `GET /api/platform/brands`, `/network`, `/brands/:brandId/network` and `/audit` return, through the same `PlatformAdminService` functions, so the totals and flag counts equal the pages'. No customer, conversation, message, phone, email, pickup code, stock line or user id (docs/07 §4.2); the pack is checked before every call.
+- **Read-only:** never creates a brand, provisions an admin or changes a status; it names the button on the Brands page instead.
 
 
 # 15. Provider isolation rule

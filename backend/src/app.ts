@@ -44,6 +44,8 @@ import { brandAssistantRouter } from './routes/brandAssistant.js';
 import type { BrandAssistantService } from './application/brandAssistantService.js';
 import type { StoreAssistantService } from './application/storeAssistantService.js';
 import { storeAssistantRouter } from './routes/storeAssistant.js';
+import type { PlatformAssistantService } from './application/platformAssistantService.js';
+import { platformAssistantRouter } from './routes/platformAssistant.js';
 import { shopperRouter } from './routes/shopper.js';
 import { internalRouter } from './routes/internal.js';
 import type { ScheduledWorkService } from './application/scheduledWork.js';
@@ -91,6 +93,8 @@ export interface AppDeps {
     brandAssistant?: BrandAssistantService;
     /** L6: "Ask Qwikspot" for the Store Console — the store agent (read-only). */
     storeAssistant?: StoreAssistantService;
+    /** L7: "Ask Qwikspot" for the Platform Console — the platform agent (read-only, aggregates only). */
+    platformAssistant?: PlatformAssistantService;
     /** UI-3: the read-only Settings page. */
     brandSettings: BrandSettingsQuery;
     /** L4: the editable list of storefronts allowed to send shopper events. */
@@ -206,6 +210,8 @@ export function createApp(deps: AppDeps): Express {
 
   // Platform scope: /api/platform/* only.
   api.use('/platform', requireScope('PLATFORM'), platformRouter(services.platformAdmin));
+  if (services.platformAssistant)
+    api.use('/platform', requireScope('PLATFORM'), platformAssistantRouter(services.platformAssistant));
 
   // Tenant routes: PLATFORM_ADMIN is refused here (403), before any handler runs.
   const tenant = express.Router();

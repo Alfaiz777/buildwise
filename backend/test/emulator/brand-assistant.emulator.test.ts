@@ -13,9 +13,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FirestoreConversationSummaryStore } from '../../src/adapters/firestore/conversationSummaryStore.js';
 import { buildContainer } from '../../src/composition/container.js';
 import { loadConfig } from '../../src/config/env.js';
-import type { BrandPrincipal } from '../../src/domain/principal.js';
+import type { BrandPrincipal, PlatformPrincipal } from '../../src/domain/principal.js';
 import { initFirebase } from '../../src/firebase/admin.js';
 import { silentLogger } from '../../src/lib/logger.js';
+import { findPrivateData } from '../../src/domain/platformAssistant.js';
 
 const PROJECT = 'demo-qwikspot';
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -33,6 +34,13 @@ const principal: BrandPrincipal = {
   role: 'BRAND_ADMIN',
   brandId: DEMO,
   userId: 'u_admin',
+  email: null,
+};
+
+const platformPrincipal: PlatformPrincipal = {
+  scope: 'PLATFORM',
+  role: 'PLATFORM_ADMIN',
+  userId: 'u_platform',
   email: null,
 };
 
@@ -105,4 +113,27 @@ describe('Ask Qwikspot against Firestore', () => {
     await container.demoReset.rebuild(DEMO, SEED);
     expect(await store.get(DEMO, conversation.id)).toBeNull();
   }, 180_000);
+
+  it('L7: the platform pack builds from real data with no private field; the event is kept under the platform scope', async () => {
+    const platform = container.appDeps.services.platformAssistant!;
+    const pack = await platform.pack({ days: 28, includeHistory: true });
+    expect(findPrivateData(pack)).toEqual([]);
+    expect(pack.brands.map((b) => b.name)).toContain('Demo Beauty Co');
+    expect(pack.totals).toEqual(
+      (await container.appDeps.services.platformAdmin.network({ days: 28, includeHistory: true })).totals,
+    );
+    const answer = await platform.ask(platformPrincipal, 'Which brands need attention?', 'HOME', {
+      days: 7,
+      includeHistory: true,
+    });
+    expect(answer.source).toBe('QUICK_SUMMARY');
+    const events = await db
+      .collection('brands/platform/commerceEvents')
+      .where('event_type', '==', 'ASSISTANT_QUESTION')
+      .get();
+    expect(events.docs.map((d) => d.get('payload'))).toContainEqual(
+      expect.objectContaining({ console: 'PLATFORM', role: 'PLATFORM' }),
+    );
+    expect((await db.doc('brands/platform').get()).exists).toBe(false);
+  }, 60_000);
 });

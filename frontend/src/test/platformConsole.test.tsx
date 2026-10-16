@@ -143,9 +143,10 @@ const AUDIT = {
   ],
 };
 
-function platformApi(): ApiClient {
+function platformApi(extra: Record<string, unknown> = {}, post: ApiClient['post'] = vi.fn()): ApiClient {
   return {
     get: vi.fn(async (p: string) => {
+      if (p in extra) return extra[p];
       if (p === '/api/me') return PLATFORM;
       if (p.startsWith('/api/platform/network')) return NETWORK;
       if (p.startsWith('/api/platform/brands/brd_demo/network')) return BRAND_NETWORK;
@@ -153,7 +154,7 @@ function platformApi(): ApiClient {
       if (p.startsWith('/api/platform/audit')) return AUDIT;
       throw new Error(`unexpected GET ${p}`);
     }) as ApiClient['get'],
-    post: vi.fn() as ApiClient['post'],
+    post: post as ApiClient['post'],
     patch: vi.fn() as ApiClient['patch'],
     upload: vi.fn() as ApiClient['upload'],
   };
@@ -316,5 +317,82 @@ describe('Brands and navigation', () => {
         .getAllByRole('link')
         .map((a) => a.textContent),
     ).toEqual(['Overview', 'Brands', 'Retail network', 'Audit', 'System']);
+  });
+});
+
+const brief = (over: Record<string, unknown>) => ({
+  handoff_brief: null,
+  next_action: null,
+  used: [],
+  source: 'AI',
+  generated_at: '2026-10-05T09:00:00.000Z',
+  latency_ms: 900,
+  ...over,
+});
+
+describe('Ask Qwikspot (L7)', () => {
+  it('"Network today" loads after the tiles, labelled, with its next action; it follows the period', async () => {
+    const api = renderAt(
+      '/platform',
+      platformApi({
+        '/api/platform/assistant/brief?days=7&include_history=true': brief({
+          answer: 'In the last 7 days: 2 active brands. New Brand needs attention.',
+          source: 'QUICK_SUMMARY',
+          next_action: { label: 'Open the brands', page: 'BRANDS', path: '/platform/brands' },
+        }),
+      }),
+    );
+    expect(await screen.findByRole('region', { name: 'Across all brands' })).toBeInTheDocument();
+    const card = (await screen.findByText(/New Brand needs attention\./)).closest('section')!;
+    expect(within(card).getByText('Network today')).toBeInTheDocument();
+    expect(within(card).getByText('Quick summary')).toBeInTheDocument();
+    expect(within(card).getByRole('link', { name: 'Open the brands →' })).toHaveAttribute('href', '/platform/brands');
+    fireEvent.click(screen.getByLabelText('Include synthetic history'));
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith('/api/platform/assistant/brief?days=7&include_history=false'),
+    );
+  });
+
+  it('if the brief fails the Overview still renders, without the card', async () => {
+    renderAt('/platform'); // no brief endpoint → it fails
+    expect(await screen.findByRole('region', { name: 'Across all brands' })).toBeInTheDocument();
+    expect(screen.queryByText('Network today')).not.toBeInTheDocument();
+  });
+
+  it('the header button opens the drawer with the 4 platform questions; answers link to the platform pages', async () => {
+    const post = vi.fn(async () =>
+      brief({
+        answer: 'Skin Studio at Demo Beauty Co has stock data older than a day.',
+        source: 'QUICK_SUMMARY',
+        next_action: { label: 'Open the retail network', page: 'NETWORK', path: '/platform/network' },
+        used: ['flagged_stores', 'audit'],
+      }),
+    );
+    const api = renderAt('/platform/network', platformApi({}, post as unknown as ApiClient['post']));
+    fireEvent.click(await screen.findByRole('button', { name: "Ask Qwikspot about the platform's data" }));
+    const drawer = await screen.findByRole('dialog', { name: 'Ask Qwikspot' });
+    expect(within(drawer).getByText(/only from the platform's Qwikspot data/)).toBeInTheDocument();
+    const chips = within(within(drawer).getByRole('group', { name: 'Suggested questions' })).getAllByRole('button');
+    expect(chips.map((c) => c.textContent)).toEqual([
+      'Which brands need attention?',
+      "Which brand's setup is incomplete?",
+      'Which stores have stock data older than a day?',
+      'What changed in the audit log today?',
+    ]);
+    fireEvent.click(chips[2]!);
+    expect(await within(drawer).findByText(/has stock data older than a day\./)).toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledWith('/api/platform/assistant', {
+      question: 'Which stores have stock data older than a day?',
+      page: 'NETWORK',
+      days: 7,
+      include_history: true,
+    });
+    expect(within(drawer).getByText('Quick summary')).toBeInTheDocument();
+    expect(within(drawer).getByRole('link', { name: 'Open the retail network →' })).toHaveAttribute(
+      'href',
+      '/platform/network',
+    );
+    expect(within(drawer).getByRole('link', { name: 'Retail network' })).toHaveAttribute('href', '/platform/network');
+    expect(within(drawer).getByRole('link', { name: 'Audit log' })).toHaveAttribute('href', '/platform/audit');
   });
 });

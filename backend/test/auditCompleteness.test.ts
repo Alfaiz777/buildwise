@@ -69,6 +69,8 @@ const EXEMPT: Record<string, string> = {
     'read-only: a question in a body, nothing is written (logged as brand_assistant.answer)',
   'storeAssistant.ts POST /stores/:storeId/assistant':
     'read-only: a question in a body, nothing is written (logged as store_assistant.answer)',
+  'platformAssistant.ts POST /assistant':
+    'read-only: a question in a body, nothing is written (logged as platform_assistant.answer)',
 };
 
 type Step = (s: ScenarioWorld, ctx: Record<string, string>) => Promise<request.Response>;

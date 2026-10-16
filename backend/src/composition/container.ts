@@ -4,6 +4,7 @@ import { GeminiAssistant } from '../adapters/agent/geminiAssistant.js';
 import { FirestoreConversationSummaryStore } from '../adapters/firestore/conversationSummaryStore.js';
 import { BrandAssistantService } from '../application/brandAssistantService.js';
 import { StoreAssistantService } from '../application/storeAssistantService.js';
+import { PlatformAssistantService } from '../application/platformAssistantService.js';
 import { AssistantRunner } from '../application/assistantRunner.js';
 import type { AssistantModel } from '../ports/assistant.js';
 import { MockAgentRuntime } from '../adapters/agent/mockAgentRuntime.js';
@@ -431,6 +432,25 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     now: options.now,
   });
   const account = new AccountService({ stores, inventory, products, brands, now: options.now });
+  const platformAdmin = new PlatformAdminService({
+    brands,
+    users,
+    identity,
+    audit,
+    stores,
+    connections,
+    mappings,
+    inventory,
+    reader: insightsReader,
+    retailers,
+    reservations: reservationRepo,
+    now: options.now,
+  });
+  const platformAssistant = new PlatformAssistantService({
+    runner: assistantRunner,
+    platform: platformAdmin,
+    now: options.now,
+  });
   const storeAssistant = new StoreAssistantService({
     runner: assistantRunner,
     account,
@@ -450,20 +470,8 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
       verifier: new FirebaseTokenVerifier(auth),
       repositories: { users, brands, retailers, stores },
       services: {
-        platformAdmin: new PlatformAdminService({
-          brands,
-          users,
-          identity,
-          audit,
-          stores,
-          connections,
-          mappings,
-          inventory,
-          reader: insightsReader,
-          retailers,
-          reservations: reservationRepo,
-          now: options.now,
-        }),
+        platformAdmin,
+        platformAssistant,
         tenantAdmin,
         account,
         commerceSync,

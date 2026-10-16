@@ -46,8 +46,8 @@ export interface AssistantTool {
 }
 
 export interface AssistantRun<P extends string> {
-  /** Which console asks: the log line's prefix and the event's payload. */
-  console: 'brand' | 'store';
+  /** Which console asks: the log line's prefix and the event's payload (role). */
+  console: 'brand' | 'store' | 'platform';
   surface: 'ASK' | 'BRIEF' | 'CONVERSATION_SUMMARY';
   brandId: string;
   /** The store a store-console answer is about (the event's entity reference). */
@@ -170,7 +170,14 @@ export class AssistantRunner {
           eventType: 'ASSISTANT_QUESTION',
           source: 'QWIKSPOT',
           entityReference: spec.storeId ?? null,
-          payload: { console: spec.console.toUpperCase(), page: spec.page, source, failure, latency_ms: latency },
+          payload: {
+            console: spec.console.toUpperCase(),
+            role: spec.console.toUpperCase(),
+            page: spec.page,
+            source,
+            failure,
+            latency_ms: latency,
+          },
           idempotencyKey: newId('aq'),
           at,
         })

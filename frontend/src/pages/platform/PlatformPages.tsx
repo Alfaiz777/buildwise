@@ -5,6 +5,7 @@ import { ConsoleShell, useLoad } from '../../components/ConsoleShell';
 import { Badge, Card, EmptyState, ErrorState, Skeleton } from '../../components/ui';
 import { label } from '../../lib/labels';
 import { formatDateTime } from '../brand/types';
+import { AskScope } from '../brand/askQwikspot';
 import { PeriodControls } from './PlatformHome';
 import {
   ACTION_TEXT,
@@ -142,6 +143,7 @@ export function PlatformNetwork() {
           </label>
         </div>
         <PeriodControls days={days} onDays={setDays} includeHistory={includeHistory} onHistory={setIncludeHistory} />
+        <AskScope days={days} includeHistory={includeHistory} />
         {network.error && <ErrorState message={network.error} onRetry={network.reload} />}
         {brands.data?.brands.length === 0 && <EmptyState>No brands yet.</EmptyState>}
         {brandId && !n && !network.error && <Skeleton lines={3} />}
