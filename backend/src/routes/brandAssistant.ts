@@ -10,6 +10,14 @@ import { RateLimiter } from '../lib/rateLimiter.js';
 const AskBody = z.object({
   question: z.string().trim().min(2).max(300),
   page: z.enum(CONSOLE_PAGES).default('OVERVIEW'),
+  /** What the page shows: its period and whether synthetic demo history is included. */
+  days: z.union([z.literal(7), z.literal(28)]).default(7),
+  include_history: z.boolean().default(true),
+});
+const BriefQuery = z.object({
+  days: z.enum(['7', '28']).default('7'),
+  include_history: z.enum(['true', 'false']).default('true'),
+  refresh: z.enum(['true', 'false']).default('false'),
 });
 
 /**
@@ -33,14 +41,26 @@ export function brandAssistantRouter(assistant: BrandAssistantService): Router {
     const body = AskBody.safeParse(req.body);
     if (!body.success) throw Errors.invalidRequest('Ask a question of 2 to 300 characters.');
     limited(principal.userId);
-    res.json(await assistant.ask(principal, body.data.question, body.data.page));
+    res.json(
+      await assistant.ask(principal, body.data.question, body.data.page, {
+        days: body.data.days,
+        includeHistory: body.data.include_history,
+      }),
+    );
   });
 
   router.get('/assistant/brief', async (req, res) => {
     const principal = getBrandPrincipal(res);
-    const refresh = req.query.refresh === 'true';
+    const q = BriefQuery.safeParse(req.query);
+    if (!q.success) throw Errors.invalidRequest('Period must be 7 or 28 days.');
+    const refresh = q.data.refresh === 'true';
     if (refresh) limited(principal.userId);
-    res.json(await assistant.brief(principal, { refresh }));
+    res.json(
+      await assistant.brief(principal, {
+        refresh,
+        scope: { days: Number(q.data.days) as 7 | 28, includeHistory: q.data.include_history === 'true' },
+      }),
+    );
   });
 
   router.get('/conversations/:conversationId/summary', async (req, res) => {

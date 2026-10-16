@@ -117,7 +117,7 @@ describe('Ask Qwikspot — the drawer', () => {
   });
 
   it('opens from the header on Overview, asks a suggested question with the page, shows the AI answer and its next action', async () => {
-    const api = apiFor(BRAND, { '/api/brand/assistant/brief': answer() });
+    const api = apiFor(BRAND, { '/api/brand/assistant/brief?days=7&include_history=true': answer() });
     renderAt('/brand', api);
     fireEvent.click(await screen.findByRole('button', { name: "Ask Qwikspot about your brand's data" }));
     const drawer = await screen.findByRole('dialog', { name: 'Ask Qwikspot' });
@@ -128,6 +128,8 @@ describe('Ask Qwikspot — the drawer', () => {
     expect(api.post).toHaveBeenCalledWith('/api/brand/assistant/ask', {
       question: 'What should I fix first?',
       page: 'OVERVIEW',
+      days: 7,
+      include_history: true,
     });
     expect(within(drawer).getByText('AI summary')).toBeInTheDocument();
     expect(within(drawer).getByRole('link', { name: 'Open reservations →' })).toHaveAttribute(
@@ -152,6 +154,8 @@ describe('Ask Qwikspot — the drawer', () => {
     expect(api.post).toHaveBeenCalledWith('/api/brand/assistant/ask', {
       question: 'Is Wellness Mart ok?',
       page: 'NETWORK',
+      days: 7,
+      include_history: true,
     });
   });
 
@@ -164,6 +168,8 @@ describe('Ask Qwikspot — the drawer', () => {
       expect(api.post).toHaveBeenCalledWith('/api/brand/assistant/ask', {
         question: 'How is Wellness Mart doing, and does it need attention?',
         page: 'NETWORK',
+        days: 7,
+        include_history: true,
       }),
     );
   });
@@ -177,7 +183,12 @@ describe('Ask Qwikspot — the drawer', () => {
 
 describe('the AI pieces on the pages', () => {
   it('Overview: the brief with its label and next action; it never blocks the page', async () => {
-    renderAt('/brand', apiFor(BRAND, { '/api/brand/assistant/brief': answer({ answer: 'A good week: 12 holds.' }) }));
+    renderAt(
+      '/brand',
+      apiFor(BRAND, {
+        '/api/brand/assistant/brief?days=7&include_history=true': answer({ answer: 'A good week: 12 holds.' }),
+      }),
+    );
     const card = (await screen.findByText('A good week: 12 holds.')).closest('section')!;
     expect(within(card).getByText('This week in brief')).toBeInTheDocument();
     expect(within(card).getByText('AI summary')).toBeInTheDocument();
@@ -255,5 +266,52 @@ describe('the AI pieces on the pages', () => {
     expect(within(card).getByText('Handoff brief')).toBeInTheDocument();
     expect(within(card).getByText('They want a call back; no hold is open.')).toBeInTheDocument();
     expect(within(card).getByText('Quick summary')).toBeInTheDocument();
+  });
+
+  it('Overview: unticking "Include synthetic history" or picking 28 days rewrites the brief and scopes the drawer', async () => {
+    const api = apiFor(BRAND, {
+      '/api/brand/assistant/brief?days=7&include_history=true': answer({ answer: 'With history: 9 pickups.' }),
+      '/api/brand/assistant/brief?days=7&include_history=false': answer({ answer: 'Live only: 0 pickups.' }),
+      '/api/brand/assistant/brief?days=28&include_history=false': answer({ answer: 'Live, 28 days: 1 hold.' }),
+    });
+    renderAt('/brand', api);
+    expect(await screen.findByText('With history: 9 pickups.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: /Include synthetic history/ }));
+    expect(await screen.findByText('Live only: 0 pickups.')).toBeInTheDocument();
+    expect(screen.getByText('Last 7 days · live activity only')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Last 28 days' }));
+    expect(await screen.findByText('Live, 28 days: 1 hold.')).toBeInTheDocument();
+    expect(screen.getByText('The last 28 days in brief')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: "Ask Qwikspot about your brand's data" }));
+    const drawer = await screen.findByRole('dialog', { name: 'Ask Qwikspot' });
+    expect(within(drawer).getByText('Last 28 days · live activity only')).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: 'How did we do this week?' }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/api/brand/assistant/ask', {
+        question: 'How did we do this week?',
+        page: 'OVERVIEW',
+        days: 28,
+        include_history: false,
+      }),
+    );
+  });
+
+  it('Conversations: with "Hide synthetic history" on (the default), the drawer asks about live activity only', async () => {
+    const api = apiFor(BRAND, {
+      '/api/brand/conversations': { conversations: [] },
+      '/api/brand/intents': { intents: [] },
+    });
+    renderAt('/brand/conversations', api);
+    fireEvent.click(await screen.findByRole('button', { name: "Ask Qwikspot about your brand's data" }));
+    const drawer = await screen.findByRole('dialog', { name: 'Ask Qwikspot' });
+    expect(within(drawer).getByText('Last 7 days · live activity only')).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Why did chats end without a hold this week?' }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        '/api/brand/assistant/ask',
+        expect.objectContaining({ include_history: false }),
+      ),
+    );
   });
 });

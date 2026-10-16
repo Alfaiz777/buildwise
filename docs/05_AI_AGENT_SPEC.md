@@ -506,8 +506,10 @@ The run also found one ungrounded claim. Asked "is it original?", Gemini once an
 Settings gets no AI content: settings stay in the brand's own hands.
 
 **How it answers.**
-- **The data pack:** about a second to build, from the same numbers the console shows:
-  - totals for 7 days, per store (stock age, fill rate, refusals, Store Admin);
+- **The data pack:** about a second to build, from the same numbers the console shows, for what the page shows:
+  - the page's period (7 or 28 days) and its synthetic-history switch: Overview and Insights use their own toggles, Conversations and Reservations "Hide synthetic history", the other pages the default (7 days, history included). With history hidden, demo holds and conversations are left out too;
+  - the Overview tiles' totals with the tiles' own definitions (pickups collected in store, online orders = online + alternative, purchases, finished journeys, conversion %, value of purchases), so the brief never disagrees with the tiles;
+  - per store (stock age, fill rate, refusals, Store Admin);
   - unmet demand by product and area, the rules' suggestions;
   - holds right now (waiting, oldest wait, expiring within the hour, by store) and conversation counts.
   - It holds store and product names and counts only: no customer, no phone number, no pickup code.
@@ -535,4 +537,5 @@ Settings gets no AI content: settings stay in the brand's own hands.
 **First live run (2026-10-16, `gemini-3.8-flash` on `global`, 1 run, from a laptop in India).**
 - **Answers:** 14 of 14 within the ceiling, none with a phone number or name. 10 were written by Gemini; 4 were Quick summaries (3 timeouts at the 17 s deadline, 1 answer with a number not in the data).
 - **Time:** p50 6.7 s, p95 17.0 s against a target of ≤ 6 s / ≤ 15 s. The p95 is the deadline itself: the slow answers are the ones that time out.
+- **After the period / synthetic-history fix (same day, 15 answers incl. a live-only brief):** 14 by Gemini, 1 Quick summary (a number not in the data); p50 4.6 s, p95 13.6 s, within the ≤ 6 s / ≤ 15 s target. The live-only brief says "live activity" and uses the live tiles' numbers.
 - **Honest gaps:** when the data does not cover a question ("Which store is slowest to accept?"), Gemini says what is missing rather than guessing.

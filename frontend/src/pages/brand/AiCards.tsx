@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../../api/apiContext';
 import { errorMessage } from '../../components/ConsoleShell';
 import { Button, Card, Skeleton } from '../../components/ui';
-import { AiLabel, DataUsed, useAskQwikspot, type AssistantAnswer } from './askQwikspot';
+import { AiLabel, DataUsed, useAskQwikspot, type AskScopeValue, type AssistantAnswer } from './askQwikspot';
 
 /**
  * L5: the AI pieces placed on Brand Console pages. Each loads on its own after the page, so
@@ -12,8 +12,8 @@ import { AiLabel, DataUsed, useAskQwikspot, type AssistantAnswer } from './askQw
  * rules did ("Quick summary"), and the data it used.
  */
 
-/** Overview: what happened this period, the biggest win and problem, and one next action. */
-export function AiBriefCard() {
+/** Overview: what happened this period, the biggest win and problem, and one next action — for the period and choice on screen. */
+export function AiBriefCard({ days, includeHistory }: AskScopeValue) {
   const api = useApi();
   const { ask } = useAskQwikspot();
   const [brief, setBrief] = useState<AssistantAnswer | null>(null);
@@ -24,12 +24,14 @@ export function AiBriefCard() {
       setLoading(true);
       setError(null);
       api
-        .get<AssistantAnswer>(`/api/brand/assistant/brief${refresh ? '?refresh=true' : ''}`)
+        .get<AssistantAnswer>(
+          `/api/brand/assistant/brief?days=${days}&include_history=${includeHistory}${refresh ? '&refresh=true' : ''}`,
+        )
         .then(setBrief)
         .catch((err: unknown) => setError(errorMessage(err)))
         .finally(() => setLoading(false));
     },
-    [api],
+    [api, days, includeHistory],
   );
   useEffect(() => load(), [load]);
 
@@ -37,7 +39,7 @@ export function AiBriefCard() {
   return (
     <Card
       className="ai-card"
-      title="This week in brief"
+      title={days === 7 ? 'This week in brief' : 'The last 28 days in brief'}
       actions={brief ? <AiLabel source={brief.source} /> : undefined}
     >
       {!brief ? (
@@ -69,6 +71,10 @@ export function AiBriefCard() {
               Refresh
             </Button>
           </div>
+          <p className="ask-used small muted">
+            {days === 7 ? 'Last 7 days' : 'Last 28 days'} ·{' '}
+            {includeHistory ? 'including synthetic demo history' : 'live activity only'}
+          </p>
           <DataUsed used={brief.used} />
         </div>
       )}

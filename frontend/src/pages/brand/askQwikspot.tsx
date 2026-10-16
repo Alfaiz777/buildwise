@@ -98,12 +98,38 @@ export function DataUsed({ used }: { used: string[] }) {
   );
 }
 
+/** What the page shows: its period and whether synthetic demo history counts. Answers use the same. */
+export interface AskScopeValue {
+  days: 7 | 28;
+  includeHistory: boolean;
+}
+export const DEFAULT_ASK_SCOPE: AskScopeValue = { days: 7, includeHistory: true };
+
 interface AskContext {
   /** Opens the drawer, optionally with a question filled in. */
   ask(question?: string): void;
+  /** A page tells the drawer what it shows (via <AskScope>). */
+  setScope(scope: AskScopeValue): void;
 }
 
-const Ctx = createContext<AskContext>({ ask: () => undefined });
+const Ctx = createContext<AskContext>({ ask: () => undefined, setScope: () => undefined });
+
+/**
+ * Placed inside a page (within its ConsoleShell): the drawer answers for this period and
+ * synthetic-history choice, so the AI talks about the numbers the page shows.
+ */
+export function AskScope({ days, includeHistory }: AskScopeValue) {
+  const { setScope } = useContext(Ctx);
+  useEffect(() => {
+    setScope({ days, includeHistory });
+    return () => setScope(DEFAULT_ASK_SCOPE);
+  }, [days, includeHistory, setScope]);
+  return null;
+}
+
+/** "Last 7 days · live activity only" — what an answer covers. */
+export const scopeText = (s: AskScopeValue) =>
+  `Last ${s.days} days · ${s.includeHistory ? 'including synthetic demo history' : 'live activity only'}`;
 
 /** Pages call this for "Ask about this"; outside the Brand Console it does nothing. */
 export const useAskQwikspot = () => useContext(Ctx);
@@ -112,19 +138,24 @@ export const useAskQwikspot = () => useContext(Ctx);
 export function AskQwikspotProvider({ children }: { children: (open: () => void) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const [prefill, setPrefill] = useState<{ question: string; at: number } | null>(null);
+  const [scope, setScope] = useState<AskScopeValue>(DEFAULT_ASK_SCOPE);
   const value = useMemo<AskContext>(
     () => ({
       ask: (question) => {
         setPrefill(question ? { question, at: Date.now() } : null);
         setOpen(true);
       },
+      setScope: (next) =>
+        setScope((current) =>
+          current.days === next.days && current.includeHistory === next.includeHistory ? current : next,
+        ),
     }),
     [],
   );
   return (
     <Ctx.Provider value={value}>
       {children(() => value.ask())}
-      <AskQwikspotDrawer open={open} prefill={prefill} onClose={() => setOpen(false)} />
+      <AskQwikspotDrawer open={open} prefill={prefill} scope={scope} onClose={() => setOpen(false)} />
     </Ctx.Provider>
   );
 }
@@ -134,10 +165,12 @@ type Status = 'idle' | 'reading' | 'writing' | 'done' | 'error';
 function AskQwikspotDrawer({
   open,
   prefill,
+  scope,
   onClose,
 }: {
   open: boolean;
   prefill: { question: string; at: number } | null;
+  scope: AskScopeValue;
   onClose: () => void;
 }) {
   const api = useApi();
@@ -162,7 +195,12 @@ function AskQwikspotDrawer({
       // The data pack takes about a second; then the model writes.
       const step = setTimeout(() => run.current === id && setStatus('writing'), 1_200);
       api
-        .post<AssistantAnswer>('/api/brand/assistant/ask', { question: text, page })
+        .post<AssistantAnswer>('/api/brand/assistant/ask', {
+          question: text,
+          page,
+          days: scope.days,
+          include_history: scope.includeHistory,
+        })
         .then((a) => {
           if (run.current !== id) return;
           setAnswer(a);
@@ -175,7 +213,7 @@ function AskQwikspotDrawer({
         })
         .finally(() => clearTimeout(step));
     },
-    [api, page],
+    [api, page, scope],
   );
 
   // "Ask about this": the question is filled in and asked at once.
@@ -192,6 +230,7 @@ function AskQwikspotDrawer({
       <p className="muted small">
         Answers come only from your brand's Qwikspot data. Qwikspot can explain and suggest; it never changes anything.
       </p>
+      <p className="small ask-scope">{scopeText(scope)}</p>
       <div className="ask-suggestions" role="group" aria-label="Suggested questions">
         {SUGGESTED_QUESTIONS[page].map((q) => (
           <button
