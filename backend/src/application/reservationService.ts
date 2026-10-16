@@ -261,15 +261,21 @@ export class ReservationService {
    * Completion = picked up ÷ finished holds (active ones are left out). Value = Σ quantity
    * × the store's CURRENT offline price per SKU — an estimate, so the UI says "est.".
    */
-  async weekSummary(principal: RetailPrincipal, prices: Map<string, number> = new Map(), currency = 'INR') {
-    const since = new Date(this.deps.now().getTime() - 7 * 24 * 60 * 60_000).toISOString();
+  async weekSummary(
+    principal: RetailPrincipal,
+    prices: Map<string, number> = new Map(),
+    currency = 'INR',
+    /** L6: the period and synthetic-history choice (the Store Console tiles: 7 days, history included). */
+    options: { days: 7 | 28; includeHistory: boolean } = { days: 7, includeHistory: true },
+  ) {
+    const since = new Date(this.deps.now().getTime() - options.days * 24 * 60 * 60_000).toISOString();
     const rows = (
       await this.deps.reservations.list(principal.brandId, { storeId: principal.storeId, limit: 1000 })
-    ).filter((r) => r.createdAt >= since);
+    ).filter((r) => r.createdAt >= since && (options.includeHistory || r.demoHistory !== true));
     const completed = rows.filter((r) => r.status === 'COMPLETED');
     const finished = rows.filter((r) => !ACTIVE_RESERVATION_STATUSES.includes(r.status));
     return {
-      days: 7,
+      days: options.days,
       reservations: rows.length,
       completed: completed.length,
       refused: rows.filter((r) => r.status === 'CANCELLED' && r.cancelledBy === 'RETAILER').length,

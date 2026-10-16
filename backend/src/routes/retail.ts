@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AccountService } from '../application/accountService.js';
 import type { InsightsService } from '../application/insightsService.js';
 import type { ReservationService } from '../application/reservationService.js';
+import { storeWeekSummary } from '../application/storeSummary.js';
 import { getRetailPrincipal } from '../auth/authorize.js';
 import { isValidTenantId } from '../domain/principal.js';
 import { Errors } from '../lib/errors.js';
@@ -79,9 +80,7 @@ export function retailRouter(
     const principal = getRetailPrincipal(res);
     if (typeof storeId !== 'string' || storeId !== principal.storeId) throw Errors.notFound();
     // UI-4: the value of pickups uses this store's own current offline prices.
-    const stock = await account.storeStock(principal, storeId);
-    const prices = new Map(stock.filter((l) => l.offlinePrice !== null).map((l) => [l.sku, l.offlinePrice as number]));
-    res.json(await reservations.weekSummary(principal, prices));
+    res.json(await storeWeekSummary({ account, reservations }, principal));
   });
 
   return router;

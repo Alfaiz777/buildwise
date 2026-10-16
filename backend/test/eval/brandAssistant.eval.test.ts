@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
-import { GeminiBrandAssistant } from '../../src/adapters/agent/geminiBrandAssistant.js';
+import { GeminiAssistant } from '../../src/adapters/agent/geminiAssistant.js';
 import { VertexGeminiClient } from '../../src/adapters/agent/geminiClient.js';
 import { BRAND_ASSISTANT_CEILING_MS } from '../../src/application/brandAssistantService.js';
 import { DEFAULT_VERTEX_LOCATION, DEFAULT_VERTEX_MODEL } from '../../src/config/env.js';
@@ -44,6 +44,15 @@ const QUESTIONS: [page: string, question: string][] = [
   ['NETWORK', 'Which store needs attention?'],
   ['NETWORK', 'Where should I add a store?'],
   ['SETTINGS', 'What does Qwikspot do automatically for me?'],
+];
+
+/** The Store Console's four questions (frontend/src/pages/retailer/storeAsk.ts), and one in Hinglish. */
+const STORE_QUESTIONS: [page: string, question: string][] = [
+  ['TODAY', 'How is my store doing this week?'],
+  ['TODAY', 'Which holds are waiting for me?'],
+  ['DEMAND', "What are shoppers near me asking for that I don't have?"],
+  ['STOCK', 'What should I stock up before Saturday?'],
+  ['TODAY', 'Mere kitne hold wait kar rahe hain?'],
 ];
 
 interface Row {
@@ -105,11 +114,11 @@ describe.skipIf(!ENABLED)(`LIVE Ask Qwikspot — ${MODEL} @ ${LOCATION} (${RUNS}
           warn() {},
           error() {},
           info: (message, fields) => {
-            if (message === 'brand_assistant.answer' && fields) answers.push(fields);
+            if (message.endsWith('_assistant.answer') && fields) answers.push(fields);
           },
         };
         const client = new VertexGeminiClient({ project: PROJECT, location: LOCATION });
-        const s = await ahmedabadWorld({ brandModel: new GeminiBrandAssistant({ client, model: MODEL }), logger });
+        const s = await ahmedabadWorld({ assistantModel: new GeminiAssistant({ client, model: MODEL }), logger });
         // Some activity: two holds (one refused by the store), unmet demand, a handoff with a phone number.
         await s.say('e1', 'I need Vitamin C Glow Serum 30 ml today near Satellite');
         await s.tap('e1', 'hold:st_north_1');
@@ -155,6 +164,28 @@ describe.skipIf(!ENABLED)(`LIVE Ask Qwikspot — ${MODEL} @ ${LOCATION} (${RUNS}
         const conversation = s.world.conversations.conversations.find((c) => c.customerId === customer.customerId)!;
         const summary = await timed(() => as(`/api/brand/conversations/${conversation.conversationId}/summary`));
         record('SUMMARY', 'CONVERSATIONS', '(handoff conversation)', summary.res, summary.ms);
+
+        // L6: the Store Console — Wellness Mart's Retail Admin asks about their own store.
+        s.world.stores.stores.find((x) => x.storeId === 'st_north_1')!.retailAdminUserId = 'radmin_eval';
+        s.world.users.users.push({
+          userId: 'radmin_eval',
+          role: 'RETAIL_ADMIN',
+          brandId: 'brand_A',
+          retailerId: 'rtl_north',
+          storeId: 'st_north_1',
+          email: 'radmin_eval@example.test',
+          status: 'ACTIVE',
+        });
+        const store = (p: string, body?: object) =>
+          body
+            ? request(s.world.app).post(p).set('Authorization', bearer('radmin_eval')).send(body)
+            : request(s.world.app).get(p).set('Authorization', bearer('radmin_eval'));
+        const storeBrief = await timed(() => store('/api/retail/stores/st_north_1/assistant/brief?refresh=true'));
+        record('STORE_BRIEF', 'TODAY', '(Today at your store)', storeBrief.res, storeBrief.ms);
+        for (const [page, question] of STORE_QUESTIONS) {
+          const a = await timed(() => store('/api/retail/stores/st_north_1/assistant', { question, page }));
+          record('STORE_ASK', page, question, a.res, a.ms);
+        }
       }
     },
     RUNS * 600_000,

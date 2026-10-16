@@ -26,6 +26,8 @@ export const COMMERCE_EVENT_TYPES = [
   'FOLLOW_UP_SCHEDULED',
   'FOLLOW_UP_SUPPRESSED',
   'FOLLOW_UP_SENT',
+  // L5/L6: a question asked in Ask Qwikspot (never its text).
+  'ASSISTANT_QUESTION',
 ] as const;
 export type CommerceEventType = (typeof COMMERCE_EVENT_TYPES)[number];
 

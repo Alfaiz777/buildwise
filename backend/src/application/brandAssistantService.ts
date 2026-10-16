@@ -1,95 +1,79 @@
 /**
- * "Ask Qwikspot" (L5, docs/05 §18): the brand agent behind the console's AI pieces.
+ * "Ask Qwikspot" (L5, docs/05 §18): the brand agent behind the Brand Console's AI pieces.
  *
  * - Builds a compact data pack from the same numbers the console shows (Insights panels, the
  *   store network with stock, holds right now, conversations). No shopper identity is in it.
- * - Asks Gemini once (≤ 2 read-tool rounds) within GEMINI_BRAND_DEADLINE_MS (17 s). A slow or
- *   failed answer, or one with a number the data does not contain, is replaced by the rules
- *   summary ("Quick summary"), so every answer arrives within the 20 s ceiling.
+ * - Answers through the shared AssistantRunner: Gemini (≤ 2 read-tool rounds) within 17 s,
+ *   checked; otherwise the rules "Quick summary" — every answer within the 20 s ceiling.
  * - Read-only. Brand-scoped by the caller's BRAND principal.
  */
 import {
-  CONSOLE_PAGES,
+  BRAND_ASSISTANT_PROMPT,
+  BRAND_ASSISTANT_PROMPT_VERSION,
+  BrandAnswerSchema,
+  brandAnswerJsonSchema,
   PAGE_PATHS,
   quickAnswer,
   quickBrief,
   quickConversationSummary,
   redactPII,
-  ungroundedNumbers,
-  type BrandAnswer,
   type BrandPack,
   type ConsolePage,
   type ConversationPack,
 } from '../domain/brandAssistant.js';
 import type { BrandPrincipal } from '../domain/principal.js';
-import type { Logger } from '../lib/logger.js';
-import { silentLogger } from '../lib/logger.js';
-import type {
-  BrandAssistantModel,
-  BrandModelInput,
-  BrandModelTools,
-  ConversationSummaryStore,
-} from '../ports/brandAssistant.js';
+import type { ConversationSummaryStore } from '../ports/brandAssistant.js';
+import {
+  ASSISTANT_CEILING_MS,
+  BriefCache,
+  DEFAULT_SCOPE,
+  type AssistantAnswer as RunnerAnswer,
+  type AssistantRunner,
+  type AssistantScope,
+  type AssistantTool,
+} from './assistantRunner.js';
 import type { ConversationQueryService } from './conversationQueryService.js';
 import type { InsightsService } from './insightsService.js';
 import type { ReservationService } from './reservationService.js';
 import type { TenantAdminService } from './tenantAdminService.js';
 
-/** The whole answer, Gemini included, ends within 20 s; Gemini stops at 17 s and the rules answer. */
-export const BRAND_ASSISTANT_CEILING_MS = 20_000;
-export const GEMINI_BRAND_DEADLINE_MS = 17_000;
-/** The Overview brief is written once per period and reused for 10 minutes per brand. */
-export const BRIEF_CACHE_MS = 10 * 60_000;
-/** A brief that fell back to the rules is retried sooner. */
-const QUICK_BRIEF_CACHE_MS = 60_000;
-/**
- * What the team member is looking at: the period and whether synthetic demo history counts —
- * the same two switches as the console's own numbers, so the AI talks about the same data.
- */
-export interface PackScope {
-  days: 7 | 28;
-  includeHistory: boolean;
-}
-export const DEFAULT_SCOPE: PackScope = { days: 7, includeHistory: true };
-
-export type AnswerSource = 'AI' | 'QUICK_SUMMARY';
-export type AnswerFailure = 'NO_MODEL' | 'TIMEOUT' | 'ERROR' | 'UNGROUNDED' | 'PII';
-
-export interface AssistantAnswer {
-  answer: string;
-  handoff_brief: string | null;
-  next_action: { label: string; page: ConsolePage; path: string } | null;
-  used: string[];
-  source: AnswerSource;
-  generated_at: string;
-  latency_ms: number;
-}
-
-class DeadlineExceeded extends Error {}
+export { DEFAULT_SCOPE };
+export const BRAND_ASSISTANT_CEILING_MS = ASSISTANT_CEILING_MS;
+/** What the team member is looking at: the period and whether synthetic demo history counts. */
+export type PackScope = AssistantScope;
+export type AssistantAnswer = RunnerAnswer<ConsolePage>;
 
 export class BrandAssistantService {
-  private readonly logger: Logger;
-  private readonly briefs = new Map<string, { at: number; ttl: number; value: AssistantAnswer }>();
+  private readonly briefs = new BriefCache<AssistantAnswer>();
 
   constructor(
     private readonly deps: {
+      runner: AssistantRunner;
       insights: InsightsService;
       tenantAdmin: Pick<TenantAdminService, 'listStores'>;
       reservations: Pick<ReservationService, 'listFor'>;
       conversations: Pick<ConversationQueryService, 'listConversations' | 'conversationDetail'>;
       summaries: ConversationSummaryStore;
       brands: { getById(brandId: string): Promise<{ name: string } | null> };
-      model?: BrandAssistantModel;
-      logger?: Logger;
       now?: () => Date;
-      deadlineMs?: number;
     },
-  ) {
-    this.logger = deps.logger ?? silentLogger;
-  }
+  ) {}
 
   private now() {
     return this.deps.now?.() ?? new Date();
+  }
+
+  /** The common part of every brand answer (instruction, schema, page links). */
+  private base(principal: BrandPrincipal) {
+    return {
+      console: 'brand' as const,
+      brandId: principal.brandId,
+      prompt: BRAND_ASSISTANT_PROMPT,
+      promptVersion: BRAND_ASSISTANT_PROMPT_VERSION,
+      schema: BrandAnswerSchema,
+      answerSchema: brandAnswerJsonSchema(),
+      pathOf: (page: ConsolePage) => PAGE_PATHS[page],
+    };
   }
 
   /** Holds and conversations in scope: without synthetic history, only live records count. */
@@ -221,15 +205,17 @@ export class BrandAssistantService {
   ): Promise<AssistantAnswer> {
     const started = Date.now();
     const pack = await this.pack(principal, scope);
-    const tools = this.tools(principal, pack, scope);
-    return this.answer(
-      'ASK',
-      principal.brandId,
-      { task: 'ANSWER', page, question, data: pack },
-      tools,
-      () => quickAnswer(question, page, pack),
+    return this.deps.runner.run({
+      ...this.base(principal),
+      surface: 'ASK',
+      task: 'ANSWER',
+      page,
+      question,
+      data: pack,
+      tools: this.tools(principal, pack, scope),
+      quick: () => quickAnswer(question, page, pack),
       started,
-    );
+    });
   }
 
   /**
@@ -243,28 +229,26 @@ export class BrandAssistantService {
     const scope = options.scope ?? DEFAULT_SCOPE;
     const key = `${principal.brandId}|${scope.days}|${scope.includeHistory}`;
     const cached = this.briefs.get(key);
-    if (!options.refresh && cached && Date.now() - cached.at < cached.ttl) return cached.value;
+    if (!options.refresh && cached) return cached;
     const started = Date.now();
     const pack = await this.pack(principal, scope);
-    const value = await this.answer(
-      'BRIEF',
-      principal.brandId,
-      { task: 'BRIEF', page: 'OVERVIEW', data: pack },
-      this.tools(principal, pack, scope),
-      () => quickBrief(pack),
+    const value = await this.deps.runner.run({
+      ...this.base(principal),
+      surface: 'BRIEF',
+      task: 'BRIEF',
+      page: 'OVERVIEW' as ConsolePage,
+      data: pack,
+      tools: this.tools(principal, pack, scope),
+      quick: () => quickBrief(pack),
       started,
-    );
-    this.briefs.set(key, {
-      at: Date.now(),
-      ttl: value.source === 'AI' ? BRIEF_CACHE_MS : QUICK_BRIEF_CACHE_MS,
-      value,
     });
+    this.briefs.set(key, value);
     return value;
   }
 
   /** Forget a brand's cached brief (Reset demo). */
   forget(brandId: string) {
-    for (const key of this.briefs.keys()) if (key.startsWith(`${brandId}|`)) this.briefs.delete(key);
+    this.briefs.forget(`${brandId}|`);
   }
 
   /**
@@ -288,97 +272,43 @@ export class BrandAssistantService {
         latency_ms: Date.now() - started,
       };
     }
-    const result = await this.answer(
-      'CONVERSATION_SUMMARY',
-      brandId,
-      { task: 'SUMMARY', page: 'CONVERSATIONS', data: pack },
-      NO_TOOLS,
-      () => quickConversationSummary(pack),
+    const result = await this.deps.runner.run({
+      ...this.base(principal),
+      surface: 'CONVERSATION_SUMMARY',
+      task: 'SUMMARY',
+      page: 'CONVERSATIONS' as ConsolePage,
+      data: pack,
+      quick: () => quickConversationSummary(pack),
       started,
-    );
-    if (result.source === 'AI' && this.deps.model) {
+    });
+    const modelName = this.deps.runner.modelName;
+    if (result.source === 'AI' && modelName) {
       await this.deps.summaries.put(brandId, conversationId, {
         summary: result.answer,
         handoffBrief: result.handoff_brief,
         messageCount: pack.message_count,
         generatedAt: result.generated_at,
-        model: this.deps.model.model,
+        model: modelName,
       });
     }
     return result;
   }
 
-  /**
-   * Gemini within its deadline, checked; otherwise the rules answer. One log line per answer:
-   * the surface, who answered, the time, the tools, and why the rules answered (never the text).
-   */
-  private async answer(
-    surface: 'ASK' | 'BRIEF' | 'CONVERSATION_SUMMARY',
-    brandId: string,
-    input: BrandModelInput,
-    tools: BrandModelTools,
-    quick: () => BrandAnswer,
-    started: number,
-  ): Promise<AssistantAnswer> {
-    let failure: AnswerFailure | null = null;
-    let ai: BrandAnswer | null = null;
-    let toolCalls: string[] = [];
-    let geminiMs: number | null = null;
-    const model = this.deps.model;
-    if (!model) failure = 'NO_MODEL';
-    else {
-      const geminiStarted = Date.now();
-      const controller = new AbortController();
-      let timer: NodeJS.Timeout | undefined;
-      try {
-        const deadline = new Promise<never>((_, reject) => {
-          timer = setTimeout(() => {
-            reject(new DeadlineExceeded());
-            controller.abort();
-          }, this.deps.deadlineMs ?? GEMINI_BRAND_DEADLINE_MS);
-        });
-        const result = await Promise.race([model.generate(input, tools, controller.signal), deadline]);
-        toolCalls = result.toolCalls;
-        const text = `${result.answer.answer} ${result.answer.handoff_brief ?? ''} ${result.answer.next_action?.label ?? ''}`;
-        if (/\[(phone|email|code)\]|[\w.+-]+@[\w-]+\.\w/.test(text) || /\+?\d[\d\s-]{8,}\d/.test(text)) failure = 'PII';
-        else if (ungroundedNumbers(text, input.data, result.toolOutputs, input.question ?? '').length > 0)
-          failure = 'UNGROUNDED';
-        else ai = result.answer;
-      } catch (err) {
-        failure = err instanceof DeadlineExceeded ? 'TIMEOUT' : 'ERROR';
-      } finally {
-        clearTimeout(timer);
-        geminiMs = Date.now() - geminiStarted;
-      }
-    }
-    const chosen = ai ?? quick();
-    const latency = Date.now() - started;
-    this.logger.info('brand_assistant.answer', {
-      brand_id: brandId,
-      surface,
-      page: input.page,
-      source: ai ? 'AI' : 'QUICK_SUMMARY',
-      failure,
-      latency_ms: latency,
-      gemini_ms: geminiMs,
-      tool_calls: toolCalls,
-    });
-    const next = chosen.next_action && CONSOLE_PAGES.includes(chosen.next_action.page) ? chosen.next_action : null;
-    return {
-      answer: chosen.answer,
-      handoff_brief: chosen.handoff_brief ?? null,
-      next_action: next ? { label: next.label, page: next.page, path: PAGE_PATHS[next.page] } : null,
-      used: chosen.used ?? [],
-      source: ai ? 'AI' : 'QUICK_SUMMARY',
-      generated_at: this.now().toISOString(),
-      latency_ms: latency,
-    };
-  }
-
   /** The two read tools, over this brand only, built from the pack and the brand's own records. */
-  private tools(principal: BrandPrincipal, pack: BrandPack, scope: PackScope): BrandModelTools {
-    return {
-      get_store: async ({ store_id }) => {
+  private tools(principal: BrandPrincipal, pack: BrandPack, scope: PackScope): AssistantTool[] {
+    const getStore: AssistantTool = {
+      declaration: {
+        name: 'get_store',
+        description:
+          "One store's details (stock age, fill rate, refusals) and its holds right now. No shopper details.",
+        parameters: {
+          type: 'object',
+          properties: { store_id: { type: 'string', description: 'A store_id from data.stores' } },
+          required: ['store_id'],
+        },
+      },
+      run: async (args) => {
+        const store_id = String(args.store_id ?? '');
         const store = pack.stores.find((s) => s.store_id === store_id);
         if (!store) return { error: 'STORE_NOT_FOUND' };
         const holds = (
@@ -396,7 +326,28 @@ export class BrandAssistantService {
           }));
         return { store, holds };
       },
-      list_conversations: async (filter) => {
+    };
+    const listConversations: AssistantTool = {
+      declaration: {
+        name: 'list_conversations',
+        description: 'Recent conversations with what happened (product, hold, refusal, handoff). No shopper details.',
+        parameters: {
+          type: 'object',
+          properties: {
+            without_hold: { type: 'boolean' },
+            refused_by_store: { type: 'boolean' },
+            with_person: { type: 'boolean' },
+            limit: { type: 'integer', minimum: 1, maximum: 10 },
+          },
+        },
+      },
+      run: async (args) => {
+        const filter = args as {
+          without_hold?: boolean;
+          refused_by_store?: boolean;
+          with_person?: boolean;
+          limit?: number;
+        };
         const { active, history, conversations: list } = await this.records(principal, scope);
         const holds = [...active, ...history];
         const rows = list.map((c) => {
@@ -419,13 +370,9 @@ export class BrandAssistantService {
           .slice(0, Math.min(10, Math.max(1, filter.limit ?? 10)));
       },
     };
+    return [getStore, listConversations];
   }
 }
-
-const NO_TOOLS: BrandModelTools = {
-  get_store: async () => ({ error: 'TOOL_NOT_AVAILABLE' }),
-  list_conversations: async () => ({ error: 'TOOL_NOT_AVAILABLE' }),
-};
 
 const titleCase = (s: string) => s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
 

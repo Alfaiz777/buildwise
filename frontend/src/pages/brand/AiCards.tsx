@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../../api/apiContext';
 import { errorMessage } from '../../components/ConsoleShell';
 import { Button, Card, Skeleton } from '../../components/ui';
-import { AiLabel, DataUsed, useAskQwikspot, type AskScopeValue, type AssistantAnswer } from './askQwikspot';
+import { AiLabel, DataUsed, isAnswer, useAskQwikspot, type AskScopeValue, type AssistantAnswer } from './askQwikspot';
 
 /**
  * L5: the AI pieces placed on Brand Console pages. Each loads on its own after the page, so
@@ -12,8 +12,12 @@ import { AiLabel, DataUsed, useAskQwikspot, type AskScopeValue, type AssistantAn
  * rules did ("Quick summary"), and the data it used.
  */
 
-/** Overview: what happened this period, the biggest win and problem, and one next action — for the period and choice on screen. */
-export function AiBriefCard({ days, includeHistory }: AskScopeValue) {
+/**
+ * A console's brief, for the period and choice on screen: the Brand Console's "This week in
+ * brief" (what happened, the biggest win and problem, one next action) or the Store Console's
+ * "Today at your store".
+ */
+export function AiBriefCard({ url, title, days, includeHistory }: AskScopeValue & { url: string; title: string }) {
   const api = useApi();
   const { ask } = useAskQwikspot();
   const [brief, setBrief] = useState<AssistantAnswer | null>(null);
@@ -24,24 +28,18 @@ export function AiBriefCard({ days, includeHistory }: AskScopeValue) {
       setLoading(true);
       setError(null);
       api
-        .get<AssistantAnswer>(
-          `/api/brand/assistant/brief?days=${days}&include_history=${includeHistory}${refresh ? '&refresh=true' : ''}`,
-        )
-        .then(setBrief)
+        .get<AssistantAnswer>(`${url}?days=${days}&include_history=${includeHistory}${refresh ? '&refresh=true' : ''}`)
+        .then((b) => (isAnswer(b) ? setBrief(b) : setError('invalid brief')))
         .catch((err: unknown) => setError(errorMessage(err)))
         .finally(() => setLoading(false));
     },
-    [api, days, includeHistory],
+    [api, url, days, includeHistory],
   );
   useEffect(() => load(), [load]);
 
   if (error && !brief) return null; // the rest of the page still tells the story
   return (
-    <Card
-      className="ai-card"
-      title={days === 7 ? 'This week in brief' : 'The last 28 days in brief'}
-      actions={brief ? <AiLabel source={brief.source} /> : undefined}
-    >
+    <Card className="ai-card" title={title} actions={brief ? <AiLabel source={brief.source} /> : undefined}>
       {!brief ? (
         <Skeleton lines={3} label="Writing the brief" />
       ) : (
@@ -93,7 +91,7 @@ export function ConversationSummary({ conversationId, refreshKey }: { conversati
     setFailed(false);
     api
       .get<AssistantAnswer>(`/api/brand/conversations/${encodeURIComponent(conversationId)}/summary`)
-      .then((s) => live && setSummary(s))
+      .then((s) => live && (isAnswer(s) ? setSummary(s) : setFailed(true)))
       .catch(() => live && setFailed(true));
     return () => {
       live = false;

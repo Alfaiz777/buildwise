@@ -42,6 +42,8 @@ import { demoStorefrontRouter } from './routes/demoStorefront.js';
 import { brandDemoRouter, demoRouter } from './routes/demo.js';
 import { brandAssistantRouter } from './routes/brandAssistant.js';
 import type { BrandAssistantService } from './application/brandAssistantService.js';
+import type { StoreAssistantService } from './application/storeAssistantService.js';
+import { storeAssistantRouter } from './routes/storeAssistant.js';
 import { shopperRouter } from './routes/shopper.js';
 import { internalRouter } from './routes/internal.js';
 import type { ScheduledWorkService } from './application/scheduledWork.js';
@@ -87,6 +89,8 @@ export interface AppDeps {
     insights: InsightsService;
     /** L5: "Ask Qwikspot" — the brand agent (read-only). */
     brandAssistant?: BrandAssistantService;
+    /** L6: "Ask Qwikspot" for the Store Console — the store agent (read-only). */
+    storeAssistant?: StoreAssistantService;
     /** UI-3: the read-only Settings page. */
     brandSettings: BrandSettingsQuery;
     /** L4: the editable list of storefronts allowed to send shopper events. */
@@ -231,7 +235,10 @@ export function createApp(deps: AppDeps): Express {
     tenant.use(
       '/brand',
       requireScope('BRAND'),
-      brandDemoRouter(services.demoReset, (brandId) => services.brandAssistant?.forget(brandId)),
+      brandDemoRouter(services.demoReset, (brandId) => {
+        services.brandAssistant?.forget(brandId);
+        services.storeAssistant?.forget(brandId);
+      }),
     );
   tenant.use('/channels/simulator', requireScope('BRAND'), simulatorRouter(services.simulator, services.conversations));
   if (localUploads) tenant.use('/local-files', requireScope('BRAND'), localFilesRouter(localUploads));
@@ -241,6 +248,8 @@ export function createApp(deps: AppDeps): Express {
     requireScope('RETAIL'),
     retailRouter(services.account, services.reservations, services.insights),
   );
+  if (services.storeAssistant)
+    tenant.use('/retail', requireScope('RETAIL'), storeAssistantRouter(services.storeAssistant));
   tenant.use('/reservations', reservationsRouter(services.reservations, services.fulfilment));
   api.use(tenant);
 

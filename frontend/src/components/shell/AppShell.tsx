@@ -1,5 +1,5 @@
 import { ExternalLink, LogOut, Sparkles } from 'lucide-react';
-import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useMe } from '../../account/meContext';
 import { useApi } from '../../api/apiContext';
@@ -10,7 +10,8 @@ import { Wordmark } from './Wordmark';
 import { CONSOLE_NAME, NAV } from './nav';
 import { RoleBanner } from './RoleBanner';
 import { storeLabel } from '../../lib/storeLabel';
-import { AskQwikspotProvider } from '../../pages/brand/askQwikspot';
+import { AskQwikspotProvider, BRAND_ASK } from '../../pages/brand/askQwikspot';
+import { storeAsk } from '../../pages/retailer/storeAsk';
 
 /** Dispatched on window when a page resolves or changes what the nav badge counts. */
 export const WAITING_CHANGED = 'qwikspot:waiting-changed';
@@ -32,6 +33,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         ? me.brand_name
         : 'Qwikspot platform';
   const nav = NAV[me.scope];
+  // One config per store (a new object each render would re-run every page's <AskScope>).
+  const storeId = me.scope === 'RETAIL' ? me.store.store_id : null;
+  const storeConfig = useMemo(() => (storeId ? storeAsk(storeId) : null), [storeId]);
   const api = useApi();
   // The demo brand's Brand Admin gets a shortcut to the shopper experience (DEMO_MODE only).
   const demo = useLoad(
@@ -105,7 +109,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               type="button"
               className="ui-button ui-button--secondary ui-button--sm"
               onClick={openAsk}
-              aria-label="Ask Qwikspot about your brand's data"
+              aria-label={`Ask Qwikspot about ${me.scope === 'RETAIL' ? "your store's" : "your brand's"} data`}
             >
               <Sparkles size={16} aria-hidden="true" />
               Ask Qwikspot
@@ -158,6 +162,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
     </div>
   );
-  // L5: the Brand Console carries "Ask Qwikspot" — the header button, the drawer, "Ask about this".
-  return me.scope === 'BRAND' ? <AskQwikspotProvider>{(open) => shell(open)}</AskQwikspotProvider> : shell(null);
+  // L5/L6: the Brand and Store Consoles carry "Ask Qwikspot" — the header button, the drawer,
+  // "Ask about this". The Platform Console does not.
+  const askConfig = me.scope === 'BRAND' ? BRAND_ASK : me.scope === 'RETAIL' ? storeConfig : null;
+  return askConfig ? (
+    <AskQwikspotProvider config={askConfig}>{(open) => shell(open)}</AskQwikspotProvider>
+  ) : (
+    shell(null)
+  );
 }

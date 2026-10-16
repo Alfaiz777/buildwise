@@ -87,7 +87,12 @@ export function BrandHome() {
       )}
 
       <AskScope days={days} includeHistory={includeHistory} />
-      <AiBriefCard days={days} includeHistory={includeHistory} />
+      <AiBriefCard
+        url="/api/brand/assistant/brief"
+        title={days === 7 ? 'This week in brief' : 'The last 28 days in brief'}
+        days={days}
+        includeHistory={includeHistory}
+      />
 
       <div className="overview-head">
         <div className="filters" role="group" aria-label="Period">
