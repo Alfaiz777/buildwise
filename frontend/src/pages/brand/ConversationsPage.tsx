@@ -13,6 +13,7 @@ import {
   type ConversationRow,
   type IntentSummary,
 } from './conversationTypes';
+import { AskScope } from './askQwikspot';
 import { DecisionTrace } from './DecisionTrace';
 import { ConversationSummary } from './AiCards';
 import { HandoffPanel, waitingFor } from './HandoffPanel';
@@ -176,6 +177,7 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
 
   return (
     <ConsoleShell>
+      <AskScope days={7} includeHistory={!hideSynthetic} />
       {error && (
         <p role="alert" className="error">
           {error}

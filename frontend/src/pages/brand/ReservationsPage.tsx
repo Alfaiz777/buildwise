@@ -4,6 +4,7 @@ import { useApi } from '../../api/apiContext';
 import { ConsoleShell, useLoad } from '../../components/ConsoleShell';
 import { Card, EmptyState, ProductThumb, Skeleton, StatusPill, Table, type Column } from '../../components/ui';
 import { useHideSynthetic, withoutSynthetic } from '../../lib/synthetic';
+import { AskScope } from './askQwikspot';
 import { HideSyntheticToggle, SyntheticPill } from './ConversationsPage';
 import { REFUSAL_TEXT, type ReservationRow } from './conversationTypes';
 import { formatDateTime } from './types';
@@ -99,6 +100,7 @@ export function ReservationsPage() {
 
   return (
     <ConsoleShell>
+      <AskScope days={7} includeHistory={!hideSynthetic} />
       <Card title="Reservations" description="Every hold a customer placed, how the store handled it and how it ended.">
         <div className="filters">
           {FILTERS.map(([value, text]) => (

@@ -42,7 +42,15 @@ export const GEMINI_BRAND_DEADLINE_MS = 17_000;
 export const BRIEF_CACHE_MS = 10 * 60_000;
 /** A brief that fell back to the rules is retried sooner. */
 const QUICK_BRIEF_CACHE_MS = 60_000;
-const PERIOD_DAYS = 7;
+/**
+ * What the team member is looking at: the period and whether synthetic demo history counts —
+ * the same two switches as the console's own numbers, so the AI talks about the same data.
+ */
+export interface PackScope {
+  days: 7 | 28;
+  includeHistory: boolean;
+}
+export const DEFAULT_SCOPE: PackScope = { days: 7, includeHistory: true };
 
 export type AnswerSource = 'AI' | 'QUICK_SUMMARY';
 export type AnswerFailure = 'NO_MODEL' | 'TIMEOUT' | 'ERROR' | 'UNGROUNDED' | 'PII';
@@ -84,18 +92,36 @@ export class BrandAssistantService {
     return this.deps.now?.() ?? new Date();
   }
 
-  /** The brand's data pack: what every AI piece and every quick summary is built from. */
-  async pack(principal: BrandPrincipal): Promise<BrandPack> {
-    const brandId = principal.brandId;
-    const now = this.now();
-    const [panels, stores, active, history, conversations, brand] = await Promise.all([
-      this.deps.insights.panels(brandId, { days: PERIOD_DAYS, includeHistory: true }),
-      this.deps.tenantAdmin.listStores(principal),
+  /** Holds and conversations in scope: without synthetic history, only live records count. */
+  private async records(principal: BrandPrincipal, scope: PackScope) {
+    const [active, history, conversations] = await Promise.all([
       this.deps.reservations.listFor(principal, { view: 'active', limit: 500 }),
       this.deps.reservations.listFor(principal, { view: 'history', limit: 500 }),
-      this.deps.conversations.listConversations(brandId),
+      this.deps.conversations.listConversations(principal.brandId),
+    ]);
+    const live = <T extends { demo_history?: boolean }>(rows: T[]) =>
+      scope.includeHistory ? rows : rows.filter((r) => !r.demo_history);
+    return {
+      active: live(active as unknown as ReservationRow[]),
+      history: live(history as unknown as ReservationRow[]),
+      conversations: scope.includeHistory ? conversations : conversations.filter((c) => !c.conversation.demoHistory),
+    };
+  }
+
+  /**
+   * The brand's data pack: what every AI piece and every quick summary is built from. Its totals
+   * are the Overview tiles' own definitions, for the same period and synthetic-history choice.
+   */
+  async pack(principal: BrandPrincipal, scope: PackScope = DEFAULT_SCOPE): Promise<BrandPack> {
+    const brandId = principal.brandId;
+    const now = this.now();
+    const [panels, stores, records, brand] = await Promise.all([
+      this.deps.insights.panels(brandId, { days: scope.days, includeHistory: scope.includeHistory }),
+      this.deps.tenantAdmin.listStores(principal),
+      this.records(principal, scope),
       this.deps.brands.getById(brandId),
     ]);
+    const { active, history, conversations } = records;
     const fill = new Map<string, { nearest: number; had: number; refusals: number }>();
     for (const row of panels.fill_rate) {
       const f = fill.get(row.store_id) ?? { nearest: 0, had: 0, refusals: 0 };
@@ -106,8 +132,8 @@ export class BrandAssistantService {
     }
     const activeStores = stores.filter((s) => s.storeStatus === 'ACTIVE');
     const name = new Map(stores.map((s) => [s.storeId, s.storeName]));
-    const rows = active as unknown as ReservationRow[];
-    const all = [...rows, ...(history as unknown as ReservationRow[])];
+    const rows = active;
+    const all = [...rows, ...history];
     const waiting = rows.filter((r) => r.status === 'PENDING');
     const minutesSince = (iso: string) => Math.max(0, Math.round((now.getTime() - Date.parse(iso)) / 60_000));
     const byConversation = new Map<string, ReservationRow[]>();
@@ -115,19 +141,27 @@ export class BrandAssistantService {
       if (r.conversation_id)
         byConversation.set(r.conversation_id, [...(byConversation.get(r.conversation_id) ?? []), r]);
     const f = panels.funnel;
+    // The Overview tiles (frontend overview.ts kpis): online = ONLINE + ALTERNATIVE; conversion =
+    // purchases ÷ finished journeys (a recorded outcome).
+    const online = f.outcomes.ONLINE + f.outcomes.ALTERNATIVE;
+    const purchases = f.outcomes.OFFLINE + online;
+    const finished = purchases + f.outcomes.NONE;
     return {
       brand_name: brand?.name ?? 'your brand',
-      period_days: PERIOD_DAYS,
+      period_days: scope.days,
+      synthetic_history_included: scope.includeHistory,
       totals: {
         shopper_intents: f.intents,
-        conversations: f.conversations,
+        new_conversations: f.conversations,
         store_recommendations: f.store_recommendations,
         holds: f.reservations,
-        pickups: f.outcomes.OFFLINE,
-        online_orders: f.outcomes.ONLINE,
-        alternative_purchases: f.outcomes.ALTERNATIVE,
-        no_purchase: f.outcomes.NONE,
-        sales_value: f.value.amount,
+        pickups_collected_in_store: f.completed,
+        online_orders: online,
+        purchases,
+        finished_journeys: finished,
+        conversion_percent: finished === 0 ? null : Math.round((purchases / finished) * 100),
+        journeys_without_purchase: f.outcomes.NONE,
+        value_of_purchases: f.value.amount,
         currency: f.value.currency,
       },
       stores: activeStores.map((s) => {
@@ -144,7 +178,7 @@ export class BrandAssistantService {
             : null,
           nearest_lookups: x?.nearest ?? 0,
           had_stock: x?.had ?? 0,
-          fill_pct: x && x.nearest > 0 ? Math.round((x.had / x.nearest) * 100) : null,
+          fill_rate_percent: x && x.nearest > 0 ? Math.round((x.had / x.nearest) * 100) : null,
           refusals: x?.refusals ?? 0,
         };
       }),
@@ -178,11 +212,16 @@ export class BrandAssistantService {
     };
   }
 
-  /** The drawer: a question about the brand, asked on `page`. */
-  async ask(principal: BrandPrincipal, question: string, page: ConsolePage): Promise<AssistantAnswer> {
+  /** The drawer: a question about the brand, asked on `page`, about what the page shows (`scope`). */
+  async ask(
+    principal: BrandPrincipal,
+    question: string,
+    page: ConsolePage,
+    scope: PackScope = DEFAULT_SCOPE,
+  ): Promise<AssistantAnswer> {
     const started = Date.now();
-    const pack = await this.pack(principal);
-    const tools = this.tools(principal, pack);
+    const pack = await this.pack(principal, scope);
+    const tools = this.tools(principal, pack, scope);
     return this.answer(
       'ASK',
       principal.brandId,
@@ -193,21 +232,29 @@ export class BrandAssistantService {
     );
   }
 
-  /** The Overview brief: cached for 10 minutes per brand (1 minute when it fell back to the rules). */
-  async brief(principal: BrandPrincipal, options: { refresh?: boolean } = {}): Promise<AssistantAnswer> {
-    const cached = this.briefs.get(principal.brandId);
+  /**
+   * The Overview brief for the period and synthetic-history choice on screen: cached for 10
+   * minutes per brand and choice (1 minute when it fell back to the rules).
+   */
+  async brief(
+    principal: BrandPrincipal,
+    options: { refresh?: boolean; scope?: PackScope } = {},
+  ): Promise<AssistantAnswer> {
+    const scope = options.scope ?? DEFAULT_SCOPE;
+    const key = `${principal.brandId}|${scope.days}|${scope.includeHistory}`;
+    const cached = this.briefs.get(key);
     if (!options.refresh && cached && Date.now() - cached.at < cached.ttl) return cached.value;
     const started = Date.now();
-    const pack = await this.pack(principal);
+    const pack = await this.pack(principal, scope);
     const value = await this.answer(
       'BRIEF',
       principal.brandId,
       { task: 'BRIEF', page: 'OVERVIEW', data: pack },
-      this.tools(principal, pack),
+      this.tools(principal, pack, scope),
       () => quickBrief(pack),
       started,
     );
-    this.briefs.set(principal.brandId, {
+    this.briefs.set(key, {
       at: Date.now(),
       ttl: value.source === 'AI' ? BRIEF_CACHE_MS : QUICK_BRIEF_CACHE_MS,
       value,
@@ -217,7 +264,7 @@ export class BrandAssistantService {
 
   /** Forget a brand's cached brief (Reset demo). */
   forget(brandId: string) {
-    this.briefs.delete(brandId);
+    for (const key of this.briefs.keys()) if (key.startsWith(`${brandId}|`)) this.briefs.delete(key);
   }
 
   /**
@@ -329,7 +376,7 @@ export class BrandAssistantService {
   }
 
   /** The two read tools, over this brand only, built from the pack and the brand's own records. */
-  private tools(principal: BrandPrincipal, pack: BrandPack): BrandModelTools {
+  private tools(principal: BrandPrincipal, pack: BrandPack, scope: PackScope): BrandModelTools {
     return {
       get_store: async ({ store_id }) => {
         const store = pack.stores.find((s) => s.store_id === store_id);
@@ -340,20 +387,18 @@ export class BrandAssistantService {
             storeId: store_id,
             limit: 50,
           })) as unknown as ReservationRow[]
-        ).map((r) => ({
-          product: `${r.product_title ?? ''} ${r.variant_title ?? ''}`.trim(),
-          status: r.status,
-          minutes_since_created: Math.max(0, Math.round((this.now().getTime() - Date.parse(r.created_at)) / 60_000)),
-        }));
+        )
+          .filter((r) => scope.includeHistory || !r.demo_history)
+          .map((r) => ({
+            product: `${r.product_title ?? ''} ${r.variant_title ?? ''}`.trim(),
+            status: r.status,
+            minutes_since_created: Math.max(0, Math.round((this.now().getTime() - Date.parse(r.created_at)) / 60_000)),
+          }));
         return { store, holds };
       },
       list_conversations: async (filter) => {
-        const [list, active, history] = await Promise.all([
-          this.deps.conversations.listConversations(principal.brandId),
-          this.deps.reservations.listFor(principal, { view: 'active', limit: 500 }),
-          this.deps.reservations.listFor(principal, { view: 'history', limit: 500 }),
-        ]);
-        const holds = [...active, ...history] as unknown as ReservationRow[];
+        const { active, history, conversations: list } = await this.records(principal, scope);
+        const holds = [...active, ...history];
         const rows = list.map((c) => {
           const mine = holds.filter((r) => r.conversation_id === c.conversation.conversationId);
           return {
@@ -394,6 +439,7 @@ interface ReservationRow {
   cancelled_by: string | null;
   product_title?: string | null;
   variant_title?: string | null;
+  demo_history?: boolean;
 }
 
 interface DetailLike {

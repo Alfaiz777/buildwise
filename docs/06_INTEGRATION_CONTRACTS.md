@@ -1275,8 +1275,8 @@ Read-only, BRAND_ADMIN, the principal's own brand only (`requireScope('BRAND')`)
 
 | Route | Purpose |
 |---|---|
-| `POST /api/brand/assistant/ask` `{ question (2–300 chars), page: OVERVIEW \| CONVERSATIONS \| RESERVATIONS \| INSIGHTS \| NETWORK \| SETTINGS }` | The drawer's question. POST so the question is a body, never a URL. 20 per user per minute → `429 RATE_LIMITED`. Not audited: nothing is written (`auditCompleteness` exemption) |
-| `GET /api/brand/assistant/brief[?refresh=true]` | The Overview brief, cached 10 min per brand (1 min after a Quick summary); Reset demo clears it |
+| `POST /api/brand/assistant/ask` `{ question (2–300 chars), page: OVERVIEW \| CONVERSATIONS \| RESERVATIONS \| INSIGHTS \| NETWORK \| SETTINGS, days: 7 \| 28 (default 7), include_history: boolean (default true) }` | The drawer's question, about the period and synthetic-history choice of the page it was asked on. POST so the question is a body, never a URL. 20 per user per minute → `429 RATE_LIMITED`. Not audited: nothing is written (`auditCompleteness` exemption) |
+| `GET /api/brand/assistant/brief?days=7\|28&include_history=true\|false[&refresh=true]` | The Overview brief for the period and synthetic-history choice on screen, cached 10 min per brand and choice (1 min after a Quick summary); Reset demo clears them |
 | `GET /api/brand/conversations/:id/summary` | The conversation's summary and, when a person took over, the handoff brief. An AI summary is stored on the conversation (`ai_summary`) and reused until a new message; another brand's id → `404` |
 
 Every answer arrives within 20 s: Gemini's (17 s deadline) or the rules "Quick summary" from the same data (`05` §18).

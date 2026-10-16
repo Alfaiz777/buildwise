@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../../api/apiContext';
 import { ConsoleShell, Section, useLoad } from '../../components/ConsoleShell';
 import { label } from '../../lib/labels';
+import { AskScope } from './askQwikspot';
 import { AskAboutThis } from './AiCards';
 import { humanize } from './conversationTypes';
 import { FunnelChart, WeekdayChart } from './InsightCharts';
@@ -110,6 +111,7 @@ export function InsightsPage() {
 
   return (
     <ConsoleShell>
+      <AskScope days={days} includeHistory={includeHistory} />
       <Section title="Insights">
         <div className="filters">
           {([7, 28] as const).map((n) => (

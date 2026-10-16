@@ -143,6 +143,10 @@ describe.skipIf(!ENABLED)(`LIVE Ask Qwikspot — ${MODEL} @ ${LOCATION} (${RUNS}
 
         const brief = await timed(() => as('/api/brand/assistant/brief?refresh=true'));
         record('BRIEF', 'OVERVIEW', '(Overview brief)', brief.res, brief.ms);
+        // The same brief with synthetic history hidden (its numbers are checked against the live
+        // pack by the service itself; brandAssistant.test.ts proves the pack equals the tiles).
+        const live = await timed(() => as('/api/brand/assistant/brief?days=7&include_history=false&refresh=true'));
+        record('BRIEF', 'OVERVIEW', '(brief, live activity only)', live.res, live.ms);
         for (const [page, question] of QUESTIONS) {
           const a = await timed(() => post('/api/brand/assistant/ask', { question, page }));
           record('ASK', page, question, a.res, a.ms);

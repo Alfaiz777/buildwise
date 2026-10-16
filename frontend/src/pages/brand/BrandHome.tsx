@@ -7,6 +7,7 @@ import { ConsoleShell, errorMessage, useLoad } from '../../components/ConsoleShe
 import { Card, ErrorState, KpiTile, Skeleton, useToast } from '../../components/ui';
 import type { ConversationRow, ReservationRow } from './conversationTypes';
 import { AiBriefCard } from './AiCards';
+import { AskScope } from './askQwikspot';
 import { DemoGuide } from './DemoGuide';
 import { storesNamedIn, type InsightsResponse } from './InsightsPage';
 import { attentionItems, kpis } from './overview';
@@ -85,7 +86,8 @@ export function BrandHome() {
         </p>
       )}
 
-      <AiBriefCard />
+      <AskScope days={days} includeHistory={includeHistory} />
+      <AiBriefCard days={days} includeHistory={includeHistory} />
 
       <div className="overview-head">
         <div className="filters" role="group" aria-label="Period">

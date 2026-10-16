@@ -283,20 +283,103 @@ describe('the conversation summary (GET /api/brand/conversations/:id/summary)', 
   });
 });
 
+describe('the pack is about what the page shows: its period and the synthetic-history switch', () => {
+  /** What the Overview tiles show (frontend overview.ts kpis), from the same insights endpoint. */
+  const tiles = (f: {
+    intents: number;
+    conversations: number;
+    reservations: number;
+    completed: number;
+    outcomes: Record<string, number>;
+    value: { amount: number };
+  }) => {
+    const online = f.outcomes.ONLINE! + f.outcomes.ALTERNATIVE!;
+    const purchases = f.outcomes.OFFLINE! + online;
+    const finished = purchases + f.outcomes.NONE!;
+    return {
+      shopper_intents: f.intents,
+      new_conversations: f.conversations,
+      holds: f.reservations,
+      pickups_collected_in_store: f.completed,
+      online_orders: online,
+      purchases,
+      finished_journeys: finished,
+      conversion_percent: finished === 0 ? null : Math.round((purchases / finished) * 100),
+      value_of_purchases: f.value.amount,
+    };
+  };
+
+  it('with history hidden: live records only, the totals equal the tiles, and the Quick brief says so', async () => {
+    const model = new FakeBrandModel(() => ({ answer: 'ok' }));
+    const s = await busyWorld({ brandModel: model });
+    // c1's conversation and hold become synthetic demo history.
+    const c1 = s.conversationOf('c1');
+    const conversation = s.world.conversations.conversations.find((c) => c.conversationId === c1)!;
+    conversation.demoHistory = true;
+    for (const r of s.world.reservations.reservations)
+      if (r.customerId === conversation.customerId) r.demoHistory = true;
+
+    for (const [days, include] of [
+      [7, true],
+      [7, false],
+      [28, false],
+    ] as const) {
+      await s.as().post('/api/brand/assistant/ask', {
+        question: 'How did we do?',
+        page: 'OVERVIEW',
+        days,
+        include_history: include,
+      });
+      const pack = model.inputs.at(-1)!.data as BrandPack;
+      const insights = await s.as().get(`/api/brand/insights?days=${days}&include_history=${include}`);
+      expect(pack).toMatchObject({ period_days: days, synthetic_history_included: include });
+      expect(pack.totals, `${days} days, history ${include}`).toMatchObject(tiles(insights.body.funnel));
+      expect(pack.holds_now.active).toBe(include ? 1 : 0);
+      expect(pack.conversations_now.total).toBe(include ? 3 : 2);
+    }
+
+    const quick = await busyWorld();
+    const live = await quick.as().get('/api/brand/assistant/brief?days=7&include_history=false');
+    expect(live.body.answer).toMatch(/^In the last 7 days \(live activity only\): /);
+  });
+
+  it('a brief is cached per period and switch, not one per brand', async () => {
+    const model = new FakeBrandModel(() => ({ answer: 'A brief.' }));
+    const s = await busyWorld({ brandModel: model });
+    await s.as().get('/api/brand/assistant/brief?days=7&include_history=true');
+    await s.as().get('/api/brand/assistant/brief?days=7&include_history=false');
+    await s.as().get('/api/brand/assistant/brief?days=28&include_history=false');
+    await s.as().get('/api/brand/assistant/brief?days=7&include_history=false');
+    expect(
+      model.inputs
+        .filter((i) => i.task === 'BRIEF')
+        .map((i) => [(i.data as BrandPack).period_days, (i.data as BrandPack).synthetic_history_included]),
+    ).toEqual([
+      [7, true],
+      [7, false],
+      [28, false],
+    ]);
+    expect((await s.as().get('/api/brand/assistant/brief?days=14')).status).toBe(400);
+  });
+});
+
 describe('quick answers follow the page', () => {
   const pack: BrandPack = {
     brand_name: 'Demo',
     period_days: 7,
+    synthetic_history_included: true,
     totals: {
       shopper_intents: 5,
-      conversations: 4,
+      new_conversations: 4,
       store_recommendations: 3,
       holds: 2,
-      pickups: 1,
+      pickups_collected_in_store: 1,
       online_orders: 0,
-      alternative_purchases: 0,
-      no_purchase: 0,
-      sales_value: 795,
+      purchases: 1,
+      finished_journeys: 1,
+      conversion_percent: 100,
+      journeys_without_purchase: 0,
+      value_of_purchases: 795,
       currency: 'INR',
     },
     stores: [
@@ -310,7 +393,7 @@ describe('quick answers follow the page', () => {
         stock_age_hours: 30,
         nearest_lookups: 4,
         had_stock: 1,
-        fill_pct: 25,
+        fill_rate_percent: 25,
         refusals: 1,
       },
     ],

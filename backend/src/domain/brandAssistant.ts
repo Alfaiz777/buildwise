@@ -22,16 +22,22 @@ export const PAGE_PATHS: Record<ConsolePage, string> = {
 export interface BrandPack {
   brand_name: string;
   period_days: number;
+  /** False when the team member hid the synthetic demo history: live activity only. */
+  synthetic_history_included: boolean;
+  /** The Overview tiles, with the tiles' own definitions. */
   totals: {
     shopper_intents: number;
-    conversations: number;
+    new_conversations: number;
     store_recommendations: number;
     holds: number;
-    pickups: number;
+    pickups_collected_in_store: number;
+    /** Online and alternative-product orders (the "Online orders" tile). */
     online_orders: number;
-    alternative_purchases: number;
-    no_purchase: number;
-    sales_value: number;
+    purchases: number;
+    finished_journeys: number;
+    conversion_percent: number | null;
+    journeys_without_purchase: number;
+    value_of_purchases: number;
     currency: string | null;
   };
   stores: {
@@ -44,7 +50,7 @@ export interface BrandPack {
     stock_age_hours: number | null;
     nearest_lookups: number;
     had_stock: number;
-    fill_pct: number | null;
+    fill_rate_percent: number | null;
     refusals: number;
   }[];
   stores_count: number;
@@ -136,6 +142,8 @@ Call a tool only when the pack does not already answer the question.
 
 RULES
 - Use only the data you were given. Every number you write must appear in the data or a tool result: never compute a new percentage, total or average, never estimate. If the data does not answer, say so in one sentence and say what would.
+- The data covers data.period_days days. When data.synthetic_history_included is false it is live activity only: say "live" or "this week's real activity", never mention demo or synthetic data otherwise.
+- Use the totals with their meaning: pickups_collected_in_store are pickups, online_orders are online orders, value_of_purchases is the value of purchases, conversion_percent is conversion. Never write a data field name (say "fill rate", not "fill_rate_percent").
 - Never name or describe a shopper, never repeat a phone number, email or pickup code.
 - You cannot change anything: you only explain and suggest. Suggest at most one next action, and only one the data supports.
 - Plain, warm, specific English for a busy shop owner: name the store, the product, the area. No headings, no tables, no jargon ("intent", "guardrail", "funnel" only if they used it).
@@ -169,12 +177,13 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 /** The rules brief for the Overview page: the same shape as the AI brief, from the pack only. */
 export function quickBrief(pack: BrandPack): BrandAnswer {
   const t = pack.totals;
+  const live = pack.synthetic_history_included ? '' : ' (live activity only)';
   const parts = [
-    `In the last ${pack.period_days} days: ${plural(t.shopper_intents, 'shopper intent')}, ${plural(t.conversations, 'conversation')}, ${plural(t.holds, 'hold')} and ${plural(t.pickups, 'pickup')}${t.sales_value ? ` (${money(t.sales_value, t.currency)})` : ''}.`,
+    `In the last ${pack.period_days} days${live}: ${plural(t.shopper_intents, 'shopper intent')}, ${plural(t.new_conversations, 'new conversation')}, ${plural(t.holds, 'hold')}, ${plural(t.pickups_collected_in_store, 'pickup')} and ${plural(t.online_orders, 'online order')}${t.value_of_purchases ? ` (${money(t.value_of_purchases, t.currency)})` : ''}.`,
   ];
   const best = [...pack.stores]
-    .filter((s) => s.nearest_lookups > 0 && s.fill_pct !== null)
-    .sort((a, b) => b.had_stock - a.had_stock || (b.fill_pct ?? 0) - (a.fill_pct ?? 0))[0];
+    .filter((s) => s.nearest_lookups > 0 && s.fill_rate_percent !== null)
+    .sort((a, b) => b.had_stock - a.had_stock || (b.fill_rate_percent ?? 0) - (a.fill_rate_percent ?? 0))[0];
   if (best)
     parts.push(
       `Biggest win: ${best.name} had stock for ${best.had_stock} of ${best.nearest_lookups} shoppers it was nearest to.`,
@@ -217,11 +226,11 @@ export function quickAnswer(question: string, page: ConsolePage, pack: BrandPack
   }
   if (STORES.test(question) || page === 'NETWORK') {
     const worst = [...pack.stores]
-      .filter((s) => s.fill_pct !== null && s.nearest_lookups > 0)
-      .sort((a, b) => (a.fill_pct ?? 0) - (b.fill_pct ?? 0))[0];
+      .filter((s) => s.fill_rate_percent !== null && s.nearest_lookups > 0)
+      .sort((a, b) => (a.fill_rate_percent ?? 0) - (b.fill_rate_percent ?? 0))[0];
     if (worst)
       lines.push(
-        `${worst.name} had stock for ${worst.had_stock} of the ${worst.nearest_lookups} shoppers it was nearest to (${worst.fill_pct}%).`,
+        `${worst.name} had stock for ${worst.had_stock} of the ${worst.nearest_lookups} shoppers it was nearest to (${worst.fill_rate_percent}%).`,
       );
     const stale = pack.stores.filter((s) => s.stock_age_hours !== null && s.stock_age_hours > 24);
     if (stale.length) lines.push(`Stock data is more than a day old at ${stale.map((s) => s.name).join(', ')}.`);
