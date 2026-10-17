@@ -11,9 +11,10 @@ import {
   HEDGE_AFTER_MS,
   HEDGE_MIN_LEFT_MS,
 } from '../src/adapters/agent/geminiAssistant.js';
-import type { AssistantRound } from '../src/ports/assistant.js';
+import type { AssistantModel, AssistantRound } from '../src/ports/assistant.js';
 import type { GeminiClient, GeminiRequest } from '../src/adapters/agent/geminiClient.js';
 import {
+  BRAND_ASSISTANT_PROMPT,
   brandToolsFor,
   numbersOf,
   quickAnswer,
@@ -221,6 +222,7 @@ describe('L8: one Gemini call when the pack covers the question', () => {
     ['CONVERSATIONS', 'Why did chats end without a hold this week?'],
     ['RESERVATIONS', 'Which holds are at risk?'],
     ['RESERVATIONS', 'Which store is slowest to accept?'],
+    ['RESERVATIONS', 'Which store is slowest to accept holds?'],
     ['INSIGHTS', 'Compare Satellite and Navrangpura'],
     ['NETWORK', 'Which store needs attention?'],
     ['SETTINGS', 'What does Qwikspot do automatically for me?'],
@@ -551,6 +553,7 @@ describe('quick answers follow the page', () => {
       finished_journeys: 1,
       conversion_percent: 100,
       journeys_without_purchase: 0,
+      pickups_not_in_conversion: 0,
       value_of_purchases: 795,
       currency: 'INR',
     },
@@ -567,6 +570,8 @@ describe('quick answers follow the page', () => {
         had_stock: 1,
         fill_rate_percent: 25,
         refusals: 1,
+        holds_confirmed: 0,
+        median_minutes_to_confirm: null,
       },
     ],
     stores_count: 1,
@@ -607,5 +612,169 @@ describe('the ASSISTANT_QUESTION event (brand)', () => {
       payload: { console: 'BRAND', page: 'RESERVATIONS', source: 'QUICK_SUMMARY' },
     });
     expect(JSON.stringify(events[0])).not.toContain('at risk');
+  });
+});
+
+describe('L8 answers: a particular chat, accept times, empty values, percentages, conversion', () => {
+  it.each([
+    'Why did the last chat end without a hold?',
+    'How did the latest conversation go?',
+    'What happened in that chat?',
+    'Why did the chat with the serum shopper end?',
+    'Show me recent chats',
+    'Aakhri chat hold ke bina kyun khatam hui?',
+    'Kaunsi chat mein hold nahi bana?',
+  ])('"%s" is offered list_conversations', (question) => {
+    expect(brandToolsFor(question, { stores: [] } as unknown as BrandPack)).toEqual(['list_conversations']);
+  });
+
+  it.each([
+    'Why did chats end without a hold this week?',
+    'Which store is slowest to accept holds?',
+    'How many chats did we get this week?',
+  ])('"%s" is covered by the pack: no tool', (question) => {
+    expect(brandToolsFor(question, { stores: [] } as unknown as BrandPack)).toEqual([]);
+  });
+
+  it('"Why did the last chat end without a hold?": the tool gives the latest chat first, with its decisions and holds', async () => {
+    let output: unknown;
+    let offered: string[] = [];
+    const model: AssistantModel = {
+      model: 'tool-caller',
+      async generate(request, runTool) {
+        offered = request.tools.map((t) => t.name);
+        output = await runTool('list_conversations', { without_hold: true, limit: 3 });
+        return { raw: { answer: 'ok' }, toolOutputs: [output], toolCalls: ['list_conversations'] };
+      },
+    };
+    const s = await busyWorld({ assistantModel: model });
+    // c3 (the handoff) spoke last; c2 (unmet 50 ml) before it; c1 has a hold.
+    const at = { c1: '2026-10-14T06:00:00.000Z', c2: '2026-10-14T06:10:00.000Z', c3: '2026-10-14T06:20:00.000Z' };
+    for (const [ref, iso] of Object.entries(at))
+      s.world.conversations.conversations.find((c) => c.conversationId === s.conversationOf(ref))!.lastMessageAt = iso;
+    await s.as().post('/api/brand/assistant/ask', {
+      question: 'Why did the last chat end without a hold?',
+      page: 'CONVERSATIONS',
+    });
+    expect(offered).toEqual(['list_conversations']);
+    const rows = output as {
+      conversation_id: string;
+      had_hold: boolean;
+      decisions: unknown[];
+      holds: unknown[];
+      last_activity_at: string;
+    }[];
+    expect(rows.map((r) => r.conversation_id)).toEqual([s.conversationOf('c3'), s.conversationOf('c2')]);
+    expect(rows.every((r) => !r.had_hold && Array.isArray(r.decisions) && Array.isArray(r.holds))).toBe(true);
+    expect(rows[1]!.decisions.length).toBeGreaterThan(0); // the 50 ml lookup's decision trace
+    expect(JSON.stringify(output)).not.toMatch(/98765|sim:c\d|customer_id/);
+  });
+
+  it('the tool keeps to the period: a chat older than 7 days is not "the last chat"', async () => {
+    let output: unknown;
+    const model: AssistantModel = {
+      model: 'tool-caller',
+      async generate(_request, runTool) {
+        output = await runTool('list_conversations', { without_hold: true });
+        return { raw: { answer: 'ok' }, toolOutputs: [output], toolCalls: [] };
+      },
+    };
+    const s = await busyWorld({ assistantModel: model });
+    for (const c of s.world.conversations.conversations) c.lastMessageAt = '2026-10-01T06:00:00.000Z';
+    await s.as().post('/api/brand/assistant/ask', { question: 'Why did the last chat end without a hold?' });
+    expect(output).toEqual([]);
+    expect(BRAND_ASSISTANT_PROMPT).toMatch(/say plainly that no chat matched in this period/);
+  });
+
+  it('nothing waiting: "No holds are waiting right now, so no store is behind." — and the slowest median confirm time', () => {
+    const pack = {
+      period_days: 7,
+      holds_now: { active: 0, waiting_for_store: 0, oldest_waiting_minutes: null, by_store: [] },
+      stores: [
+        { name: 'Wellness Mart', holds_confirmed: 3, median_minutes_to_confirm: 4 },
+        { name: 'HealthPlus Chemist', holds_confirmed: 2, median_minutes_to_confirm: 18 },
+        { name: 'Skin Studio', holds_confirmed: 0, median_minutes_to_confirm: null },
+      ],
+      unmet_demand: [],
+      suggestions: [],
+      totals: {},
+      conversations_now: {},
+    } as unknown as BrandPack;
+    expect(quickAnswer('Which store is slowest to accept holds?', 'RESERVATIONS', pack).answer).toBe(
+      'No holds are waiting right now, so no store is behind. In the last 7 days the slowest to confirm was HealthPlus Chemist: a median of 18 min over 2 holds.',
+    );
+    const none = { ...pack, stores: [] } as BrandPack;
+    expect(quickAnswer('Which store is slowest to accept holds?', 'RESERVATIONS', none).answer).toBe(
+      'No holds are waiting right now, so no store is behind. No store confirmed a hold in the last 7 days.',
+    );
+    expect(BRAND_ASSISTANT_PROMPT).toMatch(/No holds are waiting right now, so no store is behind\./);
+    expect(BRAND_ASSISTANT_PROMPT).toMatch(/Never say the data "doesn't track"/);
+  });
+
+  it("each store's median minutes to confirm, for the period and the synthetic-history choice", async () => {
+    const model = new FakeAssistantModel(() => ({ answer: 'ok' }));
+    const s = await busyWorld({ assistantModel: model });
+    const holds = s.world.reservations.reservations.filter((r) => r.storeId === 'st_north_1');
+    const base = Date.parse('2026-10-14T06:30:00.000Z');
+    const set = (r: (typeof holds)[number], createdMinAgo: number, confirmAfter: number, demo = false) => {
+      r.createdAt = new Date(base - createdMinAgo * 60_000).toISOString();
+      r.confirmedAt = new Date(base - createdMinAgo * 60_000 + confirmAfter * 60_000).toISOString();
+      r.demoHistory = demo;
+    };
+    set(holds[0]!, 60, 12);
+    const store = async (days: 7 | 28, include: boolean) => {
+      await s.as().post('/api/brand/assistant/ask', {
+        question: 'Which store is slowest to accept holds?',
+        days,
+        include_history: include,
+      });
+      return (model.inputs.at(-1)!.data as BrandPack).stores.find((x) => x.name === 'Wellness Mart')!;
+    };
+    expect(await store(7, true)).toMatchObject({ holds_confirmed: 1, median_minutes_to_confirm: 12 });
+    // Synthetic history hidden → that hold drops out.
+    holds[0]!.demoHistory = true;
+    expect(await store(7, false)).toMatchObject({ holds_confirmed: 0, median_minutes_to_confirm: null });
+    // Created 10 days ago: outside 7 days, inside 28.
+    set(holds[0]!, 10 * 24 * 60, 30);
+    expect(await store(7, true)).toMatchObject({ holds_confirmed: 0, median_minutes_to_confirm: null });
+    expect(await store(28, true)).toMatchObject({ holds_confirmed: 1, median_minutes_to_confirm: 30 });
+  });
+
+  it('percentages with % pass the number checker: "100% fill rate", "conversion 0%"; an invented one does not', async () => {
+    const run = async (answer: string) => {
+      const s = await busyWorld({ assistantModel: new FakeAssistantModel(() => ({ answer })) });
+      return (
+        await s.as().post('/api/brand/assistant/ask', { question: 'Which store needs attention?', page: 'NETWORK' })
+      ).body.source;
+    };
+    expect(await run('Wellness Mart has a 100% fill rate, and conversion is 0% so far.')).toBe('AI');
+    expect(await run('Wellness Mart has a 87% fill rate.')).toBe('QUICK_SUMMARY');
+    expect(BRAND_ASSISTANT_PROMPT).toMatch(/"100% fill rate", "conversion 0%"/);
+  });
+
+  it("conversion is the Overview tile's: a collected pickup is a purchase; a pickup it does not count is explained", async () => {
+    const model = new FakeAssistantModel(() => ({ answer: 'ok' }));
+    const s = await busyWorld({ assistantModel: model });
+    const tile = (await s.as().get('/api/brand/insights?days=7&include_history=true')).body.funnel;
+    await s.as().post('/api/brand/assistant/ask', { question: 'What is our conversion?' });
+    const t = (model.inputs.at(-1)!.data as BrandPack).totals;
+    const purchases = tile.outcomes.OFFLINE + tile.outcomes.ONLINE + tile.outcomes.ALTERNATIVE;
+    expect(t).toMatchObject({
+      purchases,
+      finished_journeys: purchases + tile.outcomes.NONE,
+      pickups_not_in_conversion: Math.max(0, tile.completed - tile.outcomes.OFFLINE - tile.outcomes.ALTERNATIVE),
+    });
+
+    const pack = {
+      totals: { conversion_percent: 0, purchases: 0, finished_journeys: 1, pickups_not_in_conversion: 1 },
+      holds_now: { by_store: [] },
+      stores: [],
+      unmet_demand: [],
+      suggestions: [],
+      conversations_now: {},
+    } as unknown as BrandPack;
+    expect(quickAnswer('Why is conversion 0 with a pickup?', 'OVERVIEW', pack).answer).toMatch(
+      /^Conversion is 0%: 0 of 1 finished journey ended in a purchase\. 1 pickup belongs to a journey that had already closed without a purchase or finished outside the period, so conversion does not count it\./,
+    );
   });
 });

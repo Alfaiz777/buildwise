@@ -42,6 +42,8 @@ const QUESTIONS: [page: string, question: string][] = [
   ['CONVERSATIONS', 'Show me chats where the shopper refused a store'],
   ['RESERVATIONS', 'Which holds are at risk?'],
   ['RESERVATIONS', 'Which store is slowest to accept?'],
+  ['RESERVATIONS', 'Which store is slowest to accept holds?'],
+  ['CONVERSATIONS', 'Why did the last chat end without a hold?'],
   ['INSIGHTS', 'Which product is losing the most demand?'],
   ['INSIGHTS', 'Compare Satellite and Navrangpura'],
   ['INSIGHTS', 'What should I restock before Saturday?'],

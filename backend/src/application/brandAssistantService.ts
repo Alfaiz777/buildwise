@@ -107,6 +107,14 @@ export class BrandAssistantService {
       this.deps.brands.getById(brandId),
     ]);
     const { active, history, conversations } = records;
+    const fromMs = now.getTime() - scope.days * 86_400_000;
+    // Minutes from created to confirmed, per store, for holds created in the period (same scope as the tiles).
+    const confirmMinutes = new Map<string, number[]>();
+    for (const r of [...active, ...history]) {
+      if (!r.confirmed_at || Date.parse(r.created_at) < fromMs) continue;
+      const m = Math.max(0, Math.round((Date.parse(r.confirmed_at) - Date.parse(r.created_at)) / 60_000));
+      confirmMinutes.set(r.store_id, [...(confirmMinutes.get(r.store_id) ?? []), m]);
+    }
     const fill = new Map<string, { nearest: number; had: number; refusals: number }>();
     for (const row of panels.fill_rate) {
       const f = fill.get(row.store_id) ?? { nearest: 0, had: 0, refusals: 0 };
@@ -147,6 +155,7 @@ export class BrandAssistantService {
         finished_journeys: finished,
         conversion_percent: finished === 0 ? null : Math.round((purchases / finished) * 100),
         journeys_without_purchase: f.outcomes.NONE,
+        pickups_not_in_conversion: Math.max(0, f.completed - f.outcomes.OFFLINE - f.outcomes.ALTERNATIVE),
         value_of_purchases: f.value.amount,
         currency: f.value.currency,
       },
@@ -166,6 +175,8 @@ export class BrandAssistantService {
           had_stock: x?.had ?? 0,
           fill_rate_percent: x && x.nearest > 0 ? Math.round((x.had / x.nearest) * 100) : null,
           refusals: x?.refusals ?? 0,
+          holds_confirmed: confirmMinutes.get(s.storeId)?.length ?? 0,
+          median_minutes_to_confirm: median(confirmMinutes.get(s.storeId) ?? []),
         };
       }),
       stores_count: activeStores.length,
@@ -340,7 +351,8 @@ export class BrandAssistantService {
     const listConversations: AssistantTool = {
       declaration: {
         name: 'list_conversations',
-        description: 'Recent conversations with what happened (product, hold, refusal, handoff). No shopper details.',
+        description:
+          "The period's conversations, latest first, each with what happened in order: the decisions (store offered, refused, held), the holds and how they ended. No shopper details.",
         parameters: {
           type: 'object',
           properties: {
@@ -358,8 +370,15 @@ export class BrandAssistantService {
           with_person?: boolean;
           limit?: number;
         };
-        const { active, history, conversations: list } = await this.records(principal, scope);
+        const { active, history, conversations: all } = await this.records(principal, scope);
         const holds = [...active, ...history];
+        const fromMs = this.now().getTime() - scope.days * 86_400_000;
+        const lastAt = (c: (typeof all)[number]) =>
+          c.conversation.lastMessageAt ?? c.conversation.updatedAt ?? c.conversation.startedAt;
+        // The period's conversations, latest first: "the last chat" is the first row.
+        const list = all
+          .filter((c) => Date.parse(lastAt(c)) >= fromMs)
+          .sort((a, b) => Date.parse(lastAt(b)) - Date.parse(lastAt(a)));
         const rows = list.map((c) => {
           const mine = holds.filter((r) => r.conversation_id === c.conversation.conversationId);
           return {
@@ -371,13 +390,35 @@ export class BrandAssistantService {
             hold_status: mine.at(-1)?.status ?? null,
             refused_by_store: mine.some((r) => r.cancelled_by === 'RETAILER'),
             with_person: c.conversation.humanHandoff,
+            last_activity_at: lastAt(c),
           };
         });
-        return rows
+        const picked = rows
           .filter((r) => (filter.without_hold ? !r.had_hold : true))
           .filter((r) => (filter.refused_by_store ? r.refused_by_store : true))
           .filter((r) => (filter.with_person ? r.with_person : true))
           .slice(0, Math.min(10, Math.max(1, filter.limit ?? 10)));
+        // What happened in each, in order (the decision trace and the holds; redacted, no shopper).
+        return Promise.all(
+          picked.map(async (r, i) => {
+            const p = conversationPack(
+              (await this.deps.conversations.conversationDetail(
+                principal.brandId,
+                r.conversation_id,
+              )) as unknown as DetailLike,
+            );
+            return {
+              ...r,
+              decisions: p.decisions,
+              holds: p.holds,
+              outcome: p.outcome,
+              // The last few messages, only for the latest three (enough for "the last chat").
+              ...(i < 3
+                ? { last_messages: p.messages.slice(-4).map((m) => ({ ...m, text: m.text.slice(0, 160) })) }
+                : {}),
+            };
+          }),
+        );
       },
     };
     return [getStore, listConversations];
@@ -387,6 +428,13 @@ export class BrandAssistantService {
 /** "Expiring soon" on the Reservations page: within the next hour. In the pack as a value so an answer may say "within 60 minutes". */
 const EXPIRY_WINDOW_MINUTES = 60;
 
+/** The median of whole minutes (the lower middle for an even count); null when there is none. */
+const median = (values: number[]) => {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor((sorted.length - 1) / 2)]!;
+};
+
 const titleCase = (s: string) => s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
 
 interface ReservationRow {
@@ -395,6 +443,7 @@ interface ReservationRow {
   status: string;
   created_at: string;
   expires_at: string;
+  confirmed_at?: string | null;
   conversation_id: string | null;
   cancelled_by: string | null;
   product_title?: string | null;

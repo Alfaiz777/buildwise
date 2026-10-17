@@ -40,6 +40,12 @@ export interface BrandPack {
     finished_journeys: number;
     conversion_percent: number | null;
     journeys_without_purchase: number;
+    /**
+     * Pickups collected in the period that conversion does not count as a purchase: their
+     * journey had already finished (closed without a purchase) or finished outside the period.
+     * max(0, pickups − store and alternative purchases); usually 0.
+     */
+    pickups_not_in_conversion: number;
     value_of_purchases: number;
     currency: string | null;
   };
@@ -55,6 +61,9 @@ export interface BrandPack {
     had_stock: number;
     fill_rate_percent: number | null;
     refusals: number;
+    /** Holds created in the period that the store confirmed, and the median minutes from created to confirmed (null = none). */
+    holds_confirmed: number;
+    median_minutes_to_confirm: number | null;
   }[];
   stores_count: number;
   unmet_demand: { product: string; area: string; count: number }[];
@@ -97,7 +106,7 @@ export interface ConversationPack {
   message_count: number;
 }
 
-export const BRAND_ASSISTANT_PROMPT_VERSION = 'ASK_QWIKSPOT_V2';
+export const BRAND_ASSISTANT_PROMPT_VERSION = 'ASK_QWIKSPOT_V3';
 
 export const BRAND_ASSISTANT_PROMPT = `You are "Ask Qwikspot", the analyst inside a brand's Qwikspot console. Qwikspot turns shoppers' online intent into store pickups through the brand's WhatsApp. You tell the brand's team what happened, why, and what to do next.
 
@@ -106,12 +115,17 @@ One JSON object: task (ANSWER a question, BRIEF for the Overview page, or SUMMAR
 
 TOOLS (read-only, offered only when the pack cannot answer; at most 2 rounds)
 - get_store: one store's details and its current holds, by store_id.
-- list_conversations: recent conversations with what happened (no shopper details), filtered.
+- list_conversations: the period's conversations, latest first, each with what happened in order (the decisions, the holds and how they ended; no shopper details), filtered.
 Call a tool only when the pack does not already answer the question. When no tool is offered, answer from the pack.
+- About a particular chat ("the last chat", "that chat"): tell what happened in order from its decisions and holds ("the shopper was offered HealthPlus Chemist, refused it, then…"). If list_conversations returns no conversation, say plainly that no chat matched in this period (for example, "No chat ended without a hold in the last 7 days.").
 
 RULES
 ${SHARED_RULES}
 - Use the totals with their meaning: pickups_collected_in_store are pickups, online_orders are online orders, value_of_purchases is the value of purchases, conversion_percent is conversion. Name the store, the product, the area.
+- An empty list, a 0 or a null in the data is an answer, not missing data: say what it means. Never say the data "doesn't track" or "doesn't include" something the data has a field for. No holds waiting: "No holds are waiting right now, so no store is behind." median_minutes_to_confirm null: no hold was confirmed there in the period. Say the data does not cover something only when neither the data nor a tool result has it.
+- Write percentages with %: "100% fill rate", "conversion 0%". Never write a percentage the data does not have.
+- How fast stores accept holds: each store's median_minutes_to_confirm (with holds_confirmed) for the period, and the holds waiting right now with how long the oldest has waited.
+- Conversion is the Overview tile's: purchases ÷ finished journeys (a journey finishes with a store pickup, an online order, or closing without a purchase). A collected pickup is a purchase. When pickups_not_in_conversion is above 0, say that many pickups belong to journeys that had already closed without a purchase or finished outside the period, so conversion does not count them.
 
 LENGTH
 - ANSWER: 2–4 sentences. BRIEF: 3–4 sentences — what happened this period, the biggest win, the biggest problem, then next_action. SUMMARY: summary in 2 short sentences — what the shopper wanted, what happened and why; handoff_brief (only when the conversation was handed to a person): 2–3 sentences for the person taking over — what they want, what was offered, what is open.
@@ -161,11 +175,50 @@ const HOLDS = /\b(hold|holds|reservation|reservations|pickup|pick up|waiting|acc
 const STORES = /\b(store|stores|shop|network|admin|stock|restock)\b/i;
 const DEMAND = /\b(demand|product|products|losing|asked|restock|saturday|weekday|area|areas)\b/i;
 const CHATS = /\b(chat|chats|conversation|conversations|refus\w*|handoff|person)\b/i;
+const SLOW = /\b(slow\w*|fast\w*|accept\w*|confirm\w*|behind|quick\w*)\b/i;
+const CONVERSION = /\b(conversion|convert\w*)\b/i;
+
+/** "No holds are waiting…", then the slowest median confirm time in the period. */
+function acceptLines(pack: BrandPack): string[] {
+  const h = pack.holds_now;
+  const lines = [
+    h.waiting_for_store === 0
+      ? 'No holds are waiting right now, so no store is behind.'
+      : `${plural(h.waiting_for_store, 'hold is', 'holds are')} waiting for a store to confirm${h.oldest_waiting_minutes !== null ? `; the oldest for ${h.oldest_waiting_minutes} min` : ''}.`,
+  ];
+  const timed = pack.stores
+    .filter((s) => s.median_minutes_to_confirm !== null)
+    .sort((a, b) => (b.median_minutes_to_confirm ?? 0) - (a.median_minutes_to_confirm ?? 0));
+  if (timed.length)
+    lines.push(
+      `In the last ${pack.period_days} days the slowest to confirm was ${timed[0]!.name}: a median of ${timed[0]!.median_minutes_to_confirm} min over ${plural(timed[0]!.holds_confirmed, 'hold')}.`,
+    );
+  else lines.push(`No store confirmed a hold in the last ${pack.period_days} days.`);
+  return lines;
+}
+
+/** Conversion in words, with the Overview tile's definition and any pickups it does not count. */
+function conversionLine(pack: BrandPack): string {
+  const t = pack.totals;
+  const base =
+    t.conversion_percent === null
+      ? 'No journey has finished yet in this period, so there is no conversion.'
+      : `Conversion is ${t.conversion_percent}%: ${t.purchases} of ${plural(t.finished_journeys, 'finished journey')} ended in a purchase.`;
+  return t.pickups_not_in_conversion > 0
+    ? `${base} ${plural(t.pickups_not_in_conversion, 'pickup belongs', 'pickups belong')} to a journey that had already closed without a purchase or finished outside the period, so conversion does not count it.`
+    : base;
+}
 
 /** The rules answer to a question: the pack sections the question is about, in plain sentences. */
 /** A question asking to see particular chats (not their counts, which the pack has). */
 const CHAT_LIST =
   /\b(show|list|find|open|see|give|dikhao|batao)\b[^?]*\b(chats?|conversations?)\b|\b(which|kaun ?se)\s+(chats?|conversations?)\b/i;
+/** One particular or recent chat: "the last chat", "that conversation", "aakhri chat", "kaunsi chat". */
+const CHAT_PARTICULAR =
+  /\b(last|latest|recent|most recent|previous|that|aakhri|akhri|pichli|kaunsi|kaunsa)\s+(chats?|conversations?)\b/i;
+/** Why or how one chat ended: "why did the chat end", "how did that conversation go", "chat kyun khatam hui". */
+const CHAT_WHY =
+  /\b(why|how|kyun|kyon)\b[^?]*\b(the|a|that|this|one)\s+(chat|conversation)\b(?!s)|\b(chat|conversation)\b[^?]*\b(kyun|kyon)\b/i;
 const HOLD_WORDS = /\b(holds?|reservations?|orders?|pickups?)\b/i;
 
 /**
@@ -176,7 +229,8 @@ const HOLD_WORDS = /\b(holds?|reservations?|orders?|pickups?)\b/i;
  */
 export function brandToolsFor(question: string, pack: BrandPack): string[] {
   const tools: string[] = [];
-  if (CHAT_LIST.test(question)) tools.push('list_conversations');
+  if (CHAT_LIST.test(question) || CHAT_PARTICULAR.test(question) || CHAT_WHY.test(question))
+    tools.push('list_conversations');
   const q = question.toLowerCase();
   if (HOLD_WORDS.test(question) && pack.stores.some((s) => q.includes(s.name.toLowerCase()))) tools.push('get_store');
   return tools;
@@ -186,14 +240,18 @@ export function quickAnswer(question: string, page: ConsolePage, pack: BrandPack
   const lines: string[] = [];
   const h = pack.holds_now;
   const c = pack.conversations_now;
-  if (HOLDS.test(question) || (page === 'RESERVATIONS' && !STORES.test(question))) {
+  const accept = SLOW.test(question) && (HOLDS.test(question) || STORES.test(question));
+  const conversion = CONVERSION.test(question);
+  if (conversion) lines.push(conversionLine(pack));
+  if (accept) lines.push(...acceptLines(pack));
+  else if (!conversion && (HOLDS.test(question) || (page === 'RESERVATIONS' && !STORES.test(question)))) {
     lines.push(
       `${plural(h.active, 'hold is', 'holds are')} active; ${plural(h.waiting_for_store, 'is', 'are')} waiting for the store to confirm${h.oldest_waiting_minutes !== null ? ` (the oldest for ${h.oldest_waiting_minutes} min)` : ''}, and ${h.expiring_within_60_min} expire within the hour.`,
     );
     const slow = [...h.by_store].sort((a, b) => b.waiting - a.waiting)[0];
     if (slow && slow.waiting > 0) lines.push(`${slow.store} has the most waiting: ${slow.waiting}.`);
   }
-  if (STORES.test(question) || page === 'NETWORK') {
+  if (!accept && (STORES.test(question) || page === 'NETWORK')) {
     const worst = [...pack.stores]
       .filter((s) => s.fill_rate_percent !== null && s.nearest_lookups > 0)
       .sort((a, b) => (a.fill_rate_percent ?? 0) - (b.fill_rate_percent ?? 0))[0];

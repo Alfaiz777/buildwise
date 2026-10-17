@@ -508,12 +508,12 @@ Settings gets no AI content: settings stay in the brand's own hands.
 **How it answers.**
 - **The data pack:** about a second to build, from the same numbers the console shows, for what the page shows:
   - the page's period (7 or 28 days) and its synthetic-history switch: Overview and Insights use their own toggles, Conversations and Reservations "Hide synthetic history", the other pages the default (7 days, history included). With history hidden, demo holds and conversations are left out too;
-  - the Overview tiles' totals with the tiles' own definitions (pickups collected in store, online orders = online + alternative, purchases, finished journeys, conversion %, value of purchases), so the brief never disagrees with the tiles;
-  - per store (stock age, fill rate, refusals, Store Admin);
+  - the Overview tiles' totals with the tiles' own definitions (pickups collected in store, online orders = online + alternative, purchases, finished journeys, conversion %, value of purchases), so the brief never disagrees with the tiles; and the pickups conversion does not count (§18.4);
+  - per store (stock age, fill rate, refusals, Store Admin, and the holds it confirmed in the period with the median minutes from created to confirmed);
   - unmet demand by product and area, the rules' suggestions;
   - holds right now (waiting, oldest wait, expiring within the hour, by store) and conversation counts.
   - It holds store and product names and counts only: no customer, no phone number, no pickup code.
-- **One Gemini call** when the pack covers the question (L8, §18.3). The two read-only tools, `get_store` and `list_conversations`, are offered only for what the pack does not hold — particular chats, or one named store's holds — with at most 2 rounds.
+- **One Gemini call** when the pack covers the question (L8, §18.3). The two read-only tools, `get_store` and `list_conversations`, are offered only for what the pack does not hold — particular chats (listed, or one asked about: "the last chat", "why did that chat end", "aakhri chat … kyun"), or one named store's holds — with at most 2 rounds. `list_conversations` returns the period's conversations latest first, each with its decisions and holds in order.
 - **Conversation summaries** send the last 20 messages with phone numbers, emails, 6-digit codes and a name the shopper gives ("my name is …", "mera naam …") redacted, plus the decisions and the hold. The customer's reference is never sent.
 
 **Guardrails, enforced by the backend (`application/brandAssistantService.ts`).**
@@ -639,3 +639,13 @@ In the L7 live run the brand agent answered 10 of 15 questions with Gemini (3 ti
 - **Brand rounds:** before, 3–4 of 11 measured questions answered in one round; after, 26 of 28 (the two that need a tool take two).
 - **Hedged:** 7 of 56 answers, in 7.0–10.3 s. Without the hedge each would have waited on a request that was slow or never answered (before, those ended as 17 s Quick summaries). They set the after p95s (brand 10.2 s, platform 7.7 s); unhedged rounds are as fast as before.
 - Vertex latency varies a lot between runs: the earlier single runs on this branch gave brand p95 6.6–7.7 s, and one 2-run hedge-at-7 s run gave 29 / 30 at p95 11.1 s.
+
+## 18.4 Answers (L8)
+
+Fixes from live testing of the brand agent.
+
+- **A particular chat** ("Why did the last chat end without a hold?") gets `list_conversations` (§18.1): the answer tells that chat's story from its decisions and holds, or says plainly that no chat matched in the period. Questions about chats in general ("Why did chats end without a hold this week?") stay one call from the pack's counts.
+- **How fast stores accept holds:** each store's `holds_confirmed` and `median_minutes_to_confirm` — from the hold's created and confirmed times, for holds created in the period, with the page's synthetic-history choice. With nothing waiting, the answer says "No holds are waiting right now, so no store is behind."
+- **Empty is an answer:** the agent never says the data "doesn't track" something the pack has a field for; a 0, null or empty list is described in words. "The data doesn't cover this" is only for what neither the pack nor a tool has.
+- **Percentages** are written with %, "100% fill rate", "conversion 0%". The number checker reads the number before the % as usual, so they pass when the data has them; an invented percentage is still rejected.
+- **Conversion** is the Overview tile's: purchases (store pickups, online and alternative orders — Outcomes `OFFLINE`, `ONLINE`, `ALTERNATIVE`) ÷ finished journeys (purchases + journeys that closed without a purchase, `NONE`), for Outcomes recorded in the period. A collected pickup is a purchase: completing a hold records an `OFFLINE` Outcome for its journey (`OutcomeService.recordFromReservation`). It is not counted when its journey already had its Outcome — one per journey, the first wins (docs/04 "M6 rules"), for example a journey that closed as `NONE` after the attribution window (10 minutes on the demo brand) — or when its Outcome falls outside the period. The pack carries `pickups_not_in_conversion` (pickups − store and alternative purchases, at least 0), and the answer explains such a pickup in words.
