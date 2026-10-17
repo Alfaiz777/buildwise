@@ -822,3 +822,9 @@
     grid-column: 1 / -1;
   }
 }
+
+/* Refresh feedback (as in the Platform Console): the list dims while it loads again. */
+.queue.is-refreshing > :not(.st-hero__head):not(.st-history__head) {
+  opacity: 0.55;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
