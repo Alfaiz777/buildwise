@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MeGate } from '../account/meContext';
 import { ApiContext, type MeResponse } from '../api/apiContext';
@@ -7,7 +7,6 @@ import type { ApiClient } from '../api/client';
 import { AppRoutes } from '../AppRoutes';
 import { AuthContext, type AuthState } from '../auth/authContext';
 import { ConsoleShell } from '../components/ConsoleShell';
-import { RedirectKeepingUrl } from '../components/RedirectKeepingUrl';
 import type { FrontendProfile } from '../config';
 
 /** UI-0 foundations: public landing, route map, console shell and role banner. */
@@ -104,46 +103,6 @@ describe('route map', () => {
   it('/retailer redirects to /store', async () => {
     app('/retailer', { user: { uid: 'u', email: 'u@test' }, api: apiFor(STORE) });
     expect(await screen.findByText('Store Console')).toBeInTheDocument();
-  });
-
-  it('old /demo-store links redirect to /shop keeping ?qs_ref and #product', () => {
-    function Probe() {
-      const l = useLocation();
-      return <output>{`${l.pathname}${l.search}${l.hash}`}</output>;
-    }
-    render(
-      <MemoryRouter initialEntries={['/demo-store?qs_ref=ABC123#product=prd_1001']}>
-        <Routes>
-          <Route path="/demo-store" element={<RedirectKeepingUrl to="/shop" />} />
-          <Route path="/shop" element={<Probe />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    expect(screen.getByRole('status')).toHaveTextContent('/shop?qs_ref=ABC123#product=prd_1001');
-  });
-
-  it('/shop serves the demo storefront in the local profile', async () => {
-    window.QwikspotIntent = {
-      init: () => window.QwikspotIntent!,
-      ids: () => ({ web_session_id: 'ws_1', visitor_id: 'vis_1' }),
-      track: vi.fn(async () => ({
-        intent_stage: 'VISIT',
-        intent_strength: 'LOW',
-        intent_type: 'VISIT_ONLY',
-        whatsapp: null,
-      })),
-      whatsapp: vi.fn(),
-      newSession: vi.fn(),
-      forgetVisitor: vi.fn(),
-    };
-    const body = { demo_mode: true, shopper_demo: { brand_id: 'brd_demo' }, products: [], shoppers: [] };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })),
-    );
-    app('/shop');
-    expect(await screen.findByText(/Demo storefront/)).toBeInTheDocument();
-    delete window.QwikspotIntent;
   });
 
   it('/ui-kit does not exist in the gcp profile', () => {

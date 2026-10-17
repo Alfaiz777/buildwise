@@ -723,20 +723,22 @@ describe('UI-P3 — the judge tour', () => {
     const tour = await screen.findByRole('complementary', { name: 'Try the live demo' });
     const steps = within(tour).getAllByRole('checkbox');
     expect(steps.map((s) => s.getAttribute('aria-label'))).toEqual([
-      'Open the shopper demo and ask about a product',
-      'Watch the conversation appear in Conversations',
-      'See the hold reach the store',
+      'Open the AquaSkin store and look at a product',
+      'Tap “Need it today?” and send the WhatsApp message',
+      'Watch it in Conversations and see the hold reach the store',
       'Ask Qwikspot how your brand did',
     ]);
-    await waitFor(() => expect(steps[0]).toHaveAttribute('aria-checked', 'true'));
+    // A live chat after the tour started: the store visit and the WhatsApp message are ticked.
+    await waitFor(() => expect(steps[1]).toHaveAttribute('aria-checked', 'true'));
+    expect(steps[0]).toHaveAttribute('aria-checked', 'true');
     expect(steps[2]).toHaveAttribute('aria-checked', 'false');
     // A manual tick, remembered for this viewer.
     fireEvent.click(steps[2]!);
     expect(steps[2]).toHaveAttribute('aria-checked', 'true');
     expect(JSON.parse(window.localStorage.getItem('qs_judge_tour:brd_demo')!).done['2']).toBe(true);
     fireEvent.click(within(tour).getByRole('button', { name: 'Collapse the checklist' }));
-    const pill = screen.getByRole('button', { name: /Try the live demo: 2 of 4 steps done/ });
-    expect(pill).toHaveTextContent('2/4');
+    const pill = screen.getByRole('button', { name: /Try the live demo: 3 of 4 steps done/ });
+    expect(pill).toHaveTextContent('3/4');
     fireEvent.click(pill);
     fireEvent.click(screen.getByRole('button', { name: 'Close the checklist' }));
     expect(screen.queryByRole('complementary', { name: 'Try the live demo' })).not.toBeInTheDocument();

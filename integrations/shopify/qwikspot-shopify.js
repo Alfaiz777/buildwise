@@ -202,6 +202,393 @@
     );
   }
 
+  // ---------- QR code (the desktop "scan to continue on WhatsApp") ----------
+  //
+  // A small QR Code encoder (byte mode, error correction L/M/Q/H, versions 1–40), after the QR
+  // Code spec and Project Nayuki's reference design; the same encoder as the Brand Console's
+  // (frontend/src/lib/qr.ts), checked module for module against the reference Python `qrcode`
+  // package. Drawn here, in the shopper's browser: the link is sent to no QR service.
+  function qrMatrix(text, eclName, forcedMask) {
+    var ECL = { L: [0, 1], M: [1, 0], Q: [2, 3], H: [3, 2] }; // [table row, format bits]
+    var ecl = ECL[eclName || 'M'];
+    var ECC_PER_BLOCK = [
+      [
+        -1, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30,
+        30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+      ],
+      [
+        -1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28,
+        28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28,
+      ],
+      [
+        -1, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28, 28, 26, 30, 28, 30, 30, 30, 30, 28, 30,
+        30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+      ],
+      [
+        -1, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30, 30, 30, 30, 30,
+        30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30,
+      ],
+    ];
+    var BLOCKS = [
+      [
+        -1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18,
+        19, 19, 20, 21, 22, 24, 25,
+      ],
+      [
+        -1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29,
+        31, 33, 35, 37, 38, 40, 43, 45, 47, 49,
+      ],
+      [
+        -1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40,
+        43, 45, 48, 51, 53, 56, 59, 62, 65, 68,
+      ],
+      [
+        -1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45,
+        48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81,
+      ],
+    ];
+
+    // UTF-8 bytes of the text.
+    var bytes = [];
+    var utf8 = unescape(encodeURIComponent(text));
+    for (var c = 0; c < utf8.length; c++) bytes.push(utf8.charCodeAt(c));
+
+    function rawModules(ver) {
+      var r = (16 * ver + 128) * ver + 64;
+      if (ver >= 2) {
+        var n = Math.floor(ver / 7) + 2;
+        r -= (25 * n - 10) * n - 55;
+        if (ver >= 7) r -= 36;
+      }
+      return r;
+    }
+    function dataCodewords(ver) {
+      return Math.floor(rawModules(ver) / 8) - ECC_PER_BLOCK[ecl[0]][ver] * BLOCKS[ecl[0]][ver];
+    }
+
+    // The smallest version that holds the data (byte mode: 4 mode bits + 8/16 count bits).
+    var ver = 1;
+    for (; ; ver++) {
+      if (ver > 40) throw new Error('QR: data too long');
+      var countBits = ver <= 9 ? 8 : 16;
+      if (4 + countBits + bytes.length * 8 <= dataCodewords(ver) * 8) break;
+    }
+    var bits = [];
+    function put(val, len) {
+      for (var i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1);
+    }
+    put(4, 4);
+    put(bytes.length, ver <= 9 ? 8 : 16);
+    bytes.forEach(function (b) {
+      put(b, 8);
+    });
+    var capacity = dataCodewords(ver) * 8;
+    put(0, Math.min(4, capacity - bits.length));
+    put(0, (8 - (bits.length % 8)) % 8);
+    for (var pad = 0xec; bits.length < capacity; pad ^= 0xec ^ 0x11) put(pad, 8);
+    var data = [];
+    for (var k = 0; k < bits.length; k += 8) {
+      var v = 0;
+      for (var j = 0; j < 8; j++) v = (v << 1) | bits[k + j];
+      data.push(v);
+    }
+
+    // Reed–Solomon over GF(2^8) with the polynomial 0x11D.
+    function mul(x, y) {
+      var z = 0;
+      for (var i = 7; i >= 0; i--) {
+        z = (z << 1) ^ ((z >>> 7) * 0x11d);
+        z ^= ((y >>> i) & 1) * x;
+      }
+      return z & 0xff;
+    }
+    function divisor(degree) {
+      var r = [];
+      for (var i = 0; i < degree - 1; i++) r.push(0);
+      r.push(1);
+      var root = 1;
+      for (var i2 = 0; i2 < degree; i2++) {
+        for (var j2 = 0; j2 < r.length; j2++) {
+          r[j2] = mul(r[j2], root);
+          if (j2 + 1 < r.length) r[j2] ^= r[j2 + 1];
+        }
+        root = mul(root, 0x02);
+      }
+      return r;
+    }
+    function remainder(msg, div) {
+      var r = div.map(function () {
+        return 0;
+      });
+      msg.forEach(function (b) {
+        var factor = b ^ r.shift();
+        r.push(0);
+        div.forEach(function (coef, i) {
+          r[i] ^= mul(coef, factor);
+        });
+      });
+      return r;
+    }
+
+    // Split into blocks, add the error correction, interleave.
+    var numBlocks = BLOCKS[ecl[0]][ver];
+    var eccLen = ECC_PER_BLOCK[ecl[0]][ver];
+    var rawCodewords = Math.floor(rawModules(ver) / 8);
+    var numShort = numBlocks - (rawCodewords % numBlocks);
+    var shortLen = Math.floor(rawCodewords / numBlocks);
+    var div = divisor(eccLen);
+    var blocks = [];
+    for (var b = 0, at = 0; b < numBlocks; b++) {
+      var dat = data.slice(at, at + shortLen - eccLen + (b < numShort ? 0 : 1));
+      at += dat.length;
+      var ecc = remainder(dat, div);
+      if (b < numShort) dat.push(0);
+      blocks.push(dat.concat(ecc));
+    }
+    var codewords = [];
+    for (var i3 = 0; i3 < blocks[0].length; i3++) {
+      for (var j3 = 0; j3 < blocks.length; j3++) {
+        if (i3 !== shortLen - eccLen || j3 >= numShort) codewords.push(blocks[j3][i3]);
+      }
+    }
+
+    // The grid and its function patterns.
+    var size = ver * 4 + 17;
+    var modules = [];
+    var isFn = [];
+    for (var y0 = 0; y0 < size; y0++) {
+      modules.push(new Array(size).fill(false));
+      isFn.push(new Array(size).fill(false));
+    }
+    function setFn(x, y, dark) {
+      modules[y][x] = dark;
+      isFn[y][x] = true;
+    }
+    for (var t = 0; t < size; t++) {
+      setFn(6, t, t % 2 === 0);
+      setFn(t, 6, t % 2 === 0);
+    }
+    function finder(x, y) {
+      for (var dy = -4; dy <= 4; dy++) {
+        for (var dx = -4; dx <= 4; dx++) {
+          var dist = Math.max(Math.abs(dx), Math.abs(dy));
+          var xx = x + dx;
+          var yy = y + dy;
+          if (xx >= 0 && xx < size && yy >= 0 && yy < size) setFn(xx, yy, dist !== 2 && dist !== 4);
+        }
+      }
+    }
+    finder(3, 3);
+    finder(size - 4, 3);
+    finder(3, size - 4);
+    var align = [];
+    if (ver > 1) {
+      var na = Math.floor(ver / 7) + 2;
+      var step = Math.floor((ver * 8 + na * 3 + 5) / (na * 4 - 4)) * 2;
+      align = [6];
+      for (var pos = size - 7; align.length < na; pos -= step) align.splice(1, 0, pos);
+    }
+    for (var ai = 0; ai < align.length; ai++) {
+      for (var aj = 0; aj < align.length; aj++) {
+        if ((ai === 0 && aj === 0) || (ai === 0 && aj === align.length - 1) || (ai === align.length - 1 && aj === 0))
+          continue;
+        for (var ay = -2; ay <= 2; ay++) {
+          for (var ax = -2; ax <= 2; ax++)
+            setFn(align[ai] + ax, align[aj] + ay, Math.max(Math.abs(ax), Math.abs(ay)) !== 1);
+        }
+      }
+    }
+    function bit(x, i) {
+      return ((x >>> i) & 1) !== 0;
+    }
+    function formatBits(mask) {
+      var d = (ecl[1] << 3) | mask;
+      var rem = d;
+      for (var i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
+      var f = ((d << 10) | rem) ^ 0x5412;
+      for (var i2 = 0; i2 <= 5; i2++) setFn(8, i2, bit(f, i2));
+      setFn(8, 7, bit(f, 6));
+      setFn(8, 8, bit(f, 7));
+      setFn(7, 8, bit(f, 8));
+      for (var i3 = 9; i3 < 15; i3++) setFn(14 - i3, 8, bit(f, i3));
+      for (var i4 = 0; i4 < 8; i4++) setFn(size - 1 - i4, 8, bit(f, i4));
+      for (var i5 = 8; i5 < 15; i5++) setFn(8, size - 15 + i5, bit(f, i5));
+      setFn(8, size - 8, true);
+    }
+    formatBits(0); // reserves the area; redrawn with the chosen mask
+    if (ver >= 7) {
+      var rem = ver;
+      for (var vi = 0; vi < 12; vi++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
+      var vbits = (ver << 12) | rem;
+      for (var vj = 0; vj < 18; vj++) {
+        var vb = bit(vbits, vj);
+        var a = size - 11 + (vj % 3);
+        var bb = Math.floor(vj / 3);
+        setFn(a, bb, vb);
+        setFn(bb, a, vb);
+      }
+    }
+
+    // The data, in the zig-zag order.
+    var n = 0;
+    for (var right = size - 1; right >= 1; right -= 2) {
+      if (right === 6) right = 5;
+      for (var vert = 0; vert < size; vert++) {
+        for (var jj = 0; jj < 2; jj++) {
+          var x = right - jj;
+          var upward = ((right + 1) & 2) === 0;
+          var y = upward ? size - 1 - vert : vert;
+          if (!isFn[y][x] && n < codewords.length * 8) {
+            modules[y][x] = bit(codewords[n >>> 3], 7 - (n & 7));
+            n++;
+          }
+        }
+      }
+    }
+
+    function applyMask(mask) {
+      for (var y = 0; y < size; y++) {
+        for (var x = 0; x < size; x++) {
+          if (isFn[y][x]) continue;
+          var inv;
+          switch (mask) {
+            case 0:
+              inv = (x + y) % 2 === 0;
+              break;
+            case 1:
+              inv = y % 2 === 0;
+              break;
+            case 2:
+              inv = x % 3 === 0;
+              break;
+            case 3:
+              inv = (x + y) % 3 === 0;
+              break;
+            case 4:
+              inv = (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0;
+              break;
+            case 5:
+              inv = ((x * y) % 2) + ((x * y) % 3) === 0;
+              break;
+            case 6:
+              inv = (((x * y) % 2) + ((x * y) % 3)) % 2 === 0;
+              break;
+            default:
+              inv = (((x + y) % 2) + ((x * y) % 3)) % 2 === 0;
+          }
+          if (inv) modules[y][x] = !modules[y][x];
+        }
+      }
+    }
+
+    // The mask with the lowest penalty (the spec's four rules).
+    function addHistory(len, h) {
+      if (h[0] === 0) len += size;
+      h.pop();
+      h.unshift(len);
+    }
+    function countPatterns(h) {
+      var m = h[1];
+      var core = m > 0 && h[2] === m && h[3] === m * 3 && h[4] === m && h[5] === m;
+      return (core && h[0] >= m * 4 && h[6] >= m ? 1 : 0) + (core && h[6] >= m * 4 && h[0] >= m ? 1 : 0);
+    }
+    function terminate(color, len, h) {
+      if (color) {
+        addHistory(len, h);
+        len = 0;
+      }
+      len += size;
+      addHistory(len, h);
+      return countPatterns(h);
+    }
+    function penalty() {
+      var score = 0;
+      for (var pass = 0; pass < 2; pass++) {
+        for (var a = 0; a < size; a++) {
+          var color = false;
+          var run = 0;
+          var h = [0, 0, 0, 0, 0, 0, 0];
+          for (var b = 0; b < size; b++) {
+            var cell = pass === 0 ? modules[a][b] : modules[b][a];
+            if (cell === color) {
+              run++;
+              if (run === 5) score += 3;
+              else if (run > 5) score++;
+            } else {
+              addHistory(run, h);
+              if (!color) score += countPatterns(h) * 40;
+              color = cell;
+              run = 1;
+            }
+          }
+          score += terminate(color, run, h) * 40;
+        }
+      }
+      for (var y = 0; y < size - 1; y++) {
+        for (var x = 0; x < size - 1; x++) {
+          var c0 = modules[y][x];
+          if (c0 === modules[y][x + 1] && c0 === modules[y + 1][x] && c0 === modules[y + 1][x + 1]) score += 3;
+        }
+      }
+      var dark = 0;
+      modules.forEach(function (row) {
+        row.forEach(function (cell) {
+          if (cell) dark++;
+        });
+      });
+      var total = size * size;
+      score += (Math.ceil(Math.abs(dark * 20 - total * 10) / total) - 1) * 10;
+      return score;
+    }
+
+    var best = forcedMask;
+    if (best === undefined || best === null) {
+      var bestScore = Infinity;
+      for (var m = 0; m < 8; m++) {
+        applyMask(m);
+        formatBits(m);
+        var p = penalty();
+        if (p < bestScore) {
+          best = m;
+          bestScore = p;
+        }
+        applyMask(m);
+      }
+    }
+    applyMask(best);
+    formatBits(best);
+    return { size: size, version: ver, mask: best, modules: modules };
+  }
+
+  /** The QR as an SVG string: dark modules on white, with the spec's 4-module quiet zone. */
+  function qrSvg(text, size) {
+    // Level L: the long link stays a smaller code (bigger modules), easier to read off a screen.
+    var m = qrMatrix(text, 'L');
+    var view = m.size + 8;
+    var path = '';
+    for (var y = 0; y < m.size; y++) {
+      for (var x = 0; x < m.size; x++) if (m.modules[y][x]) path += 'M' + (x + 4) + ' ' + (y + 4) + 'h1v1h-1z';
+    }
+    return (
+      '<svg xmlns="http://www.w3.org/2000/svg" width="' +
+      size +
+      '" height="' +
+      size +
+      '" viewBox="0 0 ' +
+      view +
+      ' ' +
+      view +
+      '" shape-rendering="crispEdges" role="img" aria-label="QR code: chat on WhatsApp on your phone">' +
+      '<rect width="' +
+      view +
+      '" height="' +
+      view +
+      '" fill="#fff"/><path d="' +
+      path +
+      '" fill="#111"/><\/svg>'
+    );
+  }
+
   // ---------- WhatsApp entry points ----------
   //
   // Both are plain links to Qwikspot's GET /api/wa redirect, which records the click and answers
@@ -232,10 +619,23 @@
     return config.apiBaseUrl.replace(/\/$/, '') + '/api/wa?' + params.toString();
   }
 
+  var qrBox = null;
+
+  /** The desktop QR: the same link as the button, marked as scanned (no Referer from a camera). */
+  function drawQr() {
+    if (!qrBox) return;
+    try {
+      qrBox.querySelector('.qs-qr__code').innerHTML = qrSvg(waHref('STORE_NEED') + '&via=qr', 176);
+    } catch (e) {
+      qrBox.style.display = 'none'; // never break the theme
+    }
+  }
+
   function updateLinks() {
     entryPoints.forEach(function (el) {
       if (el.getAttribute('data-qs-entry')) el.href = waHref(el.getAttribute('data-qs-entry'));
     });
+    drawQr();
   }
 
   function reportToGa4(entry) {
@@ -294,7 +694,11 @@
     'transition:transform .1s,box-shadow .15s,bottom .2s}' +
     '.qs-bubble:active,.qs-bubble.qs-opening{transform:scale(.92);box-shadow:0 2px 8px rgba(0,0,0,.3)}' +
     '.qs-bubble svg{width:30px;height:30px;fill:#fff}' +
-    '@media (max-width:749px){.qs-bubble{right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px))}}';
+    '@media (max-width:749px){.qs-bubble{right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px))}}' +
+    '.qs-qr{display:flex;align-items:center;gap:14px;box-sizing:border-box;width:100%;margin:8px 0 4px;padding:12px;' +
+    'border:1px solid #d9e7df;border-radius:8px;background:#fff;color:inherit;font:inherit;font-size:14px}' +
+    '.qs-qr__code{flex:none;line-height:0}.qs-qr__code svg{display:block;border-radius:4px}' +
+    '.qs-qr__text{display:grid;gap:2px}.qs-qr__text strong{color:#1f7a4d}.qs-qr__text span{opacity:.75;font-size:13px}';
 
   var WHATSAPP_ICON =
     '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3C9 3 3.3 8.6 3.3 15.6c0 2.2.6 4.4 1.7 6.3L3 29l7.3-1.9' +
@@ -327,6 +731,27 @@
     after.parentNode.insertBefore(powered, after.nextSibling);
     after.parentNode.insertBefore(button, powered);
     entryPoints.push(powered);
+    // On a computer: a QR the shopper scans to continue on their phone's WhatsApp.
+    if (!isMobile()) {
+      // Built with DOM calls: a closing tag inside the script would break Shopify's theme editor.
+      qrBox = document.createElement('div');
+      qrBox.className = 'qs-qr';
+      var code = document.createElement('div');
+      code.className = 'qs-qr__code';
+      var text = document.createElement('div');
+      text.className = 'qs-qr__text';
+      var title = document.createElement('strong');
+      title.textContent = 'On your phone?';
+      var hint = document.createElement('span');
+      hint.textContent = 'Scan to chat on WhatsApp — the message about this product is ready to send.';
+      text.appendChild(title);
+      text.appendChild(hint);
+      qrBox.appendChild(code);
+      qrBox.appendChild(text);
+      after.parentNode.insertBefore(qrBox, powered.nextSibling);
+      entryPoints.push(qrBox);
+      drawQr();
+    }
   }
 
   var bubble = null;
@@ -431,5 +856,10 @@
   }
 
   // For tests: the pure helpers.
-  window.__qwikspotShopifyHelpers = { gid: gid, numeric: numeric, variantFromBody: variantFromBody };
+  window.__qwikspotShopifyHelpers = {
+    gid: gid,
+    numeric: numeric,
+    variantFromBody: variantFromBody,
+    qrMatrix: qrMatrix,
+  };
 })();

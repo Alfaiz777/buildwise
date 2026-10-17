@@ -1,10 +1,8 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { ChatBubble, isList, originLabel } from '../components/chat/ChatBubble';
 import { ChatThread } from '../components/chat/ChatThread';
 import type { ChatMessage } from '../pages/brand/conversationTypes';
-import type { ShopperChat, ShopperMessage } from '../lib/shopperApi';
-import { ShopperPhone } from '../pages/shopper/ShopperPhone';
 
 /** Change 16: the structured, WhatsApp-compatible chat (customer and brand modes). */
 
@@ -155,38 +153,5 @@ describe('ChatThread', () => {
     unmount();
     render(<ChatThread messages={[STORE_FOUND, PICKUP_PASS]} mode="brand" />);
     expect(screen.getByRole('button', { name: 'Cancel reservation' })).toBeDisabled();
-  });
-});
-
-describe('ShopperPhone — live store updates', () => {
-  afterEach(() => vi.useRealTimers());
-
-  it('polls and shows a store update that arrives later', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
-    const update: ShopperMessage = {
-      ...base({
-        message_id: 'msg_0009',
-        text: '✅ *HealthPlus Chemist confirmed your hold*\n1 × Vitamin C Glow Serum 30 ml',
-      }),
-      from: 'BRAND',
-    };
-    let batch: ShopperMessage[] = [];
-    const chat = {
-      brand: { brand_id: 'brd_demo', display_name: 'Demo Beauty Co', logo_url: null },
-      start: vi.fn(),
-      send: vi.fn(),
-      messages: vi.fn(async () => ({ conversation_id: 'conv_1', messages: batch })),
-    } as unknown as ShopperChat;
-    render(<ShopperPhone chat={chat} />);
-    expect(await screen.findByText(/Say hello to Demo Beauty Co/)).toBeInTheDocument();
-    expect(screen.getByText('usually replies instantly')).toBeInTheDocument();
-
-    batch = [update];
-    await act(() => vi.advanceTimersByTimeAsync(3_000));
-    expect(
-      await screen.findByText('HealthPlus Chemist confirmed your hold', { selector: 'strong' }),
-    ).toBeInTheDocument();
-    // The shopper never sees internal labels.
-    expect(screen.queryByText('Store update')).not.toBeInTheDocument();
   });
 });

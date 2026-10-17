@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { qrMatrix, qrPath } from '../lib/qr';
 
 // Tests run from frontend/; the snippet lives in integrations/shopify at the repository root.
 const ROOT = join(process.cwd(), '..', 'integrations', 'shopify');
@@ -324,5 +325,58 @@ describe('Shopify snippet — helpers and the Liquid file', () => {
     expect(LIQUID).toContain("assign qs_brand = 'brd_demo'");
     expect(LIQUID).toContain('id="qwikspot-config"');
     expect(LIQUID).not.toMatch(/customer\.(email|phone|name|first_name)|cart\.token/);
+  });
+});
+
+describe('Shopify snippet — the desktop QR ("On your phone? Scan to chat on WhatsApp")', () => {
+  const need = () => document.querySelector<HTMLAnchorElement>('a.qs-need')!;
+  const qr = () => document.querySelector<HTMLElement>('.qs-qr');
+  const drawn = () => qr()!.querySelector('path')!.getAttribute('d');
+  type Helpers = { qrMatrix: (t: string, e: string, m?: number) => ReturnType<typeof qrMatrix> };
+  const helpers = () => (window as unknown as { __qwikspotShopifyHelpers: Helpers }).__qwikspotShopifyHelpers;
+
+  it('on a computer: under the button, a QR of the same link marked via=qr', () => {
+    load();
+    expect(qr()).not.toBeNull();
+    expect(qr()).toHaveTextContent('On your phone?');
+    expect(qr()!.querySelector('svg')).toHaveAttribute('role', 'img');
+    const expected = qrPath(qrMatrix(`${need().href}&via=qr`, 'L')).path;
+    expect(drawn()).toBe(expected);
+  });
+
+  it('choosing another size redraws the QR for that size', async () => {
+    load();
+    const before = drawn();
+    const input = document.querySelector<HTMLInputElement>('[name="id"]')!;
+    input.value = '222';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await tick();
+    expect(drawn()).not.toBe(before);
+    expect(drawn()).toBe(qrPath(qrMatrix(`${need().href}&via=qr`, 'L')).path);
+    expect(new URL(need().href).searchParams.get('variant')).toBe('222');
+  });
+
+  it('on a phone there is no QR (the button opens the WhatsApp app)', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1',
+    );
+    load();
+    expect(qr()).toBeNull();
+  });
+
+  it('hidden with the buttons when the brand has no WhatsApp number', async () => {
+    load({ available: false });
+    await tick();
+    await tick();
+    expect(qr()!.style.display).toBe('none');
+  });
+
+  it("the snippet's encoder is the console's, module for module", () => {
+    load();
+    for (const text of ['hi', 'https://m6ccxz-wk.myshopify.com', `${need().href}&via=qr`, 'é ₹349 ünïcödé']) {
+      for (const level of ['L', 'M', 'Q', 'H'] as const) {
+        expect(helpers().qrMatrix(text, level).modules).toEqual(qrMatrix(text, level).modules);
+      }
+    }
   });
 });

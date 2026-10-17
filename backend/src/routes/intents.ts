@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import express, { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import type { IntentService } from '../application/intentService.js';
+import { allowedStorefrontOrigins } from '../domain/brandSettings.js';
 import { WEB_EVENT_TYPES } from '../domain/intentClassification.js';
 import { AppError } from '../lib/errors.js';
 import { silentLogger, type Logger } from '../lib/logger.js';
@@ -48,6 +49,8 @@ const WaQuery = z
       .optional(),
     session: z.string().regex(OPAQUE_ID),
     visitor: z.string().regex(OPAQUE_ID).optional(),
+    // The storefront's desktop QR ("scan to continue on WhatsApp"): opened by a phone camera.
+    via: z.enum(['qr']).optional(),
   })
   .strict();
 
@@ -145,9 +148,13 @@ export function intentsRouter(
 
     // A link cannot send an Origin header: the referring page's origin is checked instead
     // (browsers send it cross-origin under the default strict-origin-when-cross-origin).
+    // A phone camera opening the storefront's desktop QR (via=qr) sends no Referer at all: it is
+    // accepted for a brand that lets a storefront send events. A Referer, when present, must
+    // still be an allowed storefront — so another website's link is never counted.
     const referer = req.get('referer');
     const origin = originOf(referer);
-    const allowed = await service.isOriginAllowed(brand.brandId, origin);
+    const scanned = q.via === 'qr' && !referer && allowedStorefrontOrigins(brand.settings).length > 0;
+    const allowed = scanned || (await service.isOriginAllowed(brand.brandId, origin));
 
     let reason: string;
     if (!allowed) reason = 'ORIGIN_NOT_ALLOWED';

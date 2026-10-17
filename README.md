@@ -23,8 +23,8 @@ Open <http://localhost:5173>. Five surfaces, all on synthetic data:
 
 | Surface | Where | Who it is for |
 |---|---|---|
-| **Landing** | `/` | Anyone: what Qwikspot does, Brand / Store login, "See it as a shopper" |
-| **Shopper demo** | `/shop` (the brand's website with the Qwikspot widget) and `/chat` (the brand's WhatsApp chat) | A shopper — no login; each tab is its own synthetic shopper |
+| **Landing** | `/` | Anyone: what Qwikspot does, Brand / Store login |
+| **Shopper** | the brand's real Shopify store (with the Qwikspot theme snippet) and WhatsApp — opened from **Open AquaSkin store** in the Brand Console, or by scanning its QR | A shopper — no login. On a computer, the QR under "Need it today?" continues on the phone's WhatsApp |
 | **Brand Console** | `/brand` | The brand: results, conversations with their journey and "why", reservations, insights, network, settings |
 | **Store Console** | `/store` | One store: today's holds (Next up), why each hold came, history, stock, demand near the store |
 | **Platform Console** | `/platform` | The Qwikspot team: brands, the retail network and the audit — aggregates only, never a customer |
@@ -55,7 +55,7 @@ Start from a clean demo: **Brand Console → Overview → Demo guide → Reset d
 | 7 | Shopper demo → **Demo controls** | **Sign in as Asha** → add the serum to the bag → leave; ~3 minutes later Brand → Conversations → **Process due work now** | The cart follow-up arrives in Asha's chat, with quick replies. Every "Sign in as Asha" is its own synthetic customer |
 | 8 | **Platform login** | Overview → Retail network → System | Results across brands as counts, store health flags, and how Qwikspot runs today (Mock AI, simulator, mock catalogue) |
 
-[docs/JUDGE_TEST_PLAN.md](docs/JUDGE_TEST_PLAN.md) is the longer hands-on test (stories a–h, privacy and phone checks); `node scripts/judge-test-plan.mjs` runs all of it in a browser and prints the results table. `node scripts/judge-script.mjs` runs exactly these steps through the UI — starting with Reset demo, at 1440 px and 390 px — and writes the screenshot set in [docs/screenshots/](docs/screenshots/README.md). `npm run demo:check` walks the core journey over HTTP and prints ✔ / ✘ per step (`BASE_URL` points it at a deployment).
+[docs/JUDGE_TEST_PLAN.md](docs/JUDGE_TEST_PLAN.md) is the longer hands-on test (stories a–h, privacy and phone checks). The shopper part runs on the brand's real Shopify store and WhatsApp (Change 18), so it is done by hand on a phone; `npm run demo:check` walks the core journey over HTTP and prints ✔ / ✘ per step (`BASE_URL` points it at a deployment), and `node scripts/screenshots.mjs` takes the console screenshots at 1440 px and 390 px.
 
 Emulator data persists between runs in `.emulator-data/` (git-ignored; exported when you stop the emulators with Ctrl+C). Delete the folder to start from nothing.
 

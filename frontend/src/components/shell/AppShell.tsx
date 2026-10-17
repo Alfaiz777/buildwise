@@ -1,4 +1,4 @@
-import { ExternalLink, HelpCircle, LogOut, Menu as MenuIcon, ShieldCheck, X } from 'lucide-react';
+import { HelpCircle, LogOut, Menu as MenuIcon, ShieldCheck, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useMe } from '../../account/meContext';
@@ -14,6 +14,8 @@ import { AskQwikspotProvider, BRAND_ASK } from '../../pages/brand/askQwikspot';
 import { storeAsk } from '../../pages/retailer/storeAsk';
 import { PLATFORM_ASK } from '../../pages/platform/platformAsk';
 import { JudgeTour, SHOW_TOUR } from '../../pages/brand/JudgeTour';
+import { useShopifyStore } from '../../pages/brand/shopifyStore';
+import { StoreButton } from '../../pages/brand/StoreButton';
 
 /** Dispatched on window when a page resolves or changes what the nav badge counts. */
 export const WAITING_CHANGED = 'qwikspot:waiting-changed';
@@ -55,7 +57,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const storeId = me.scope === 'RETAIL' ? me.store.store_id : null;
   const storeConfig = useMemo(() => (storeId ? storeAsk(storeId) : null), [storeId]);
   const api = useApi();
-  // The demo brand's Brand Admin gets a shortcut to the shopper experience (DEMO_MODE only).
+  // The demo brand's Brand Admin gets the judge's checklist (DEMO_MODE only).
   const demo = useLoad(
     useCallback(
       () =>
@@ -66,6 +68,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     ),
   );
   const shopperDemo = me.scope === 'BRAND' && demo.data?.reset_available === true;
+  // The brand's real Shopify store (from its connection): "Open <brand> store" and its QR.
+  const shopify = useShopifyStore(me.scope === 'BRAND');
   // UI-3: conversations waiting for a person (Brand); UI-4: holds waiting for confirmation (Store).
   const waiting = useLoad(
     useCallback(async (): Promise<number> => {
@@ -179,17 +183,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <HelpCircle size={18} aria-hidden="true" />
             </button>
           )}
-          {shopperDemo && me.scope === 'BRAND' && (
-            <a
-              className="ui-button ui-button--accent ui-button--sm"
-              href={`/shop?brand=${encodeURIComponent(me.brand_id)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Open shopper demo (new tab)"
-            >
-              <span className="shell-top__open">Open</span>shopper demo <ExternalLink size={14} aria-hidden="true" />
-            </a>
-          )}
+          {shopify && me.scope === 'BRAND' && <StoreButton store={shopify} brandName={me.brand_name} />}
           <span className="shell-top__email">{me.user.email ?? me.user.user_id}</span>
           <button type="button" className="ui-button ui-button--ghost ui-button--sm" onClick={() => void signOut()}>
             <LogOut size={16} aria-hidden="true" />
@@ -223,7 +217,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <RoleBanner me={me} open={banner.open} onDismiss={banner.dismiss} />
         <main className="shell-main">{children}</main>
       </div>
-      {shopperDemo && me.scope === 'BRAND' && <JudgeTour brandId={me.brand_id} />}
+      {shopperDemo && me.scope === 'BRAND' && <JudgeTour brandId={me.brand_id} store={shopify} />}
     </div>
   );
   // L5/L6/L7: every console carries "Ask Qwikspot" — the header button and the drawer (and

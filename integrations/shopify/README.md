@@ -58,6 +58,18 @@ computer it opens WhatsApp Web in a new tab. The button shows "Opening WhatsApp�
 The bubble sits at the bottom right, above the phone's home bar, and moves up when the theme shows a bar fixed
 to the bottom of the screen (for example Savor's sticky Add to cart), so it never covers the theme's buttons.
 
+## On a computer: "On your phone? Scan to chat on WhatsApp"
+
+On a computer, a QR code sits under the "Need it today?" button on product pages. It holds the same Qwikspot link
+as the button, marked `via=qr`. Scanning it with a phone camera records the click, creates the one-time reference
+and opens WhatsApp **on the phone** with the message ready, so the chat is linked to what was browsed on the
+computer. Choosing another size redraws the QR. The QR is drawn in the browser (no QR service sees the link) and
+hides itself with the buttons when the brand has no WhatsApp number. Phones show no QR: the button opens WhatsApp
+directly.
+
+**After updating Qwikspot, paste `qwikspot.liquid` into the theme again** (Snippets → `qwikspot` → replace all →
+Save) so the store gets the QR.
+
 ## GA4 (optional, reporting only)
 
 Install Shopify's free **Google & YouTube** app (Shopify admin → Apps) and connect a GA4 property. It sends the

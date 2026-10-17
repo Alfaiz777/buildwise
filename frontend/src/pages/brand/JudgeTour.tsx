@@ -2,7 +2,9 @@ import { Check, ChevronDown, ExternalLink, Sparkles, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApi } from '../../api/apiContext';
-import type { ConversationRow, ReservationRow } from './conversationTypes';
+import { QrCode } from '../../components/ui/QrCode';
+import type { ConversationRow, IntentSummary, ReservationRow } from './conversationTypes';
+import type { ShopifyStore } from './shopifyStore';
 import { useAskQwikspot } from './askQwikspot';
 import { DemoGuide } from './DemoGuide';
 import './tour.css';
@@ -45,25 +47,28 @@ function write(brandId: string, s: TourState) {
 }
 
 const STEPS = [
-  'Open the shopper demo and ask about a product',
-  'Watch the conversation appear in Conversations',
-  'See the hold reach the store',
+  'Open the AquaSkin store and look at a product',
+  'Tap “Need it today?” and send the WhatsApp message',
+  'Watch it in Conversations and see the hold reach the store',
   'Ask Qwikspot how your brand did',
 ] as const;
 
 /**
- * "Try the live demo" (UI-P3): a compact floating checklist for judges, shown only to the demo
- * brand's Brand Admin (DEMO_MODE). Four steps tick themselves from what the console already
- * loads — a live (not demo-history) conversation or hold that started after the tour did — or
- * by hand. It collapses to a pill ("2/4"), can be dismissed and comes back from the header's
- * "?". The full judge script and Reset demo (DemoGuide, unchanged) sit inside it.
+ * "Try the live demo" (UI-P3; Shopify flow): a compact floating checklist for judges, shown only
+ * to the demo brand's Brand Admin (DEMO_MODE). The journey runs on the brand's real Shopify
+ * store: open it (or scan its QR), look at a product, tap "Need it today?" and send the
+ * WhatsApp message, watch the chat and the hold arrive, ask Qwikspot. Steps tick themselves
+ * from what the console already loads — a live storefront intent, conversation or hold that
+ * started after the tour did — or by hand. It collapses to a pill ("2/4"), can be dismissed and
+ * comes back from the header's "?". The full judge script and Reset demo sit inside it.
  */
-export function JudgeTour({ brandId }: { brandId: string }) {
+export function JudgeTour({ brandId, store }: { brandId: string; store: ShopifyStore | null }) {
   const api = useApi();
   const { ask } = useAskQwikspot();
   const { pathname } = useLocation();
   const [state, setState] = useState<TourState>(() => read(brandId));
-  const [live, setLive] = useState({ conversation: false, hold: false });
+  const [live, setLive] = useState({ intent: false, conversation: false, hold: false });
+  const [showQr, setShowQr] = useState(false);
   const update = useCallback(
     (change: (s: TourState) => TourState) =>
       setState((s) => {
@@ -81,9 +86,11 @@ export function JudgeTour({ brandId }: { brandId: string }) {
     Promise.allSettled([
       api.get<{ conversations: ConversationRow[] }>('/api/brand/conversations'),
       api.get<{ reservations: ReservationRow[] }>('/api/reservations?limit=50'),
-    ]).then(([c, r]) => {
+      api.get<{ intents: IntentSummary[] }>('/api/brand/intents'),
+    ]).then(([c, r, i]) => {
       if (gone) return;
       setLive({
+        intent: i.status === 'fulfilled' && i.value.intents.some((x) => after(x.last_event_at)),
         conversation:
           c.status === 'fulfilled' &&
           c.value.conversations.some((x) => !x.demo_history && after(x.last_inbound_at ?? x.last_message_at)),
@@ -102,8 +109,8 @@ export function JudgeTour({ brandId }: { brandId: string }) {
   }, [update]);
 
   const auto: Record<number, boolean> = {
-    0: live.conversation,
-    1: live.conversation && pathname.startsWith('/brand/conversations'),
+    0: live.intent || live.conversation,
+    1: live.conversation,
     2: live.hold,
   };
   // A step seen once stays ticked (the data may move on, e.g. the hold is picked up).
@@ -111,7 +118,7 @@ export function JudgeTour({ brandId }: { brandId: string }) {
     const newly = Object.entries(auto).filter(([i, v]) => v && !state.done[Number(i)]);
     if (newly.length) update((s) => ({ ...s, done: { ...s.done, ...Object.fromEntries(newly) } }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live.conversation, live.hold, pathname]);
+  }, [live.intent, live.conversation, live.hold]);
 
   if (state.dismissed) return null;
   const done = STEPS.filter((_, i) => state.done[i]).length;
@@ -133,32 +140,54 @@ export function JudgeTour({ brandId }: { brandId: string }) {
     );
   }
 
-  const shopUrl = `/shop?brand=${encodeURIComponent(brandId)}`;
   const action = (i: number) => {
     switch (i) {
       case 0:
-        return (
-          <a
-            className="tour-step__link"
-            href={shopUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => tick(0)}
-          >
-            Open the shopper demo <ExternalLink size={12} aria-hidden="true" />
-          </a>
+        return store ? (
+          <span className="tour-step__links">
+            <a
+              className="tour-step__link"
+              href={store.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => tick(0)}
+            >
+              Open the store <ExternalLink size={12} aria-hidden="true" />
+            </a>
+            <button
+              type="button"
+              className="ui-link-button tour-step__link"
+              aria-expanded={showQr}
+              onClick={() => setShowQr((v) => !v)}
+            >
+              {showQr ? 'Hide the QR' : 'Or scan it with your phone'}
+            </button>
+            {showQr && (
+              <span className="tour-step__qr">
+                <QrCode value={store.url} size={132} label={`QR code for ${store.url}`} />
+                <span className="small muted">{store.domain}</span>
+              </span>
+            )}
+          </span>
+        ) : (
+          <span className="small muted">Connect your Shopify store in Settings first.</span>
         );
       case 1:
         return (
-          <Link className="tour-step__link" to="/brand/conversations">
-            Go to Conversations →
-          </Link>
+          <span className="small muted">
+            On a computer, scan the QR under the button: WhatsApp opens on your phone with the message ready.
+          </span>
         );
       case 2:
         return (
-          <a className="tour-step__link" href="/login?as=store" target="_blank" rel="noopener noreferrer">
-            Store sign-in <ExternalLink size={12} aria-hidden="true" />
-          </a>
+          <span className="tour-step__links">
+            <Link className="tour-step__link" to="/brand/conversations">
+              Go to Conversations →
+            </Link>
+            <a className="tour-step__link" href="/login?as=store" target="_blank" rel="noopener noreferrer">
+              Store sign-in <ExternalLink size={12} aria-hidden="true" />
+            </a>
+          </span>
         );
       default:
         return (
@@ -224,7 +253,7 @@ export function JudgeTour({ brandId }: { brandId: string }) {
           </li>
         ))}
       </ol>
-      <DemoGuide brandId={brandId} />
+      <DemoGuide store={store} />
     </aside>
   );
 }

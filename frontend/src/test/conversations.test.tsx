@@ -538,14 +538,30 @@ describe('UI-P3 — the three-pane inbox', () => {
     expect(screen.queryByRole('log', { name: 'Messages' })).not.toBeInTheDocument();
   });
 
-  it('no conversations yet: the empty state opens the shopper demo', async () => {
+  it('no conversations yet: the empty state opens the real Shopify store', async () => {
     const api = apiFor();
     const base = api.get as (path: string) => Promise<unknown>;
     const get = vi.fn(async (path: string) =>
-      path === '/api/brand/conversations' ? { conversations: [] } : base(path),
+      path === '/api/brand/conversations'
+        ? { conversations: [] }
+        : path === '/api/brand/connections'
+          ? {
+              connections: [
+                {
+                  provider: 'SHOPIFY',
+                  status: 'CONNECTED',
+                  shop_domain: 'm6ccxz-wk.myshopify.com',
+                  shop_name: 'AquaSkin',
+                },
+              ],
+            }
+          : base(path),
     );
     renderAt('/brand/conversations', { ...api, get: get as ApiClient['get'] });
-    expect(await screen.findByText(/No conversations yet\. Open the shopper demo to start one\./)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Open shopper demo/ })).toHaveAttribute('href', '/shop?brand=brand_A');
+    expect(
+      await screen.findByText(/No conversations yet\. Open your store, tap “Need it today\?”/),
+    ).toBeInTheDocument();
+    const links = await screen.findAllByRole('link', { name: /Open AquaSkin store/ });
+    expect(links.at(-1)).toHaveAttribute('href', 'https://m6ccxz-wk.myshopify.com');
   });
 });

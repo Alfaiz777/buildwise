@@ -24,7 +24,7 @@ import { useAuth } from '../../auth/authContext';
 import { Wordmark } from '../../components/shell/Wordmark';
 import { Drawer } from '../../components/ui';
 import type { FrontendProfile } from '../../config';
-import { shopperDemoAvailable, useDemoConfig } from '../../lib/demoConfig';
+import { useDemoConfig } from '../../lib/demoConfig';
 import { usePageTitle } from '../../lib/pageTitle';
 import { HeroVisual } from './HeroVisual';
 
@@ -34,14 +34,6 @@ const ANCHORS = [
   ['#for-stores', 'For stores'],
   ['#for-shoppers', 'For shoppers'],
 ] as const;
-
-function ShopperLink({ className = 'ui-button ui-button--secondary' }: { className?: string }) {
-  return (
-    <a className={className} href="/shop" target="_blank" rel="noopener noreferrer">
-      See it as a shopper ↗
-    </a>
-  );
-}
 
 function Section({
   id,
@@ -90,11 +82,11 @@ function Checklist({ items }: { items: string[] }) {
  * the only API call is the public demo config, and the page works without it.
  * Illustrations are labelled "Example"; no statistics are invented.
  */
-export function LandingPage({ profile = 'local' }: { profile?: FrontendProfile }) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function LandingPage({ profile: _profile = 'local' }: { profile?: FrontendProfile }) {
   usePageTitle('Qwikspot — get it today at a store near you');
   const { user } = useAuth();
   const demo = useDemoConfig();
-  const shopper = shopperDemoAvailable(demo, profile);
   const [menu, setMenu] = useState(false);
 
   const logins = user ? (
@@ -167,7 +159,6 @@ export function LandingPage({ profile = 'local' }: { profile?: FrontendProfile }
                 <Link className="ui-button ui-button--secondary lp-cta" to="/login?as=store">
                   <Store size={18} aria-hidden="true" /> I run a store <span className="lp-cta__hint">Store login</span>
                 </Link>
-                {shopper && <ShopperLink className="ui-button ui-button--ghost lp-cta" />}
               </div>
             </div>
             <HeroVisual />
@@ -333,7 +324,6 @@ export function LandingPage({ profile = 'local' }: { profile?: FrontendProfile }
                 'At most one follow-up, and only if you opted in. Reply STOP any time.',
               ]}
             />
-            {shopper && <ShopperLink />}
           </div>
         </Section>
 

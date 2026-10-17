@@ -1,5 +1,11 @@
 # Judge test plan — manual
 
+> **Change 18 (Oct 2026): the shopper demo (`/shop`, `/chat`, Demo controls) was removed.** The shopper part now
+> runs on the brand's real Shopify store and WhatsApp: in the Brand Console press **Open AquaSkin store** (or scan
+> its QR), open a product, tap **Need it today? Ask on WhatsApp** (on a computer, scan the QR under it) and send the
+> message. The steps below that start on `/shop` describe the earlier local shopper demo; follow the same chat
+> steps in WhatsApp instead. The Store, Brand and Platform sections are unchanged.
+
 A hands-on test you run yourself, the way a judge would, to check that the five surfaces work together:
 
 - **Landing** (`/`)

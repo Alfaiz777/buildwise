@@ -17,6 +17,20 @@ const BRAND_ADMIN: MeResponse = {
   brand_name: 'Demo Beauty Co',
 };
 
+const SHOPIFY = {
+  connection_id: 'SHOPIFY',
+  provider: 'SHOPIFY',
+  source: 'SHOPIFY',
+  status: 'CONNECTED',
+  shop_domain: 'm6ccxz-wk.myshopify.com',
+  shop_name: 'AquaSkin',
+  connected_at: '2026-10-01T10:00:00.000Z',
+  last_sync_at: '2026-10-01T10:00:00.000Z',
+  last_error: null,
+  product_count: 14,
+  variant_count: 24,
+};
+
 const BRAND_FIXTURES: Record<string, unknown> = {
   '/api/me': BRAND_ADMIN,
   '/api/brand/users': { users: [] },
@@ -127,18 +141,28 @@ describe('Brand Console — demo guide and Reset demo', () => {
       stock: { status: 'COMPLETED', rows_valid: 34 },
       history: { outcomes: 97 },
     }));
-    renderAt('/brand', apiWith({ '/api/brand/demo': { reset_available: true } }, post));
+    renderAt(
+      '/brand',
+      apiWith(
+        { '/api/brand/demo': { reset_available: true }, '/api/brand/connections': { connections: [SHOPIFY] } },
+        post,
+      ),
+    );
     const guide = (await screen.findByText('Demo guide')).closest('details')!;
     expect(within(guide).getAllByRole('listitem')).toHaveLength(8);
     expect(within(guide).getByRole('link', { name: 'Open a platform sign-in tab' })).toHaveAttribute(
       'href',
       '/login?as=platform',
     );
-    const open = within(guide).getByRole('link', { name: 'Open the shopper demo' });
-    expect(open).toHaveAttribute('href', '/shop?brand=brd_demo');
+    // The journey runs on the brand's real Shopify store (from its connection).
+    const open = await within(guide).findByRole('link', { name: 'Open the AquaSkin store' });
+    expect(open).toHaveAttribute('href', 'https://m6ccxz-wk.myshopify.com');
     expect(open).toHaveAttribute('target', '_blank');
-    // The header offers the shopper demo too (DEMO_MODE, demo brand only).
-    expect(screen.getByRole('link', { name: /Open shopper demo/ })).toHaveAttribute('href', '/shop?brand=brd_demo');
+    expect(screen.getByRole('link', { name: 'Open the AquaSkin Shopify store (new tab)' })).toHaveAttribute(
+      'href',
+      'https://m6ccxz-wk.myshopify.com',
+    );
+    expect(document.body.innerHTML).not.toContain('/shop?');
 
     fireEvent.click(within(guide).getByRole('button', { name: 'Reset demo' }));
     const dialog = screen.getByRole('alertdialog');
@@ -240,5 +264,41 @@ describe('labels people read', () => {
     expect(label('RETAIL_ADMIN')).toBe('Retail Admin');
     expect(label('CUSTOMER_ARRIVED')).toBe('Customer arrived');
     expect(label(null)).toBe('—');
+  });
+});
+
+describe('Brand Console — the real Shopify store', () => {
+  it('the header opens the store and shows its QR for a phone', async () => {
+    renderAt(
+      '/brand',
+      apiWith({ '/api/brand/demo': { reset_available: false }, '/api/brand/connections': { connections: [SHOPIFY] } }),
+    );
+    const open = await screen.findByRole('link', { name: 'Open the AquaSkin Shopify store (new tab)' });
+    expect(open).toHaveAttribute('href', 'https://m6ccxz-wk.myshopify.com');
+    expect(open).toHaveAttribute('rel', 'noopener noreferrer');
+    fireEvent.click(screen.getByRole('button', { name: 'Scan to open the AquaSkin store on a phone' }));
+    const pop = screen.getByRole('dialog', { name: 'Open the AquaSkin store on your phone' });
+    expect(within(pop).getByRole('img', { name: 'QR code for https://m6ccxz-wk.myshopify.com' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: /on your phone/ })).not.toBeInTheDocument();
+  });
+
+  it('no Shopify store connected: no store button', async () => {
+    renderAt('/brand', apiWith({ '/api/brand/demo': { reset_available: false } }));
+    expect(await screen.findByText('Brand Console')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Shopify store/ })).not.toBeInTheDocument();
+  });
+
+  it('the tour opens the store, and shows its QR on request', async () => {
+    window.localStorage.removeItem('qs_judge_tour:brd_demo');
+    renderAt(
+      '/brand',
+      apiWith({ '/api/brand/demo': { reset_available: true }, '/api/brand/connections': { connections: [SHOPIFY] } }),
+    );
+    const tour = await screen.findByRole('complementary', { name: 'Try the live demo' });
+    const link = await within(tour).findByRole('link', { name: /Open the store/ });
+    expect(link).toHaveAttribute('href', 'https://m6ccxz-wk.myshopify.com');
+    fireEvent.click(within(tour).getByRole('button', { name: 'Or scan it with your phone' }));
+    expect(within(tour).getByRole('img', { name: 'QR code for https://m6ccxz-wk.myshopify.com' })).toBeInTheDocument();
   });
 });

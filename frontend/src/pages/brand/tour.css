@@ -138,3 +138,74 @@
     animation: none;
   }
 }
+
+/* The tour's store step: the store link and, on request, its QR. */
+.tour-step__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--space-3);
+}
+.tour-step__qr {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-1);
+  flex-basis: 100%;
+  margin-top: var(--space-1);
+}
+
+/* The header's "Open <brand> store" and its QR popover (UI-P3, Shopify flow). */
+.ui-qr {
+  display: block;
+  border-radius: var(--radius-sm);
+}
+.store-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.store-btn__qr {
+  flex-basis: auto;
+}
+.store-btn__pop {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: var(--z-toast);
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  width: 240px;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+  animation: ui-fade var(--duration-fast) var(--ease-out);
+}
+.store-btn__pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.store-btn__pop p {
+  margin: 0;
+}
+.store-btn__url {
+  font-weight: 600;
+  word-break: break-all;
+}
+@media (max-width: 768px) {
+  .store-btn__open-word {
+    display: none;
+  }
+  .store-btn__pop {
+    position: fixed;
+    top: 64px;
+    right: var(--space-4);
+  }
+}
