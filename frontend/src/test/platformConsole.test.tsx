@@ -653,3 +653,83 @@ describe('UI-P1: shell and the Ask drawer', () => {
     expect(screen.queryByRole('dialog', { name: 'Ask Qwikspot' })).not.toBeInTheDocument();
   });
 });
+
+describe('UI-P1 follow-ups: AI actions, the flags popover, Refresh, the logo', () => {
+  const asked = () => vi.fn(async () => brief({ answer: 'Skin Studio has no Store Admin.', source: 'QUICK_SUMMARY' }));
+
+  it('"Ask about this network" opens Ask Qwikspot and asks about the stores', async () => {
+    const post = asked();
+    renderAt('/platform/network?brand=brd_demo', platformApi({}, post as unknown as ApiClient['post']));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask about this network' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Ask Qwikspot' });
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        '/api/platform/assistant',
+        expect.objectContaining({ question: 'Which stores need attention, and why?', page: 'NETWORK' }),
+      ),
+    );
+    expect(await within(drawer).findByText('Skin Studio has no Store Admin.')).toBeInTheDocument();
+    // The drawer's header carries the Qwikspot mark.
+    expect(drawer.querySelector('.ui-drawer__title .ui-ai-mark')).not.toBeNull();
+  });
+
+  it('"What changed today?" on Audit asks the audit question', async () => {
+    const post = asked();
+    renderAt('/platform/audit', platformApi({}, post as unknown as ApiClient['post']));
+    fireEvent.click(await screen.findByRole('button', { name: 'What changed today?' }));
+    await screen.findByRole('dialog', { name: 'Ask Qwikspot' });
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        '/api/platform/assistant',
+        expect.objectContaining({ question: 'What changed in the audit log today?', page: 'AUDIT' }),
+      ),
+    );
+  });
+
+  it('the header and page AI buttons are the Ask Qwikspot style with the logo', async () => {
+    renderAt('/platform/network?brand=brd_demo');
+    const header = await screen.findByRole('button', { name: "Ask Qwikspot about the platform's data" });
+    expect(header).toHaveClass('ui-ai-button');
+    expect(header.querySelector('.ui-ai-mark')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Ask about this network' })).toHaveClass('ui-ai-button');
+  });
+
+  it('the flags popover: one column, closes with ✕, with Escape and with a click outside', async () => {
+    renderAt('/platform/network?brand=brd_demo');
+    const trigger = await screen.findByRole('button', { name: 'What do the flags mean?' });
+    fireEvent.click(trigger);
+    const panel = screen.getByRole('dialog', { name: 'What the flags mean' });
+    expect(panel.querySelector('dl')).toHaveClass('pf-popover__list');
+    expect(within(panel).getByText('Nobody can confirm holds at this store yet.')).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog', { name: 'What the flags mean' })).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'What the flags mean' })).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    fireEvent.mouseDown(screen.getByRole('heading', { name: 'Retail network' }));
+    expect(screen.queryByRole('dialog', { name: 'What the flags mean' })).not.toBeInTheDocument();
+  });
+
+  it('System → Refresh checks again and says when', async () => {
+    const health = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: 'ok',
+            version: '1.4.0',
+            commit: null,
+            profile: 'gcp',
+            adapters: { agent_runtime: 'GEMINI', channels: ['WHATSAPP'], commerce: 'SHOPIFY' },
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal('fetch', health);
+    renderAt('/platform/system');
+    expect(await screen.findByText(/^Checked at /)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(health).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/^Checked at /)).toBeInTheDocument();
+  });
+});

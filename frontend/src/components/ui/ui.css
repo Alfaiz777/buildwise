@@ -715,3 +715,105 @@
 .ui-funnel__to {
   fill: var(--color-primary);
 }
+
+/* ---------------------------------------------------------------- UI-P1: Ask Qwikspot (AI) */
+.ui-ai-mark {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+}
+.ui-ai-mark__pin {
+  fill: var(--color-primary);
+}
+/* On the gradient button the pin is white, so its shape still reads; the check keeps the logo's amber. */
+.ui-ai-mark--on-dark .ui-ai-mark__pin {
+  fill: #fff;
+}
+.ui-ai-mark__check {
+  stroke: var(--color-accent);
+}
+.ui-ai-mark--on-dark .ui-ai-mark__check {
+  stroke: var(--teal-700);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-ai-mark__spark {
+    animation: none;
+  }
+}
+.ui-ai-mark__spark {
+  position: absolute;
+  top: -22%;
+  right: -26%;
+  fill: var(--amber-300);
+  filter: drop-shadow(0 0 2px rgb(252 195 90 / 0.8));
+  animation: ui-ai-twinkle 2.4s ease-in-out infinite;
+}
+@keyframes ui-ai-twinkle {
+  0%,
+  100% {
+    transform: scale(0.85) rotate(0deg);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.1) rotate(20deg);
+    opacity: 1;
+  }
+}
+.ui-ai-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: 0 var(--space-4) 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--teal-700), var(--teal-500) 55%, var(--teal-400));
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow:
+    0 0 0 1px rgb(31 151 138 / 0.35),
+    0 4px 14px rgb(31 151 138 / 0.35);
+  transition:
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.ui-ai-button:hover:not(:disabled) {
+  flex-basis: auto;
+  background: linear-gradient(135deg, var(--teal-800), var(--teal-600) 55%, var(--teal-500));
+  box-shadow:
+    0 0 0 1px rgb(31 151 138 / 0.5),
+    0 6px 20px rgb(31 151 138 / 0.45);
+  transform: translateY(-1px);
+}
+.ui-ai-button--sm {
+  min-height: 32px;
+  padding: 0 var(--space-3) 0 var(--space-2);
+  font-size: var(--text-xs);
+}
+.ui-ai-button--quiet {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-primary) 45%, transparent),
+    0 2px 8px rgb(31 151 138 / 0.15);
+}
+.ui-ai-button--quiet:hover:not(:disabled) {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.ui-ai-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.ui-drawer__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}

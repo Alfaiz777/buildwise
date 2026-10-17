@@ -1,4 +1,5 @@
 /** Qwikspot UI kit (Interface Refresh UI-0). Styles in ./ui.css; tokens in styles/tokens.css. */
+export { AiButton, AiMark } from './AiButton';
 export { Badge, StatusPill, type Tone } from './Badge';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export { Card } from './Card';
