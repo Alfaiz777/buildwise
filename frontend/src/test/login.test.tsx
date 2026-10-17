@@ -153,6 +153,26 @@ describe('role-aware login', () => {
     expect(screen.getByLabelText('Email')).toHaveValue('platform@qwikspot.test');
   });
 
+  it('UI-L: a demo tile fills the form, shows as chosen and moves focus to Sign in; the story is told in words', async () => {
+    stubConfig({ demo_mode: true, logins: LOGINS });
+    render(<Harness path="/login?as=store" api={apiAs(ME.RETAIL!)} />);
+    const tile = await screen.findByRole('button', { name: 'Use Retail Admin — HealthPlus Chemist' });
+    expect(tile).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(tile);
+    expect(tile).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Email')).toHaveValue('healthplus@qwikspot.test');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Sign in' }));
+    // Typing again un-chooses the tile.
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'me@x.test' } });
+    expect(tile).toHaveAttribute('aria-pressed', 'false');
+    const steps = screen.getByRole('list', { name: 'How Qwikspot works' });
+    expect(
+      within(steps)
+        .getAllByRole('listitem')
+        .map((li) => li.querySelector('strong')?.textContent),
+    ).toEqual(['Browsing online', 'Asks on WhatsApp', 'Checks live stock', 'Picked up today']);
+  });
+
   it.each([
     ['/login?as=brand', 'RETAIL', 'This is a Store account. Taking you to the Store Console.', 'Store Console'],
     ['/login?as=store', 'BRAND', 'This is a Brand account. Taking you to the Brand Console.', 'Brand Console'],

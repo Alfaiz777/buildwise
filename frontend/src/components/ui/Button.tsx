@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react';
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react';
 
 /** `brand`: the Ask Qwikspot teal gradient, for a page's main actions (UI-P1). */
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent' | 'brand';
@@ -10,6 +10,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** Shows a spinner, keeps the label for screen readers and disables the button. */
   loading?: boolean;
   icon?: ReactNode;
+  /** React 19: a ref is an ordinary prop (e.g. to focus Sign in after a demo login is chosen). */
+  ref?: Ref<HTMLButtonElement>;
 }
 
 /** The one button. `type` defaults to "button" so it never submits a form by accident. */
