@@ -649,8 +649,37 @@ export function questionAttributes(question: string): string[] {
 
 const PRICE_QUESTION = /\b(price|prices|cost|costs|how much|kitne|kitna|mrp|rate)\b|₹/i;
 
+const SKIN_TYPES = /\b(oily|dry|sensitive|combination|normal|acne-prone)\b/i;
+const listsSkin = (p: ProductSheet, skin: string) => {
+  const listed = String(p.attributes.skin_type ?? '').toLowerCase();
+  return { exact: listed.includes(skin), all: /\ball\b/.test(listed) };
+};
+
+/**
+ * L9: "Is it good for oily skin?" gets a plain answer from the verified skin types — and, when
+ * this product does not list that skin type, an alternative that does.
+ */
+function skinVerdict(product: ProductSheet, question: string, alternatives: ProductSheet[]): string | null {
+  const skin = SKIN_TYPES.exec(question)?.[1]?.toLowerCase();
+  if (!skin || !product.attributes.skin_type) return null;
+  const { exact, all } = listsSkin(product, skin);
+  if (exact) return `Yes, it's listed for ${skin} skin.`;
+  if (all) return `Yes, it's listed for all skin types, so ${skin} skin too.`;
+  const alt = alternatives.find((a) => listsSkin(a, skin).exact);
+  return `It isn't listed for ${skin} skin.${alt ? ` *${alt.title}* is.` : ''}`;
+}
+
+const verdictLine = (product: ProductSheet, question: string, alternatives: ProductSheet[]) => {
+  const verdict = skinVerdict(product, question, alternatives);
+  return verdict ? `\n\n${verdict}` : '';
+};
+
 /** EDUCATE: quotes only attributes the catalogue has (and its prices when asked); otherwise says so. */
-export function educateReply(product: ProductSheet, question: string): { reply: Reply; grounded: boolean } {
+export function educateReply(
+  product: ProductSheet,
+  question: string,
+  alternatives: ProductSheet[] = [],
+): { reply: Reply; grounded: boolean } {
   const keys = questionAttributes(question).filter((k) => product.attributes[k]);
   const prices = PRICE_QUESTION.test(question) && product.variants.length > 0;
   if (keys.length === 0 && !prices) {
@@ -671,7 +700,7 @@ export function educateReply(product: ProductSheet, question: string): { reply: 
     grounded: true,
     reply: {
       message_type: 'TEXT',
-      text: `*${product.title}* — from our product information:\n${facts.join('\n')}`,
+      text: `*${product.title}* — from our product information:\n${facts.join('\n')}${verdictLine(product, question, alternatives)}`,
     },
   };
 }

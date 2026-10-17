@@ -360,6 +360,16 @@ class MockRun {
     return { query: this.text || 'product' };
   }
 
+  /** The product being discussed: the last one the shopper named in recent messages, else the bound one. */
+  private async productInPlay(): Promise<{ product_id: string } | null> {
+    for (const text of this.earlier()) {
+      const hit = this.named(text);
+      if (hit) return { product_id: hit.entry.product_id };
+    }
+    const bound = this.boundProduct();
+    return bound ? { product_id: bound.product_id } : null;
+  }
+
   private boundProduct(): ProductSheet | null {
     return this.ctx.products[0] ?? null;
   }
@@ -641,7 +651,7 @@ class MockRun {
         intentType: 'PRODUCT_QUESTION',
       });
     }
-    const { reply, grounded } = educateReply(ctx.product, this.text);
+    const { reply, grounded } = educateReply(ctx.product, this.text, ctx.alternatives);
     return this.decision({
       action: 'EDUCATE',
       reply,
@@ -657,6 +667,27 @@ class MockRun {
   private async compare(): Promise<AgentDecision> {
     // "Which is better, Hyaluronic Hydra Serum or Niacinamide Clarifying Serum?" — the two named.
     const named = matchProducts(this.text, this.ctx.catalog);
+    // "Compare with gel" while discussing Mineral Sunscreen: one word matched several products —
+    // the one that is an alternative to the product being discussed is meant, not each other.
+    if (named.length >= 2) {
+      const inPlay = await this.productInPlay();
+      if (inPlay && !named.some((n) => n.product_id === inPlay.product_id)) {
+        const { output } = await this.call<ProductContextOutput>('get_product_context', {
+          product_id: inPlay.product_id,
+        });
+        const related = (output?.alternatives ?? []).filter((a) => named.some((n) => n.product_id === a.product_id));
+        if (output?.product && related.length === 1) {
+          return this.decision({
+            action: 'COMPARE',
+            reply: compareReply(output.product, related[0]!),
+            reason: `Compared ${output.product.title}, being discussed, with ${related[0]!.title}, the alternative named.`,
+            intentType: 'COMPARISON',
+            confidence: 0.8,
+            requiredTools: this.refine('COMPARISON'),
+          });
+        }
+      }
+    }
     if (named.length === 2) {
       const sheets = await Promise.all(
         named.map(async (entry) => {

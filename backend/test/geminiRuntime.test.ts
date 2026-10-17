@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AdkGeminiAgentRuntime,
   GEMINI_DEADLINE_MS,
+  GEMINI_HEDGE_AFTER_MS,
   GEMINI_MAX_TOOL_CALLS,
   GEMINI_REQUEST_TIMEOUT_MS,
   modelInput,
@@ -446,6 +447,54 @@ describe('AdkGeminiAgentRuntime — repair, fallback and limits (through runAgen
   });
 });
 
+describe('L9: a stalled request is hedged', () => {
+  it('a request unanswered after the hedge delay is sent again; the first answer wins and the other is cancelled', async () => {
+    expect(GEMINI_HEDGE_AFTER_MS).toBe(4_500);
+    const signals: AbortSignal[] = [];
+    let n = 0;
+    const client: GeminiClient = {
+      generate(_request, signal) {
+        signals.push(signal);
+        if (n++ === 0) return new Promise<never>(() => undefined); // Vertex never answers this one
+        return Promise.resolve({
+          functionCalls: [],
+          text: proposal(),
+          raw: {},
+          usage: { promptTokens: 1, outputTokens: 1 },
+        });
+      },
+    };
+    const lines: Record<string, unknown>[] = [];
+    const logger = {
+      debug() {},
+      warn() {},
+      error() {},
+      info: (_m: string, f?: Record<string, unknown>) => void lines.push(f!),
+    };
+    const started = Date.now();
+    const result = await runAgentRuntime(
+      runtime(client, { hedgeAfterMs: 20, requestTimeoutMs: 2_000, deadlineMs: 3_000, minAttemptMs: 10, logger }),
+      input('hi'),
+      stubExecutor({}),
+    );
+    expect(result).toMatchObject({ ok: true });
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(signals).toHaveLength(2);
+    expect(signals[0]!.aborted).toBe(true); // the stalled request is cancelled
+    expect(lines[0]).toMatchObject({ requests: 1, retries: 0, hedges: 1 });
+  });
+
+  it('no second request when the deadline could not let it answer', async () => {
+    const stalled = fakeGemini([() => new Promise<never>(() => undefined)]);
+    await runAgentRuntime(
+      runtime(stalled.client, { hedgeAfterMs: 20, requestTimeoutMs: 100, deadlineMs: 100, minAttemptMs: 2_500 }),
+      input('hi'),
+      stubExecutor({}),
+    );
+    expect(stalled.requests).toHaveLength(1);
+  });
+});
+
 describe('AdkGeminiAgentRuntime — log hygiene', () => {
   it('one line per decision: runtime, model, latency, tool names, token counts, action — never text or references', async () => {
     const lines: { message: string; fields: Record<string, unknown> }[] = [];
@@ -474,6 +523,7 @@ describe('AdkGeminiAgentRuntime — log hygiene', () => {
         latency_ms: expect.any(Number),
         requests: 2,
         retries: 0,
+        hedges: 0,
         tools: ['find_nearby_stores'],
         prompt_tokens: 200,
         output_tokens: 40,

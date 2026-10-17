@@ -26,7 +26,11 @@ type Lang = 'en' | 'hi';
 
 /** The button title (≤ 20 characters); COMPARE's names the alternative by one word. */
 const TITLE: Record<QuickReplyKind, Record<Lang, (word?: string) => string>> = {
-  STORES: { en: () => 'Show stores near me', hi: () => 'Paas ke store dikhao' },
+  // With a word: one of two compared products ("Stores for Gel").
+  STORES: {
+    en: (w) => (w ? `Stores for ${w}` : 'Show stores near me'),
+    hi: (w) => (w ? `${w} ke store` : 'Paas ke store dikhao'),
+  },
   COMPARE: { en: (w) => `Compare with ${w}`, hi: (w) => `${w} se compare` },
   ONLINE: { en: () => 'Buy online', hi: () => 'Online lena hai' },
   AREA: { en: () => 'Check another area', hi: () => 'Doosra area dekho' },
@@ -99,9 +103,14 @@ const words = (title: string) =>
  * The shortest word of the alternative's title that is not in the bound product's ("Gel" for
  * Ultra-Light Gel Sunscreen next to Mineral Sunscreen) and fits a button; null when none does.
  */
-export function compareWord(boundTitle: string, alternativeTitle: string, language: Language): string | null {
+export function compareWord(
+  boundTitle: string,
+  alternativeTitle: string,
+  language: Language,
+  kind: 'COMPARE' | 'STORES' = 'COMPARE',
+): string | null {
   const bound = new Set(words(boundTitle).map((w) => w.toLowerCase()));
-  const room = WHATSAPP_LIMITS.buttonLabel - TITLE.COMPARE[langOf(language)]('').length;
+  const room = WHATSAPP_LIMITS.buttonLabel - TITLE[kind][langOf(language)](' ').length + 1;
   // Shortest first; between equals the later word, nearer the product's noun ("Oil-Free Gel …" → "Gel").
   return (
     words(alternativeTitle)
@@ -132,6 +141,8 @@ export interface QuickReplyState {
   productTitle: string | null;
   /** A verified alternative to compare with: its full title and the word for the button. */
   compareWith: { title: string; word: string } | null;
+  /** After a comparison: the two products compared, each with the word for its store button. */
+  compared?: { title: string; word: string }[] | null;
   onlinePurchaseAvailable: boolean;
   /** A store search ran this turn (not just a question for the shopper's location). */
   storeSearchRan: boolean;
@@ -149,7 +160,10 @@ export function suggestedReplies(s: QuickReplyState): OutboundOption[] {
   if (s.turn && CLOSING.includes(s.turn)) return [];
   const kinds: [QuickReplyKind, { title: string; word?: string }?][] = [];
   const answered = s.productTitle ? { title: s.productTitle } : undefined;
-  if (PRODUCT_ANSWERS.includes(s.action) && s.productBound) {
+  if (s.action === 'COMPARE' && s.compared?.length === 2) {
+    // Which one? A store button for each product compared ("Stores for Mineral", "Stores for Gel").
+    kinds.push(['STORES', s.compared[0]], ['STORES', s.compared[1]]);
+  } else if (PRODUCT_ANSWERS.includes(s.action) && s.productBound) {
     kinds.push(['STORES', answered]);
     if (s.compareWith && s.action !== 'COMPARE') kinds.push(['COMPARE', s.compareWith]);
     if (s.onlinePurchaseAvailable && kinds.length < 2) kinds.push(['ONLINE', answered]);

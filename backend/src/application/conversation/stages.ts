@@ -13,6 +13,17 @@ import { resolveMessagingSettings } from '../../domain/brandSettings.js';
 import { compareWord, suggestedReplies } from '../../domain/quickReplies.js';
 import type { Language } from '../../domain/conversationalReplies.js';
 
+/** The catalogue titles a reply names, in the order it names them (the longest title wins an overlap). */
+export function titlesIn(text: string, titles: string[]): string[] {
+  const lower = text.toLowerCase();
+  const hits: { title: string; at: number }[] = [];
+  for (const title of [...new Set(titles)].sort((a, b) => b.length - a.length)) {
+    const at = lower.indexOf(title.toLowerCase());
+    if (at >= 0 && !hits.some((h) => at >= h.at && at < h.at + h.title.length)) hits.push({ title, at });
+  }
+  return hits.sort((a, b) => a.at - b.at).map((h) => h.title);
+}
+
 /** The verified alternative to compare with: its full title and the one word for the button. */
 const compareWith = (bound: string | undefined, alternative: string | undefined, language: Language) => {
   const word = bound && alternative ? compareWord(bound, alternative, language) : null;
@@ -887,14 +898,38 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
         const parts = 'parts' in reply ? (reply as Reply).parts : undefined;
         // L9: 2–3 suggested replies by rules (never model text), only where the turn has no buttons.
         const agentContext = context.data.agentContext;
-        // The product this turn answered about (its lookup), else the bound intent's, with its verified alternative.
-        const looked = [...tools.outputsOf<ProductContextOutput>('get_product_context')]
-          .reverse()
-          .find((c) => c.output.status === 'FOUND' && c.output.product)?.output;
-        const [bound, alternative] = looked
-          ? [looked.product!, ...looked.alternatives]
-          : (agentContext?.products ?? []);
+        // The product(s) this turn was about (never an older one): the catalogue titles its reply
+        // names, else its lookups; the bound intent's product only when the turn looked nothing up.
         const language = detectLanguage(context.data.text ?? '');
+        const lookups = tools
+          .outputsOf<ProductContextOutput>('get_product_context')
+          .map((c) => c.output)
+          .filter((o) => o.status === 'FOUND' && o.product);
+        const sheets = [
+          ...lookups.flatMap((o) => [o.product!, ...o.alternatives]),
+          ...(lookups.length ? [] : (agentContext?.products ?? [])),
+        ];
+        const named = titlesIn(
+          reply.text,
+          (agentContext?.catalog ?? []).map((c) => c.title),
+        );
+        const bound =
+          sheets.find((p) => p.title === named[0]) ??
+          lookups.at(-1)?.product ??
+          (lookups.length ? undefined : sheets[0]);
+        // Its verified alternative: from its own lookup, or the context's list when nothing was looked up.
+        const alternative = bound
+          ? lookups.length
+            ? lookups.find((o) => o.product?.product_id === bound.product_id)?.alternatives[0]
+            : sheets[1]
+          : undefined;
+        const compared =
+          nba.action === 'COMPARE' && named.length >= 2
+            ? [
+                { title: named[0]!, word: compareWord(named[1]!, named[0]!, language, 'STORES') },
+                { title: named[1]!, word: compareWord(named[0]!, named[1]!, language, 'STORES') },
+              ]
+            : null;
         const suggestions = suggestedReplies({
           action: nba.action,
           executed: executed?.type ?? null,
@@ -903,9 +938,10 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
           language,
           handedOff: Boolean(context.data.handoffStarted || context.data.conversation?.humanHandoff),
           handoffEnabled: resolveMessagingSettings(need(context.data.brand, 'brand').settings, '').handoffEnabled,
-          productBound: Boolean(bound || context.data.intent?.productId),
+          productBound: Boolean(bound),
           productTitle: bound?.title ?? null,
           compareWith: compareWith(bound?.title, alternative?.title, language),
+          compared: compared?.every((c) => c.word) ? (compared as { title: string; word: string }[]) : null,
           onlinePurchaseAvailable: Boolean(agentContext?.brand.online_purchase_available),
           storeSearchRan: finds.some((f) => f.output.status === 'OK'),
           storesFound: finds.some((f) => f.output.eligible.length > 0),
