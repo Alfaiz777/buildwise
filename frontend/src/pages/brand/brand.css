@@ -1,0 +1,381 @@
+/*
+ * Brand Console (UI-P3). Tokens only; the same frame as the Platform and Store consoles (pf-*
+ * page header, filters and tiles). Colour rule: the brand role colour marks the role only;
+ * teal is for actions; green / amber / red for status.
+ */
+
+.shell--brand .ui-card,
+.shell--brand .pf-tile {
+  animation: pf-fade-in var(--duration-base) var(--ease-out);
+}
+.bh-section-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-lg);
+}
+
+/* ---------------------------------------------------------------- Overview: above the fold */
+.bh-top {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-4);
+  align-items: stretch;
+}
+.bh-top__brief,
+.bh-top__brief > .ui-card {
+  height: 100%;
+  margin: 0;
+}
+.bh-attention {
+  margin: 0;
+}
+.bh-attention__empty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--success-bg);
+  color: var(--success);
+  font-weight: 600;
+}
+.bh-attention__list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bh-alert {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.bh-alert--warning {
+  border-left-color: var(--warning);
+}
+.bh-alert--danger {
+  border-left-color: var(--danger);
+}
+.bh-alert--info {
+  border-left-color: var(--warning);
+}
+.bh-alert__icon {
+  grid-row: span 2;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+.bh-alert--danger .bh-alert__icon {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.bh-alert__text {
+  font-size: var(--text-sm);
+}
+.bh-alert__action {
+  justify-self: start;
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------- the shopper journey */
+.bh-results {
+  display: grid;
+  gap: var(--space-4);
+}
+.bh-journey {
+  margin: 0;
+}
+.journey {
+  display: grid;
+  gap: var(--space-2);
+}
+.journey__flow {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: var(--space-2) 0 0;
+  list-style: none;
+}
+.journey__stage {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  min-width: 0;
+}
+.journey__stage:last-child {
+  flex: 0.78 1 0;
+}
+.journey__block {
+  display: grid;
+  flex: 1 1 auto;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  min-width: 0;
+  height: var(--h);
+  padding: var(--space-2);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(160deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 78%, #000));
+  color: #fff;
+  text-align: center;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+  animation: journey-grow var(--duration-base) var(--ease-out);
+}
+.journey__block:hover {
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.journey__block:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+@keyframes journey-grow {
+  from {
+    opacity: 0;
+    transform: scaleY(0.6);
+  }
+}
+.journey__value {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.journey__label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.25;
+}
+.journey__band {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 144px;
+}
+.journey__band svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.journey__band-shape {
+  fill: color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+.journey__pct {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--color-text);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.journey__branch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* Under the "Conversations" stage: one stage across. */
+  padding-left: calc((100% - 4 * 48px) / 4.78 * 1.4);
+}
+.journey__elbow {
+  width: 24px;
+  height: 24px;
+  border-left: 2px dashed color-mix(in srgb, var(--color-primary) 45%, transparent);
+  border-bottom: 2px dashed color-mix(in srgb, var(--color-primary) 45%, transparent);
+  border-bottom-left-radius: var(--radius-md);
+  transform: translateY(-10px);
+}
+.journey__online {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+  color: var(--color-text);
+  text-decoration: none;
+}
+.journey__online .journey__value {
+  font-size: var(--text-lg);
+  color: var(--color-primary);
+}
+.journey__online .journey__label {
+  font-size: var(--text-sm);
+}
+.journey--large .journey__value {
+  font-size: var(--text-3xl, 2rem);
+}
+@media (prefers-reduced-motion: reduce) {
+  .journey__block {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* KPI row under the journey */
+.bh-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* What we're seeing */
+.bh-insights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+.bh-insight {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+.bh-insight p {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.bh-insight .ask-about {
+  justify-self: start;
+}
+.bh-insight__icon {
+  color: var(--color-primary);
+}
+.bh-insight__icon--warning {
+  color: var(--warning);
+}
+.bh-insight__icon--danger {
+  color: var(--danger);
+}
+
+/* The setup checklist (only while incomplete) */
+.setup-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.setup-card__head .ui-card__title {
+  margin: 0;
+}
+.setup-card__steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-card__steps li {
+  display: flex;
+  gap: var(--space-2);
+}
+.setup-card__steps .check {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+}
+.setup-card__steps .done .check {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+}
+
+/* ---------------------------------------------------------------- responsive */
+@media (max-width: 1100px) {
+  .bh-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 900px) {
+  .bh-top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* The journey turns vertical: bars sized by count, the step's share between them. */
+  .journey__flow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .journey__stage,
+  .journey__stage:last-child {
+    flex-direction: column;
+    align-items: stretch;
+    flex: none;
+  }
+  .journey__block {
+    height: auto;
+    width: calc(45% + 55% * var(--size));
+    grid-template-columns: auto 1fr;
+    justify-items: start;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    text-align: left;
+  }
+  .journey__value {
+    font-size: var(--text-xl);
+  }
+  .journey__band {
+    width: auto;
+    height: 26px;
+  }
+  .journey__band svg {
+    display: none;
+  }
+  .journey__pct {
+    display: flex;
+    align-items: center;
+    padding-left: var(--space-4);
+    color: var(--color-text-muted);
+  }
+  .journey__pct::before {
+    content: '↓ ';
+  }
+  .journey__branch {
+    padding-left: var(--space-4);
+  }
+}
+@media (max-width: 480px) {
+  .bh-kpis {
+    gap: var(--space-2);
+  }
+  .bh-kpis .pf-tile {
+    padding: var(--space-3);
+  }
+  .bh-kpis .pf-tile--ring {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .bh-kpis .pf-tile--ring .ui-ring {
+    width: 36px;
+    height: 36px;
+  }
+}

@@ -503,3 +503,51 @@
     box-shadow: none;
   }
 }
+
+/* UI-P3: the Brand Console reads the chat from the brand's side — the shopper on the left,
+   Qwikspot (the brand's replies) on the right — with system events as small centred lines. */
+.wa-thread--brand .wa-msg--in {
+  justify-self: end;
+  align-self: flex-end;
+}
+.wa-thread--brand .wa-msg--in .wa-label {
+  text-align: right;
+}
+.wa-thread--brand .wa-msg--in .wa-bubble {
+  background: var(--wa-out);
+}
+.wa-thread--brand .wa-msg--out {
+  justify-self: start;
+  align-self: flex-start;
+}
+.wa-thread--brand .wa-msg--out .wa-label {
+  text-align: left;
+}
+.wa-thread--brand .wa-msg--out .wa-bubble {
+  background: var(--wa-in);
+}
+.wa-event {
+  justify-self: center;
+  align-self: center;
+  margin: 2px 0;
+  text-align: center;
+}
+.wa-event span {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: #e1f2fb;
+  color: #3b4a54;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 1px 0.5px rgb(11 20 26 / 0.1);
+}
+.wa-event--success span {
+  background: #dcf5e3;
+  color: #14532d;
+}
+.wa-event--warning span,
+.wa-event--danger span {
+  background: #fdf0d5;
+  color: #6b4400;
+}

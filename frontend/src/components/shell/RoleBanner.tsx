@@ -29,7 +29,7 @@ export function roleSentence(me: MeResponse): string {
     case 'RETAIL':
       return `You run ${storeLabel(me.store)} for ${me.brand_name} via ${me.retailer_name}. Holds from customers arrive here.`;
     case 'BRAND':
-      return `You manage ${me.brand_name}. See what Qwikspot did for your brand, steer conversations and run your store network.`;
+      return `You manage ${me.brand_name}. See how Qwikspot turns your online shoppers into store pickups, and why the AI did each step.`;
     case 'PLATFORM':
       return 'You run the Qwikspot platform: onboard brands and watch their health. Customer data is never shown here.';
   }

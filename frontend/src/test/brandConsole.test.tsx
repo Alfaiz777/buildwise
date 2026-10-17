@@ -134,13 +134,18 @@ describe('Overview — KPI tiles and attention', () => {
     const results = await screen.findByRole('region', { name: 'Results' });
     expect(within(results).getByText('Intents caught')).toBeInTheDocument();
     expect(within(results).getByText('67%')).toBeInTheDocument();
-    expect(within(results).getAllByText('Includes synthetic history').length).toBe(7);
+    // UI-P3: one page-level demo badge (its tooltip has the count), no per-tile markers.
+    expect(screen.getAllByText('Includes demo history')).toHaveLength(1);
+    expect(within(results).queryByText('Includes synthetic history')).not.toBeInTheDocument();
     expect(
       screen.getByText(/These numbers include synthetic demo history \(120 generated records\)/),
     ).toBeInTheDocument();
     expect(await screen.findByRole('link', { name: /1 customer is waiting for a person/ })).toHaveAttribute(
       'href',
       '/brand/conversations?filter=handoff',
+    );
+    expect(screen.getByRole('link', { name: /1 customer is waiting for a person/ })).toHaveTextContent(
+      'Open 1 handoff →',
     );
     expect(screen.getByText(/2.7× the other days' average/)).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Open HealthPlus Chemist →' })[0]).toHaveAttribute(
@@ -524,9 +529,10 @@ describe('synthetic history on lists', () => {
     expect(await screen.findByRole('button', { name: /sim:judge_live/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /sim:hist_01/ })).not.toBeInTheDocument();
     expect(screen.getByText(/2 synthetic records hidden/)).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('Hide synthetic history'));
+    // UI-P3: "Live only | Live + demo history", and a "Demo" pill on each generated chat.
+    fireEvent.click(screen.getByRole('button', { name: 'Live + demo history' }));
     const hist = await screen.findByRole('button', { name: /sim:hist_01/ });
-    expect(within(hist).getByText('Synthetic')).toBeInTheDocument();
+    expect(within(hist).getByText('Demo')).toBeInTheDocument();
     expect(window.localStorage.getItem('qs_hide_synthetic')).toBe('false');
     view.unmount();
     renderAt('/brand/conversations', api());
@@ -626,5 +632,122 @@ describe('charts', () => {
         '/brand/network#store-st_north_2',
       ),
     );
+  });
+});
+
+describe('UI-P3 — Overview', () => {
+  const overviewApi = (over: Record<string, unknown> = {}) =>
+    apiWith({
+      '/api/brand/insights': INSIGHTS,
+      '/api/brand/conversations': { conversations: [row({ human_handoff: true, handoff_at: ago(14) })] },
+      '/api/reservations': { reservations: [] },
+      '/api/brand/stores': {
+        stores: [{ store_id: 'st_north_2', store_name: 'HealthPlus Chemist', sku_count: 10, stock_updated_at: ago(5) }],
+      },
+      '/api/products': {
+        products: [],
+        retail_mappings_needing_attention: [],
+        mapping_summary: { auto_matched: 1, needs_attention: 0 },
+      },
+      '/api/brand/settings': SETTINGS,
+      '/api/brand/connections': { connections: [] },
+      '/api/brand/demo': { reset_available: false },
+      ...over,
+    });
+
+  it('"Needs your attention" sits above the journey; an unmet-demand card names its area', async () => {
+    renderAt('/brand', overviewApi());
+    const attention = await screen.findByRole('region', { name: 'Needs your attention' });
+    const journey = await screen.findByRole('region', { name: 'Shopper journey' });
+    expect(attention.compareDocumentPosition(journey) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const area = INSIGHTS.unmet_demand[0]!.area.replace(/\b\w/g, (c) => c.toUpperCase());
+    expect(await within(attention).findByText(`Review unmet demand in ${area} →`)).toBeInTheDocument();
+  });
+
+  it('the journey stages show the same counts as the tiles and open their page with a filter', async () => {
+    renderAt('/brand', overviewApi());
+    const flow = await screen.findByRole('list', { name: 'Shopper journey' });
+    const tiles = Object.fromEntries(kpis(INSIGHTS).map((k) => [k.key, k.value]));
+    const stage = (name: RegExp) => within(flow).getByRole('link', { name });
+    expect(stage(/^Intents caught: /)).toHaveTextContent(tiles.intents!);
+    expect(stage(/^Conversations: /)).toHaveTextContent(tiles.conversations!);
+    expect(stage(/^Holds: /)).toHaveTextContent(tiles.holds!);
+    expect(stage(/^Picked up: /)).toHaveTextContent(tiles.pickups!);
+    expect(screen.getByRole('link', { name: /^Online orders: / })).toHaveTextContent(tiles.online!);
+    expect(stage(/^Intents caught: /)).toHaveAttribute('href', '/brand/conversations?tab=intents');
+    expect(stage(/^Picked up: /)).toHaveAttribute('href', '/brand/reservations?filter=picked_up');
+    fireEvent.click(stage(/^Intents caught: /));
+    expect(await screen.findByRole('tab', { name: 'Intents', selected: true })).toBeInTheDocument();
+  });
+
+  it('nothing to do: a green check', async () => {
+    renderAt(
+      '/brand',
+      overviewApi({
+        '/api/brand/insights': { ...INSIGHTS, unmet_demand: [] },
+        '/api/brand/conversations': { conversations: [] },
+        '/api/brand/stores': { stores: [] },
+      }),
+    );
+    expect(await screen.findByText('Nothing needs you right now.')).toBeInTheDocument();
+  });
+});
+
+describe('UI-P3 — the judge tour', () => {
+  const tourApi = (conversations: ConversationRow[] = []) =>
+    apiWith({
+      '/api/brand/insights': INSIGHTS,
+      '/api/brand/conversations': { conversations },
+      '/api/reservations': { reservations: [] },
+      '/api/brand/stores': { stores: [] },
+      '/api/products': {
+        products: [],
+        retail_mappings_needing_attention: [],
+        mapping_summary: { auto_matched: 0, needs_attention: 0 },
+      },
+      '/api/brand/settings': SETTINGS,
+      '/api/brand/connections': { connections: [] },
+      '/api/brand/demo': { reset_available: true },
+    });
+
+  it('four steps; a live chat after the tour started ticks the first; it collapses to a pill and comes back', async () => {
+    window.localStorage.setItem(
+      'qs_judge_tour:brd_demo',
+      JSON.stringify({ started: ago(5), done: {}, collapsed: false, dismissed: false }),
+    );
+    renderAt('/brand', tourApi([row({ last_inbound_at: ago(1), last_message_at: ago(1) })]));
+    const tour = await screen.findByRole('complementary', { name: 'Try the live demo' });
+    const steps = within(tour).getAllByRole('checkbox');
+    expect(steps.map((s) => s.getAttribute('aria-label'))).toEqual([
+      'Open the shopper demo and ask about a product',
+      'Watch the conversation appear in Conversations',
+      'See the hold reach the store',
+      'Ask Qwikspot how your brand did',
+    ]);
+    await waitFor(() => expect(steps[0]).toHaveAttribute('aria-checked', 'true'));
+    expect(steps[2]).toHaveAttribute('aria-checked', 'false');
+    // A manual tick, remembered for this viewer.
+    fireEvent.click(steps[2]!);
+    expect(steps[2]).toHaveAttribute('aria-checked', 'true');
+    expect(JSON.parse(window.localStorage.getItem('qs_judge_tour:brd_demo')!).done['2']).toBe(true);
+    fireEvent.click(within(tour).getByRole('button', { name: 'Collapse the checklist' }));
+    const pill = screen.getByRole('button', { name: /Try the live demo: 2 of 4 steps done/ });
+    expect(pill).toHaveTextContent('2/4');
+    fireEvent.click(pill);
+    fireEvent.click(screen.getByRole('button', { name: 'Close the checklist' }));
+    expect(screen.queryByRole('complementary', { name: 'Try the live demo' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show the welcome note' }));
+    expect(await screen.findByRole('complementary', { name: 'Try the live demo' })).toBeInTheDocument();
+  });
+
+  it('demo history never ticks a step', async () => {
+    window.localStorage.setItem(
+      'qs_judge_tour:brd_demo',
+      JSON.stringify({ started: ago(5), done: {}, collapsed: false, dismissed: false }),
+    );
+    renderAt('/brand', tourApi([row({ demo_history: true, last_inbound_at: ago(1) })]));
+    const tour = await screen.findByRole('complementary', { name: 'Try the live demo' });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(within(tour).getAllByRole('checkbox')[0]).toHaveAttribute('aria-checked', 'false');
   });
 });

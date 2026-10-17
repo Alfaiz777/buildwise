@@ -232,7 +232,7 @@ describe('Brand Console — handoff queue (M6)', () => {
     );
     render_('/brand/conversations', api);
     fireEvent.click(await screen.findByRole('button', { name: /sim:c1/ }));
-    expect(screen.getByText(/needs a person · waiting 12 min/)).toBeInTheDocument();
+    expect(screen.getByText(/Needs a person · waiting 12 min/)).toBeInTheDocument();
     const panel = await screen.findByLabelText('Needs a person');
     fireEvent.change(within(panel).getByLabelText('Reply as a person'), { target: { value: 'Hi, Meera here.' } });
     fireEvent.click(within(panel).getByRole('button', { name: 'Send reply' }));

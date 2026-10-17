@@ -1,4 +1,6 @@
+import { Check } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { RingGauge } from '../../components/ui';
 import { Link } from 'react-router-dom';
 import { formatDateTime, type BrandStore, type CatalogResponse, type Connection } from './types';
 
@@ -76,29 +78,35 @@ export function SetupChecklist(props: {
 
   const done = steps.filter((s) => s.done).length;
   const complete = done === steps.length;
-  // UI-3: a collapsible card, open while anything is left to do; collapsed once complete.
+  // UI-P3: a progress-ring card on the Overview, shown only while something is left to do.
+  if (complete) return null;
   return (
-    <details className="ui-card ui-card--padded setup-card" open={!complete}>
-      <summary>
-        <h2 className="ui-card__title">{complete ? 'Setup complete ✓' : 'Setup checklist'}</h2>
-        <span className="muted small">
-          {done} of {steps.length} done{complete ? ' · view' : ''}
-        </span>
-      </summary>
-      <ol className="checklist">
+    <section className="ui-card ui-card--padded setup-card" aria-labelledby="setup-title">
+      <header className="setup-card__head">
+        <RingGauge pct={Math.round((done / steps.length) * 100)} size={52} />
+        <div>
+          <h2 id="setup-title" className="ui-card__title">
+            Setup checklist
+          </h2>
+          <span className="muted small">
+            {done} of {steps.length} done · finish these so every shopper finds a store
+          </span>
+        </div>
+      </header>
+      <ol className="checklist setup-card__steps">
         {steps.map((step) => (
           <li key={step.title} className={step.done ? 'done' : 'todo'}>
             <span className="check" aria-hidden="true">
-              {step.done ? '✓' : '○'}
+              {step.done ? <Check size={14} /> : null}
             </span>
             <div>
-              <strong>{step.title}</strong> <span className="small">{step.done ? 'done' : 'to do'}</span>
+              <strong>{step.title}</strong> <span className="sr-only">{step.done ? 'done' : 'to do'}</span>
               <div className="muted small">{step.detail}</div>
               {!step.done && <div className="step-action">{step.action}</div>}
             </div>
           </li>
         ))}
       </ol>
-    </details>
+    </section>
   );
 }
