@@ -960,3 +960,120 @@ ul.plain {
 .contents {
   display: contents;
 }
+
+/* UI-P2: the weekday chart — stacked thin bars, gridlines, a tooltip, the busiest day. */
+:root {
+  --chart-missed: #e8705f;
+}
+:root[data-theme='dark'] {
+  --chart-missed: #ff8f7f;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --chart-missed: #ff8f7f;
+  }
+}
+.chart--weekday {
+  position: relative;
+}
+.chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+.chart__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: var(--radius-full);
+  vertical-align: middle;
+}
+.chart__dot--served {
+  background: var(--color-primary);
+}
+.chart__dot--missed {
+  background: var(--chart-missed);
+}
+.chart__plot {
+  position: relative;
+}
+.chart--weekday .chart__svg {
+  max-height: 260px;
+}
+.chart__grid {
+  stroke: var(--color-border);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+.chart__tick {
+  fill: var(--color-text-muted);
+  font-size: 11px;
+}
+.chart--weekday .chart__value {
+  fill: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.chart--weekday .chart__label {
+  fill: var(--color-text-muted);
+  font-size: 12px;
+}
+.chart__day--peak .chart__label {
+  fill: var(--color-text);
+  font-weight: 700;
+}
+.chart__busiest {
+  fill: var(--color-primary);
+  font-size: 10px;
+  font-weight: 700;
+}
+.chart__served {
+  fill: var(--color-primary);
+  opacity: 0.45;
+}
+.chart__day--peak .chart__served {
+  opacity: 1;
+}
+.chart__missed {
+  fill: var(--chart-missed);
+}
+.chart__hit {
+  fill: transparent;
+}
+.chart__day {
+  outline: none;
+  cursor: default;
+}
+.chart__day.is-active .chart__hit,
+.chart__day:focus-visible .chart__hit {
+  fill: var(--color-surface-sunken);
+  opacity: 0.6;
+}
+.chart__stack {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: chart-grow var(--duration-base) var(--ease-out);
+}
+@keyframes chart-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+.chart__tooltip {
+  position: absolute;
+  top: 0;
+  z-index: var(--z-nav);
+  transform: translateX(-50%);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--grey-900);
+  color: #fff;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: ui-fade var(--duration-fast) var(--ease-out);
+}

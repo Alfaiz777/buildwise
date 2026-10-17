@@ -7,7 +7,12 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { ASSISTANT_CEILING_MS, GEMINI_ASSISTANT_DEADLINE_MS } from '../src/application/assistantRunner.js';
-import { quickStoreAnswer, type StorePack } from '../src/domain/storeAssistant.js';
+import {
+  quickStoreAnswer,
+  STORE_ASSISTANT_PROMPT,
+  STORE_ASSISTANT_PROMPT_VERSION,
+  type StorePack,
+} from '../src/domain/storeAssistant.js';
 import type { ModelAnswer } from '../src/domain/assistant.js';
 import { ahmedabadWorld } from './ahmedabadWorld.js';
 import { answerLogs, FakeAssistantModel } from './fakeAssistant.js';
@@ -235,5 +240,12 @@ describe('read-only, Hinglish, the event and the brief', () => {
     await ai.as().get('/api/retail/stores/st_north_1/assistant/brief');
     await ai.as().get('/api/retail/stores/st_north_1/assistant/brief?days=28&include_history=false');
     expect(model.inputs.filter((i) => i.task === 'BRIEF')).toHaveLength(2);
+  });
+});
+
+describe('store prompt — money (UI-P2)', () => {
+  it('asks for ₹ with thousands separators, never INR', () => {
+    expect(STORE_ASSISTANT_PROMPT_VERSION).toBe('ASK_QWIKSPOT_STORE_V2');
+    expect(STORE_ASSISTANT_PROMPT).toContain('like ₹6,360 — never "INR 6360"');
   });
 });

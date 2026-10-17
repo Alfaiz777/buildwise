@@ -100,35 +100,67 @@ export interface WeekdayBar {
   no_store_pct: number;
 }
 
+/** 0, step, 2·step, 3·step — at most 4 small ticks covering `max`. */
+function ticksFor(max: number): number[] {
+  const step = Math.max(1, Math.ceil(max / 3));
+  return [0, step, step * 2, step * 3];
+}
+
 /**
- * Store lookups per weekday with the share that found no store with stock. The busiest
- * day is outlined; the day the reading names is marked as the problem day.
+ * Lookups per weekday as stacked bars (UI-P2 redesign, shared by Brand Insights and the Store
+ * Console): teal = served (had it), coral = could not serve. The busiest day is solid with a
+ * "Busiest" label; the day the reading names is marked "problem day". Hover or focus a day for
+ * its numbers; "Show as table" has the same numbers.
  */
 export function WeekdayChart({
   days,
   problemDay,
   caption,
   keys = ['Store lookups', 'found no store with stock'],
+  legend = ['Found a store with stock', 'Found no store with stock'],
+  tooltip,
 }: {
   days: WeekdayBar[];
   problemDay: string | null;
   caption: string;
-  /** Legend for the two bars (UI-4: the Store Console reads them differently). */
+  /** What the two numbers are (the table's columns and the chart's text alternative). */
   keys?: [string, string];
+  /** The legend's two colours: served, could not serve. */
+  legend?: [string, string];
+  /** The tooltip for one day (default: "Sat · 6 store lookups · 3 found no store with stock"). */
+  tooltip?: (d: WeekdayBar) => string;
 }) {
   const [table, setTable] = useState(false);
-  const max = Math.max(1, ...days.map((d) => d.lookups));
-  const peak = [...days].sort((a, b) => b.lookups - a.lookups)[0]?.weekday ?? null;
-  const colW = 600 / Math.max(1, days.length);
-  const plotH = 160;
+  const [active, setActive] = useState<number | null>(null);
+  const ticks = ticksFor(Math.max(1, ...days.map((d) => d.lookups)));
+  const top = ticks.at(-1)!;
+  const peak = [...days].sort((a, b) => b.lookups - a.lookups)[0];
+  const busiest = peak && peak.lookups > 0 ? peak.weekday : null;
+  const left = 32;
+  const plotTop = 18;
+  const plotH = 150;
+  const W = 900; // wide, so the chart fills a card at ~200 px tall
+  const colW = (W - left) / Math.max(1, days.length);
+  const barW = 28;
+  const y = (v: number) => plotTop + plotH - (v / top) * plotH;
+  const tip = (d: WeekdayBar) =>
+    tooltip?.(d) ?? `${cap(d.weekday).slice(0, 3)} · ${d.lookups} ${keys[0].toLowerCase()} · ${d.no_store} ${keys[1]}`;
   return (
-    <figure className="chart">
+    <figure className="chart chart--weekday">
+      <div className="chart__legend" aria-hidden="true">
+        <span>
+          <span className="chart__dot chart__dot--served" /> {legend[0]}
+        </span>
+        <span>
+          <span className="chart__dot chart__dot--missed" /> {legend[1]}
+        </span>
+      </div>
       {table ? (
         <table aria-label="Demand vs availability by weekday">
           <thead>
             <tr>
               <th>Day</th>
-              <th>Store lookups</th>
+              <th>{keys[0]}</th>
               <th>No store with stock</th>
             </tr>
           </thead>
@@ -145,52 +177,98 @@ export function WeekdayChart({
           </tbody>
         </table>
       ) : (
-        <svg
-          className="chart__svg"
-          viewBox={`0 0 600 ${plotH + 48}`}
-          role="img"
-          aria-label={`Store lookups by weekday: ${days
-            .map((d) => `${cap(d.weekday)} ${d.lookups}, ${d.no_store} with no store`)
-            .join('; ')}`}
-        >
-          {days.map((d, i) => {
-            const x = i * colW + colW * 0.2;
-            const w = colW * 0.6;
-            const h = (d.lookups / max) * plotH;
-            const hNo = (d.no_store / max) * plotH;
-            const isPeak = d.weekday === peak && d.lookups > 0;
-            const isProblem = d.weekday === problemDay;
-            return (
-              <g key={d.weekday}>
-                <title>{`${cap(d.weekday)}: ${d.lookups} lookups, ${d.no_store} found no store (${d.no_store_pct}%)`}</title>
-                <rect
-                  x={x}
-                  y={plotH - h + 16}
-                  width={w}
-                  height={Math.max(h, 1)}
-                  rx="3"
-                  className={`chart__col ${isPeak ? 'chart__col--peak' : ''}`}
-                />
-                <rect x={x} y={plotH - hNo + 16} width={w} height={hNo} rx="3" className="chart__col--danger" />
-                <text x={x + w / 2} y={plotH - h + 10} textAnchor="middle" className="chart__value">
-                  {d.lookups}
+        <div className="chart__plot">
+          <svg
+            className="chart__svg"
+            viewBox={`0 0 ${W} 236`}
+            role="img"
+            aria-label={`Store lookups by weekday: ${days
+              .map((d) => `${cap(d.weekday)} ${d.lookups}, ${d.no_store} with no store`)
+              .join('; ')}`}
+          >
+            {ticks.map((t) => (
+              <g key={t} aria-hidden="true">
+                <line x1={left} x2={W} y1={y(t)} y2={y(t)} className="chart__grid" />
+                <text x={left - 8} y={y(t) + 4} textAnchor="end" className="chart__tick">
+                  {t}
                 </text>
-                <text x={x + w / 2} y={plotH + 34} textAnchor="middle" className="chart__label">
-                  {cap(d.weekday).slice(0, 3)}
-                </text>
-                {isProblem && (
-                  <text x={x + w / 2} y={plotH + 46} textAnchor="middle" className="chart__flag">
-                    problem day
-                  </text>
-                )}
               </g>
-            );
-          })}
-        </svg>
+            ))}
+            {days.map((d, i) => {
+              const cx = left + i * colW + colW / 2;
+              const x = cx - barW / 2;
+              const served = Math.max(0, d.lookups - d.no_store);
+              const isPeak = d.weekday === busiest;
+              const isProblem = d.weekday === problemDay;
+              return (
+                <g
+                  key={d.weekday}
+                  className={`chart__day${isPeak ? ' chart__day--peak' : ''}${active === i ? ' is-active' : ''}`}
+                  tabIndex={0}
+                  aria-label={tip(d)}
+                  onMouseEnter={() => setActive(i)}
+                  onMouseLeave={() => setActive(null)}
+                  onFocus={() => setActive(i)}
+                  onBlur={() => setActive(null)}
+                >
+                  <title>{tip(d)}</title>
+                  {/* Hit area: the whole column, so a thin bar is easy to hover. */}
+                  <rect x={left + i * colW} y={plotTop} width={colW} height={plotH} className="chart__hit" />
+                  <g className="chart__stack">
+                    {served > 0 && (
+                      <rect
+                        x={x}
+                        y={y(served)}
+                        width={barW}
+                        height={plotTop + plotH - y(served)}
+                        rx="6"
+                        className="chart__served"
+                      />
+                    )}
+                    {d.no_store > 0 && (
+                      <rect
+                        x={x}
+                        y={y(d.lookups)}
+                        width={barW}
+                        height={y(served) - y(d.lookups)}
+                        rx="6"
+                        className="chart__missed"
+                      />
+                    )}
+                  </g>
+                  <text x={cx} y={y(d.lookups) - 6} textAnchor="middle" className="chart__value">
+                    {d.lookups}
+                  </text>
+                  <text x={cx} y={plotTop + plotH + 20} textAnchor="middle" className="chart__label">
+                    {cap(d.weekday).slice(0, 3)}
+                  </text>
+                  {isPeak && (
+                    <text x={cx} y={plotTop + plotH + 34} textAnchor="middle" className="chart__busiest">
+                      Busiest
+                    </text>
+                  )}
+                  {isProblem && (
+                    <text x={cx} y={plotTop + plotH + (isPeak ? 48 : 34)} textAnchor="middle" className="chart__flag">
+                      problem day
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+          {active !== null && days[active] && (
+            <div
+              className="chart__tooltip"
+              role="tooltip"
+              style={{ left: `${((left + active * colW + colW / 2) / W) * 100}%` }}
+            >
+              {tip(days[active]!)}
+            </div>
+          )}
+        </div>
       )}
       <figcaption className="chart__caption">
-        <span className="chart__key chart__key--all" /> {keys[0]} <span className="chart__key chart__key--danger" />{' '}
-        {keys[1]}. {caption}{' '}
+        {caption}{' '}
         <button type="button" className="ui-link-button" onClick={() => setTable(!table)}>
           {table ? 'Show as chart' : 'Show as table'}
         </button>

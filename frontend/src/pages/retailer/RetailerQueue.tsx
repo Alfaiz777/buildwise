@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { CheckCircle2, ChevronDown, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useApi } from '../../api/apiContext';
 import { errorMessage, useLoad } from '../../components/ConsoleShell';
-import { ProductThumb, useToast } from '../../components/ui';
+import { Badge, Button, ConfirmDialog, Menu, ProductThumb, Segmented, Tip, useToast } from '../../components/ui';
 import { label as enumLabel } from '../../lib/labels';
+import { formatDateTime } from '../brand/types';
+import './store.css';
 
 export interface QueueReservation {
   reservation_id: string;
@@ -19,6 +22,9 @@ export interface QueueReservation {
   customer_eta: string | null;
   created_at: string;
   expires_at: string;
+  /** When it ended (history): picked up, or refused / cancelled. */
+  completed_at?: string | null;
+  cancelled_at?: string | null;
   cancelled_by: string | null;
   cancel_reason: string | null;
   last_notification: { status: string; event: string; message_kind: string | null; at: string } | null;
@@ -83,6 +89,14 @@ export function expiresIn(iso: string, now: number): string {
   return min >= 60 ? `expires in ${Math.floor(min / 60)} h ${min % 60} min` : `expires in ${min} min`;
 }
 
+/** UI-P2: the countdown pill — "Held for 18 more min", amber under 10 min, red when expired. */
+export function holdCountdown(iso: string, now: number): { text: string; tone: 'neutral' | 'warning' | 'danger' } {
+  const min = Math.round((new Date(iso).getTime() - now) / 60_000);
+  if (min <= 0) return { text: 'Hold expired', tone: 'danger' };
+  const text = min >= 60 ? `Held for ${Math.floor(min / 60)} h ${min % 60} more min` : `Held for ${min} more min`;
+  return { text, tone: min < 10 ? 'warning' : 'neutral' };
+}
+
 export const itemLabel = (r: Pick<QueueReservation, 'quantity' | 'product_title' | 'sku' | 'variant_title'>) =>
   `${r.quantity} × ${r.product_title ?? r.sku}${r.variant_title ? ` ${r.variant_title}` : ''}`;
 
@@ -98,15 +112,25 @@ export function endedText(r: QueueReservation): string {
   return STATUS_LABEL[r.status] ?? enumLabel(r.status);
 }
 
+/** UI-P2: a finished hold's outcome as a coloured pill. */
+function outcomePill(r: QueueReservation): { text: string; tone: 'success' | 'danger' | 'neutral' } {
+  if (r.status === 'COMPLETED') return { text: 'Picked up', tone: 'success' };
+  if (r.status === 'CANCELLED' && r.cancelled_by === 'RETAILER')
+    return { text: `Refused · ${REFUSAL_LABEL[r.cancel_reason ?? ''] ?? 'Other'}`, tone: 'danger' };
+  if (r.status === 'CANCELLED') return { text: 'Cancelled by the customer', tone: 'neutral' };
+  if (r.status === 'EXPIRED') return { text: 'Expired', tone: 'neutral' };
+  return { text: STATUS_LABEL[r.status] ?? enumLabel(r.status), tone: 'neutral' };
+}
+
 /** The next step a store takes on a hold (never "Refuse"). */
 export const primaryAction = (r: QueueReservation) => r.allowed_actions.find((a) => a !== 'CANCELLED') ?? null;
 
 export type HistoryFilter = 'ALL' | 'PICKED_UP' | 'REFUSED' | 'EXPIRED';
-const HISTORY_FILTERS: [HistoryFilter, string][] = [
-  ['ALL', 'All'],
-  ['PICKED_UP', 'Picked up'],
-  ['REFUSED', 'Refused'],
-  ['EXPIRED', 'Expired'],
+const HISTORY_FILTERS: { value: HistoryFilter; label: string }[] = [
+  { value: 'ALL', label: 'All' },
+  { value: 'PICKED_UP', label: 'Picked up' },
+  { value: 'REFUSED', label: 'Refused' },
+  { value: 'EXPIRED', label: 'Expired' },
 ];
 const historyMatch = (r: QueueReservation, f: HistoryFilter) =>
   f === 'ALL' ||
@@ -114,12 +138,47 @@ const historyMatch = (r: QueueReservation, f: HistoryFilter) =>
   (f === 'REFUSED' && r.status === 'CANCELLED' && r.cancelled_by === 'RETAILER') ||
   (f === 'EXPIRED' && r.status === 'EXPIRED');
 
+/** "Today", "Yesterday", "Mon 13 Oct" — a day in the store's timezone. */
+export function dayLabel(iso: string, timezone: string, now = Date.now()): string {
+  const day = (t: number) => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(t);
+    } catch {
+      return new Date(t).toISOString().slice(0, 10);
+    }
+  };
+  const d = day(Date.parse(iso));
+  if (d === day(now)) return 'Today';
+  if (d === day(now - 86_400_000)) return 'Yesterday';
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    }).format(new Date(iso));
+  } catch {
+    return d;
+  }
+}
+
+/** "updated 12 s ago" for the live indicator. */
+const secondsAgo = (at: number, now: number) => {
+  const s = Math.max(0, Math.round((now - at) / 1000));
+  return s < 60 ? `${s} s ago` : `${Math.round(s / 60)} min ago`;
+};
+
 /**
- * The store's reservations (docs/11 §5; Change 13 F1–F4; Change 16 UI-4). Active view:
- * a "Next up" card for the most urgent hold (new first, then the soonest expiry) with one
- * big action, then the rest of the queue; after each action a "Next up" notice. History
- * view: finished holds with how they ended. Customers are masked; each card says why the
- * hold came to this store (store names and distance only).
+ * The store's reservations (docs/11 §5; Change 13 F1–F4; Change 16 UI-4; UI-P2 layout).
+ * Active view: the holds hero — a big "Next up" card for the most urgent hold (new first, then
+ * the soonest expiry) with its one primary action, then "Also waiting" rows; refusing is in each
+ * hold's "⋯" menu and asks for a reason in a dialog. History view: finished holds grouped by day
+ * with how they ended. Customers are masked; each hold says why it came to this store.
  */
 export function RetailerQueue({
   view,
@@ -127,12 +186,18 @@ export function RetailerQueue({
   brandName,
   onChanged,
   onNewHolds,
+  tools,
+  empty,
 }: {
   view: 'active' | 'history';
   autoPoll: boolean;
   brandName: string;
   onChanged?: () => void;
   onNewHolds?: (arrived: QueueReservation[]) => void;
+  /** The hero header's own controls (Today: the sound switch). */
+  tools?: ReactNode;
+  /** What "nothing waiting" adds (Today: the time of the last hold). */
+  empty?: ReactNode;
 }) {
   const api = useApi();
   const toast = useToast();
@@ -141,19 +206,23 @@ export function RetailerQueue({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [codes, setCodes] = useState<Record<string, string>>({});
-  const [refusing, setRefusing] = useState<Record<string, { reason: string; note: string }>>({});
+  const [refusing, setRefusing] = useState<QueueReservation | null>(null);
+  const [refusal, setRefusal] = useState({ reason: '', note: '' });
   const [filter, setFilter] = useState<HistoryFilter>('ALL');
   const seen = useRef<Set<string> | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
 
   const list = useLoad(
     useCallback(() => api.get<{ reservations: QueueReservation[] }>(`/api/reservations?view=${view}`), [api, view]),
   );
   const { reload } = list;
 
-  // New holds: a "New" badge on the card, and the page is told (toast, title, sound).
+  // New holds: a "New" badge and a slide-in on the card, and the page is told (toast, title, sound).
   useEffect(() => {
-    if (view !== 'active' || !list.data) return;
+    if (!list.data) return;
+    setUpdatedAt(Date.now());
+    if (view !== 'active') return;
     const rows = list.data.reservations;
     if (seen.current) {
       const arrived = rows.filter((r) => !seen.current!.has(r.reservation_id));
@@ -175,16 +244,27 @@ export function RetailerQueue({
     return () => clearInterval(id);
   }, [autoPoll, reload]);
 
-  async function act(r: QueueReservation, to: string) {
+  // The countdowns and "updated … ago" stay current between loads (display only).
+  useEffect(() => {
+    if (view !== 'active') return;
+    const id = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(id);
+  }, [view]);
+
+  const refresh = () => {
+    setNow(Date.now());
+    reload();
+  };
+
+  async function act(r: QueueReservation, to: string, why?: { reason: string; note: string }) {
     setBusy(r.reservation_id);
     setError(null);
     try {
       const body: Record<string, string> = { status: to, expected_current_status: r.status };
       if (to === 'COMPLETED') body.pickup_code = (codes[r.reservation_id] ?? '').trim();
-      if (to === 'CANCELLED') {
-        const refusal = refusing[r.reservation_id] ?? { reason: '', note: '' };
-        body.cancel_reason = refusal.reason;
-        if (refusal.reason === 'OTHER' && refusal.note.trim()) body.cancel_note = refusal.note.trim();
+      if (to === 'CANCELLED' && why) {
+        body.cancel_reason = why.reason;
+        if (why.reason === 'OTHER' && why.note.trim()) body.cancel_note = why.note.trim();
       }
       const res = await api.patch<QueueReservation & { notification: { status: string } | null }>(
         `/api/reservations/${r.reservation_id}`,
@@ -206,6 +286,7 @@ export function RetailerQueue({
         s.delete(r.reservation_id);
         return s;
       });
+      setRefusing(null);
       reload();
       onChanged?.();
     } catch (err) {
@@ -218,53 +299,54 @@ export function RetailerQueue({
   const all = list.data?.reservations ?? [];
   const rows = view === 'history' ? all.filter((r) => historyMatch(r, filter)) : all;
   const [nextUp, ...rest] = view === 'active' ? rows : [];
-  const card = (r: QueueReservation, big = false) => (
-    <QueueCard
-      key={r.reservation_id}
-      r={r}
-      big={big}
-      view={view}
-      now={now}
-      brandName={brandName}
-      fresh={fresh.has(r.reservation_id)}
-      busy={busy === r.reservation_id}
-      code={codes[r.reservation_id] ?? ''}
-      onCode={(v) => setCodes({ ...codes, [r.reservation_id]: v })}
-      refusal={refusing[r.reservation_id]}
-      onRefusal={(v) => setRefusing({ ...refusing, [r.reservation_id]: v })}
-      onAct={(to) => void act(r, to)}
-    />
+  const holdProps = (r: QueueReservation) => ({
+    r,
+    now,
+    brandName,
+    fresh: fresh.has(r.reservation_id),
+    busy: busy === r.reservation_id,
+    code: codes[r.reservation_id] ?? '',
+    onCode: (v: string) => setCodes({ ...codes, [r.reservation_id]: v }),
+    onAct: (to: string) => void act(r, to),
+    onRefuse: () => {
+      setRefusal({ reason: '', note: '' });
+      setRefusing(r);
+    },
+  });
+
+  const refreshButton = (
+    <button type="button" className="ui-icon-button st-refresh" aria-label="Refresh" title="Refresh" onClick={refresh}>
+      <RefreshCw size={16} aria-hidden="true" />
+    </button>
   );
 
   return (
     <div className="queue" aria-label={view === 'active' ? 'Reservation queue' : 'Reservation history'}>
-      <div className="queue-toolbar">
-        {view === 'history' && (
-          <div className="filters" role="group" aria-label="Show">
-            {HISTORY_FILTERS.map(([value, text]) => (
-              <button
-                key={value}
-                type="button"
-                className={filter === value ? '' : 'secondary'}
-                aria-pressed={filter === value}
-                onClick={() => setFilter(value)}
-              >
-                {text}
-              </button>
-            ))}
+      {view === 'active' ? (
+        <div className="st-hero__head">
+          <h2 className="st-hero__title">Holds</h2>
+          <div className="st-hero__tools">
+            {tools}
+            <span className="st-live" role="status">
+              {autoPoll && <span className="st-live__dot" aria-hidden="true" />}
+              {autoPoll ? 'Live' : 'Updated'}
+              {updatedAt !== null && (
+                <span className="muted">
+                  {' '}
+                  · {autoPoll ? 'updated ' : ''}
+                  {secondsAgo(updatedAt, now)}
+                </span>
+              )}
+            </span>
+            {refreshButton}
           </div>
-        )}
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => {
-            setNow(Date.now());
-            reload();
-          }}
-        >
-          Refresh
-        </button>
-      </div>
+        </div>
+      ) : (
+        <div className="st-history__head">
+          <Segmented label="Show" value={filter} options={HISTORY_FILTERS} onChange={setFilter} />
+          {refreshButton}
+        </div>
+      )}
       {notice && (
         <p className="notice" role="status">
           {notice}
@@ -276,90 +358,161 @@ export function RetailerQueue({
         </p>
       )}
       {list.error && <p className="error">{list.error}</p>}
-      {list.data && rows.length === 0 && (
-        <p className="muted">
-          {view === 'active'
-            ? `Nothing waiting. New holds from ${brandName}'s WhatsApp appear here.`
-            : 'No completed or cancelled reservations here yet.'}
-        </p>
+
+      {view === 'active' && list.data && rows.length === 0 && (
+        <div className="st-caught-up">
+          <CheckCircle2 size={28} aria-hidden="true" />
+          <div>
+            <strong>You're all caught up.</strong>
+            <p className="muted small">
+              {autoPoll
+                ? `New holds from ${brandName}'s WhatsApp appear here automatically.`
+                : `New holds from ${brandName}'s WhatsApp appear here — tap refresh to check.`}
+            </p>
+            {empty}
+          </div>
+        </div>
       )}
       {nextUp && (
         <section className="next-up" aria-label="Next up">
-          <h2 className="next-up__title">Next up</h2>
-          {card(nextUp, true)}
+          <h3 className="next-up__title">Next up</h3>
+          <HoldCard {...holdProps(nextUp)} big />
         </section>
       )}
-      {view === 'active' && rest.length > 0 && <h2 className="queue-title">Also waiting ({rest.length})</h2>}
-      <ul className="queue-list">
-        {(view === 'active' ? rest : rows).map((r) => (
-          <li key={r.reservation_id}>{card(r)}</li>
-        ))}
-      </ul>
+      {view === 'active' && rest.length > 0 && (
+        <>
+          <h3 className="queue-title">Also waiting ({rest.length})</h3>
+          <ul className="queue-list">
+            {rest.map((r) => (
+              <li key={r.reservation_id}>
+                <HoldCard {...holdProps(r)} />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {view === 'history' && list.data && rows.length === 0 && (
+        <p className="muted">No completed or cancelled reservations here yet.</p>
+      )}
+      {view === 'history' && rows.length > 0 && <HistoryList rows={rows} brandName={brandName} now={now} />}
+
+      <ConfirmDialog
+        open={refusing !== null}
+        title={refusing ? `Refuse ${itemLabel(refusing)}?` : 'Refuse'}
+        confirmLabel="Refuse hold"
+        tone="danger"
+        busy={refusing !== null && busy === refusing.reservation_id}
+        confirmDisabled={!refusal.reason}
+        onConfirm={() => refusing && void act(refusing, 'CANCELLED', refusal)}
+        onCancel={() => setRefusing(null)}
+      >
+        <p>The customer is told the store can't hold it, and the stock is released.</p>
+        {refusing && (
+          <div className="st-refuse">
+            <label>
+              Why are you refusing?
+              <select
+                aria-label={`Refusal reason for ${itemLabel(refusing)}`}
+                value={refusal.reason}
+                onChange={(e) => setRefusal({ ...refusal, reason: e.target.value })}
+              >
+                <option value="">Choose a reason…</option>
+                {Object.entries(REFUSAL_LABEL).map(([value, text]) => (
+                  <option key={value} value={value}>
+                    {text}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {refusal.reason === 'OTHER' && (
+              <label>
+                Internal note
+                <input
+                  aria-label="Internal note (not shown to the customer)"
+                  placeholder="Not shown to the customer"
+                  maxLength={140}
+                  value={refusal.note}
+                  onChange={(e) => setRefusal({ ...refusal, note: e.target.value })}
+                />
+              </label>
+            )}
+          </div>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }
 
-function QueueCard(props: {
+/** One waiting hold: the big "Next up" card, or a compact "Also waiting" row. */
+function HoldCard(props: {
   r: QueueReservation;
-  big: boolean;
-  view: 'active' | 'history';
+  big?: boolean;
   now: number;
   brandName: string;
   fresh: boolean;
   busy: boolean;
   code: string;
   onCode: (v: string) => void;
-  refusal: { reason: string; note: string } | undefined;
-  onRefusal: (v: { reason: string; note: string }) => void;
   onAct: (to: string) => void;
+  onRefuse: () => void;
 }) {
-  const { r, big, view, now } = props;
+  const { r, big = false, now } = props;
   const primary = primaryAction(r);
   const why = r.why_here?.text ?? `A customer of ${props.brandName} reserved this through WhatsApp.`;
+  const countdown = holdCountdown(r.expires_at, now);
+  const others = r.allowed_actions.filter((a) => a !== 'CANCELLED' && a !== primary);
+  const needsCode = primary === 'COMPLETED';
   return (
-    <article className={`queue-card ${big ? 'queue-card--next' : ''}`} aria-label={itemLabel(r)}>
-      <div className="queue-card__head">
-        <ProductThumb src={r.image_url ?? null} name={r.product_title ?? r.sku} size={big ? 64 : 44} />
-        <div>
-          <strong className="queue-card__item">{itemLabel(r)}</strong>{' '}
-          {props.fresh && <span className="badge new">New</span>}{' '}
-          <span className="badge">
-            {view === 'history' ? endedText(r) : (STATUS_LABEL[r.status] ?? enumLabel(r.status))}
-          </span>
-          {r.demo_history && (
-            <span className="badge" title="Generated demo history, not a real customer">
-              Synthetic
-            </span>
-          )}
-          <div className="small">
-            {r.customer_display} · created {storeTime(r.created_at, r.store_timezone)} · held until{' '}
-            {storeTime(r.expires_at, r.store_timezone)}
-            {view === 'active' && <strong> ({expiresIn(r.expires_at, now)})</strong>}
-            {r.customer_eta && ` · ETA ${storeTime(r.customer_eta, r.store_timezone)}`}
+    <article
+      className={`queue-card st-hold ${big ? 'queue-card--next st-hold--big' : ''} ${props.fresh ? 'st-hold--fresh' : ''}`}
+      aria-label={itemLabel(r)}
+    >
+      <div className="st-hold__main">
+        <ProductThumb src={r.image_url ?? null} name={r.product_title ?? r.sku} size={big ? 72 : 44} />
+        <div className="st-hold__body">
+          <div className="st-hold__title">
+            <strong className="queue-card__item">{itemLabel(r)}</strong>
+            {props.fresh && <span className="badge new">New</span>}
           </div>
+          <div className="st-hold__meta small">
+            <Badge tone={countdown.tone}>{countdown.text}</Badge>
+            <span className="muted">{STATUS_LABEL[r.status] ?? enumLabel(r.status)}</span>
+            <span>{r.customer_display}</span>
+            <span className="muted">
+              created {storeTime(r.created_at, r.store_timezone)} · held until{' '}
+              {storeTime(r.expires_at, r.store_timezone)}
+              {r.customer_eta && ` · ETA ${storeTime(r.customer_eta, r.store_timezone)}`}
+            </span>
+          </div>
+          <p className="why-here st-hold__why small muted">Why this came to you: {why}</p>
+          {r.last_notification && (
+            <div
+              className={`small ${r.last_notification.status === 'SENT' ? 'muted' : 'warn-text'}`}
+              data-testid="notification"
+            >
+              Last update: {enumLabel(r.last_notification.event).toLowerCase()} —{' '}
+              {NOTIFY_LABEL[r.last_notification.status]}
+            </div>
+          )}
+          {r.pickup_code_locked && (
+            <div className="small warn-text">Too many wrong pickup codes — this reservation can't be completed.</div>
+          )}
         </div>
+        {r.allowed_actions.includes('CANCELLED') && (
+          <Menu
+            label={`More actions for ${itemLabel(r)}`}
+            items={[{ label: 'Refuse…', onSelect: props.onRefuse, tone: 'danger' }]}
+          />
+        )}
       </div>
-      <p className="why-here small">
-        <strong>Why this hold came to you:</strong> {why}
-      </p>
-      {r.last_notification && (
-        <div
-          className={`small ${r.last_notification.status === 'SENT' ? 'muted' : 'warn-text'}`}
-          data-testid="notification"
-        >
-          Last update: {enumLabel(r.last_notification.event).toLowerCase()} — {NOTIFY_LABEL[r.last_notification.status]}
-        </div>
-      )}
-      {view === 'active' && r.pickup_code_locked && (
-        <div className="small warn-text">Too many wrong pickup codes — this reservation can't be completed.</div>
-      )}
-      {view === 'active' && r.allowed_actions.length > 0 && (
-        <div className="queue-actions">
-          {r.allowed_actions.includes('COMPLETED') && (
+      {r.allowed_actions.some((a) => a !== 'CANCELLED') && (
+        <div className="queue-actions st-hold__actions">
+          {needsCode && (
             <label className="pickup-code">
               <input
                 aria-label={`Pickup code for ${itemLabel(r)}`}
-                placeholder="Customer's pickup code"
+                placeholder="6-digit pickup code"
                 inputMode="numeric"
                 maxLength={6}
                 value={props.code}
@@ -368,54 +521,89 @@ function QueueCard(props: {
               <span className="muted small">Ask for the 6-digit code in their WhatsApp.</span>
             </label>
           )}
-          {r.allowed_actions
-            .filter((to) => to !== 'CANCELLED')
-            .map((to) => (
-              <button
-                key={to}
-                type="button"
-                className={big && to === primary ? 'ui-button--lg next-up__action' : ''}
-                disabled={props.busy || (to === 'COMPLETED' && props.code.length !== 6)}
-                onClick={() => props.onAct(to)}
-              >
-                {ACTION_LABEL[to] ?? to}
-              </button>
-            ))}
-          {r.allowed_actions.includes('CANCELLED') && (
-            <div className="refuse">
-              <select
-                aria-label={`Refusal reason for ${itemLabel(r)}`}
-                value={props.refusal?.reason ?? ''}
-                onChange={(e) => props.onRefusal({ note: props.refusal?.note ?? '', reason: e.target.value })}
-              >
-                <option value="">Refuse because…</option>
-                {Object.entries(REFUSAL_LABEL).map(([value, text]) => (
-                  <option key={value} value={value}>
-                    {text}
-                  </option>
-                ))}
-              </select>
-              {props.refusal?.reason === 'OTHER' && (
-                <input
-                  aria-label="Internal note (not shown to the customer)"
-                  placeholder="Internal note (not shown to the customer)"
-                  maxLength={140}
-                  value={props.refusal?.note ?? ''}
-                  onChange={(e) => props.onRefusal({ reason: 'OTHER', note: e.target.value })}
-                />
-              )}
-              <button
-                type="button"
-                className="secondary"
-                disabled={props.busy || !props.refusal?.reason}
-                onClick={() => props.onAct('CANCELLED')}
-              >
-                Refuse
-              </button>
-            </div>
+          {primary && (
+            <Button
+              variant="brand"
+              className={big ? 'ui-button--lg next-up__action st-primary' : 'st-primary'}
+              disabled={props.busy || (primary === 'COMPLETED' && props.code.length !== 6)}
+              onClick={() => props.onAct(primary)}
+            >
+              {ACTION_LABEL[primary] ?? primary}
+            </Button>
           )}
+          {others.map((to) => (
+            <Button
+              key={to}
+              variant="secondary"
+              className="st-secondary"
+              disabled={props.busy || (to === 'COMPLETED' && props.code.length !== 6)}
+              onClick={() => props.onAct(to)}
+            >
+              {ACTION_LABEL[to] ?? to}
+            </Button>
+          ))}
         </div>
       )}
     </article>
+  );
+}
+
+/** History grouped by day (store time): one row per hold, "why" folded into the row. */
+function HistoryList({ rows, brandName, now }: { rows: QueueReservation[]; brandName: string; now: number }) {
+  const groups: { day: string; rows: QueueReservation[] }[] = [];
+  for (const r of [...rows].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))) {
+    const day = dayLabel(r.created_at, r.store_timezone, now);
+    const g = groups.at(-1);
+    if (g && g.day === day) g.rows.push(r);
+    else groups.push({ day, rows: [r] });
+  }
+  return (
+    <div className="st-history">
+      {groups.map((g) => (
+        <section key={g.day} className="st-history__day" aria-label={g.day}>
+          <h3 className="st-history__date">{g.day}</h3>
+          <ul className="st-history__list">
+            {g.rows.map((r) => {
+              const pill = outcomePill(r);
+              const ended = r.completed_at ?? r.cancelled_at ?? r.expires_at;
+              return (
+                <li key={r.reservation_id}>
+                  <details className="st-row">
+                    <summary aria-label={`${itemLabel(r)} — ${pill.text}`}>
+                      <ProductThumb src={r.image_url ?? null} name={r.product_title ?? r.sku} size={36} />
+                      <span className="st-row__item">
+                        <strong>{itemLabel(r)}</strong>
+                        <span className="muted small">{r.customer_display}</span>
+                      </span>
+                      <Tip text={`${formatDateTime(r.created_at)} → ${formatDateTime(ended)}`}>
+                        <span className="st-row__times small muted">
+                          {storeTime(r.created_at, r.store_timezone)} → {storeTime(ended, r.store_timezone)}
+                        </span>
+                      </Tip>
+                      <span className="st-row__pills">
+                        <Badge tone={pill.tone}>{pill.text}</Badge>
+                        {r.demo_history && (
+                          <Tip text="Generated demo history, not a real customer">
+                            <Badge tone="neutral">Demo</Badge>
+                          </Tip>
+                        )}
+                      </span>
+                      <ChevronDown size={16} aria-hidden="true" className="st-row__chevron" />
+                    </summary>
+                    <div className="st-row__detail small">
+                      <p className="muted">{endedText(r)}.</p>
+                      <p>
+                        <strong>Why this hold came to you:</strong>{' '}
+                        {r.why_here?.text ?? `A customer of ${brandName} reserved this through WhatsApp.`}
+                      </p>
+                    </div>
+                  </details>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
+    </div>
   );
 }
