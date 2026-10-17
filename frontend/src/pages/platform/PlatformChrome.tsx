@@ -31,6 +31,8 @@ export function PeriodControls(props: {
   onHistory: (v: boolean) => void;
   /** Generated demo records counted in the numbers on screen (shows the badge when > 0). */
   demoRecords?: number;
+  /** UI-P3: the badge's tooltip for a console other than the Platform's. */
+  demoTip?: string;
   children?: ReactNode;
 }) {
   return (
@@ -56,7 +58,10 @@ export function PeriodControls(props: {
       />
       {props.includeHistory && (props.demoRecords ?? 0) > 0 && (
         <Tip
-          text={`Includes synthetic demo history (${props.demoRecords} generated records). Choose "Live only" to see real activity. Counts only — the platform never sees customers.`}
+          text={
+            props.demoTip ??
+            `Includes synthetic demo history (${props.demoRecords} generated records). Choose "Live only" to see real activity. Counts only — the platform never sees customers.`
+          }
         >
           <Badge tone="neutral">Includes demo history</Badge>
         </Tip>

@@ -353,10 +353,11 @@ describe('the AI pieces on the pages', () => {
     });
     renderAt('/brand', api);
     expect(await screen.findByText('With history: 9 pickups.')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('checkbox', { name: /Include synthetic history/ }));
+    // UI-P3: "Live only | Live + demo history" and "7 days | 28 days" as segmented controls.
+    fireEvent.click(screen.getByRole('button', { name: 'Live only' }));
     expect(await screen.findByText('Live only: 0 pickups.')).toBeInTheDocument();
     expect(screen.getByText('Last 7 days · live activity only')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Last 28 days' }));
+    fireEvent.click(screen.getByRole('button', { name: '28 days' }));
     expect(await screen.findByText('Live, 28 days: 1 hold.')).toBeInTheDocument();
     expect(screen.getByText('The last 28 days in brief')).toBeInTheDocument();
 

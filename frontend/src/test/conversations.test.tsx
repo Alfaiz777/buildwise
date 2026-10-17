@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiContext, type MeResponse } from '../api/apiContext';
@@ -432,5 +432,113 @@ describe('Brand Console — M5 decision trace and reservations', () => {
     expect(within(row).getByText(/In progress/)).toBeInTheDocument();
     fireEvent.click(row);
     expect(await screen.findByRole('log', { name: 'Messages' })).toBeInTheDocument();
+  });
+});
+
+describe('UI-P3 — the three-pane inbox', () => {
+  const HANDOFF_ROW = {
+    ...ROW,
+    conversation_id: 'conv_2',
+    customer_ref: 'sim:meera_77',
+    human_handoff: true,
+    handoff_at: '2026-10-05T10:01:00.000Z',
+    intent: null,
+  };
+  function inboxApi(): ApiClient {
+    const api = apiFor();
+    const base = api.get as (path: string) => Promise<unknown>;
+    const get = vi.fn(async (path: string) => {
+      if (path === '/api/brand/conversations') return { conversations: [ROW, HANDOFF_ROW] };
+      if (path === '/api/brand/conversations/conv_1') return TRACED;
+      if (path.startsWith('/api/reservations'))
+        return {
+          reservations: [
+            {
+              reservation_id: 'res_1',
+              store_id: 'st_north_2',
+              store_name: 'HealthPlus Chemist',
+              product_title: 'Vitamin C Glow Serum',
+              variant_title: '30 ml',
+              sku: 'DBC-VCSERUM-30',
+              quantity: 1,
+              status: 'PENDING',
+              active: true,
+              customer_display: 'Customer •••• 4821',
+              created_at: '2026-10-05T10:05:00.000Z',
+              expires_at: '2026-10-05T12:05:00.000Z',
+              conversation_id: 'conv_1',
+            },
+          ],
+        };
+      if (path === '/api/brand/conversations/conv_2/handoff-brief' || path.includes('summary'))
+        return {
+          answer: 'Wants a person about a refund.',
+          handoff_brief: 'Wants a person about a refund.',
+          next_action: null,
+          used: [],
+          source: 'QUICK_SUMMARY',
+          generated_at: '2026-10-05T10:05:00.000Z',
+          latency_ms: 1,
+        };
+      return base(path);
+    });
+    return { ...api, get: get as ApiClient['get'] };
+  }
+
+  it('list rows: initials, product, outcome pill; the filter narrows to holds; the handoff item keeps its brief', async () => {
+    renderAt('/brand/conversations', inboxApi());
+    const list = await screen.findByRole('region', { name: 'Conversation list' });
+    const held = await within(list).findByRole('button', { name: /sim:shopper_3002/ });
+    expect(within(held).getByText('S')).toHaveClass('cv-avatar');
+    expect(within(held).getByText('Vitamin C Glow Serum')).toBeInTheDocument();
+    expect(await within(held).findByText('Held')).toBeInTheDocument();
+    const person = within(list).getByRole('button', { name: /sim:meera_77/ });
+    expect(within(person).getByText(/Needs a person/)).toBeInTheDocument();
+    fireEvent.click(within(list).getByRole('button', { name: 'Held' }));
+    expect(within(list).queryByRole('button', { name: /sim:meera_77/ })).not.toBeInTheDocument();
+    fireEvent.click(within(list).getByRole('button', { name: 'Ended without a hold' }));
+    expect(within(list).queryByRole('button', { name: /sim:shopper_3002/ })).not.toBeInTheDocument();
+    fireEvent.change(within(list).getByLabelText('Search conversations'), { target: { value: 'nothing-matches' } });
+    expect(within(list).getByText('No conversations match this filter.')).toBeInTheDocument();
+  });
+
+  it('selecting a row: the chat from the brand side with events, the stepper and the decision timeline with chips', async () => {
+    renderAt('/brand/conversations', inboxApi());
+    const row = await screen.findByRole('button', { name: /sim:shopper_3002/ });
+    fireEvent.click(row);
+    const transcript = await screen.findByRole('log', { name: 'Messages' });
+    expect(transcript).toHaveClass('wa-thread--brand');
+    // The shopper's message is a left bubble, Qwikspot's a right one (CSS on these classes).
+    expect(within(transcript).getByText('Is it good for oily skin?').closest('.wa-msg')).toHaveClass('wa-msg--out');
+    expect(await within(transcript).findByText('Hold placed at HealthPlus Chemist')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sim:shopper_3002/ })).toHaveAttribute('aria-current', 'true');
+    const stepper = screen.getByRole('list', { name: 'Journey so far' });
+    expect(within(stepper).getByText('Hold').closest('li')).toHaveAttribute('aria-current', 'step');
+    const why = screen.getByRole('region', { name: 'Why Qwikspot did this' });
+    const offer = within(why).getByRole('article', { name: 'Store discovery' });
+    expect(within(offer).getByText('Nearest stores')).toBeInTheDocument();
+    expect(within(offer).getByText('Verified stock only')).toBeInTheDocument();
+    const hold = within(why).getByRole('article', { name: 'Store reservation' });
+    expect(within(hold).getByText('Stock re-checked')).toBeInTheDocument();
+  });
+
+  it('phone: "Back to conversations" returns to the list', async () => {
+    renderAt('/brand/conversations?c=conv_1', inboxApi());
+    await screen.findByRole('log', { name: 'Messages' });
+    expect(document.querySelector('.cv')).toHaveClass('cv--open');
+    fireEvent.click(screen.getByRole('button', { name: 'Back to conversations' }));
+    await waitFor(() => expect(document.querySelector('.cv')).not.toHaveClass('cv--open'));
+    expect(screen.queryByRole('log', { name: 'Messages' })).not.toBeInTheDocument();
+  });
+
+  it('no conversations yet: the empty state opens the shopper demo', async () => {
+    const api = apiFor();
+    const base = api.get as (path: string) => Promise<unknown>;
+    const get = vi.fn(async (path: string) =>
+      path === '/api/brand/conversations' ? { conversations: [] } : base(path),
+    );
+    renderAt('/brand/conversations', { ...api, get: get as ApiClient['get'] });
+    expect(await screen.findByText(/No conversations yet\. Open the shopper demo to start one\./)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Open shopper demo/ })).toHaveAttribute('href', '/shop?brand=brand_A');
   });
 });

@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../../api/apiContext';
 import { errorMessage, useLoad } from '../../components/ConsoleShell';
+import { Button, ConfirmDialog } from '../../components/ui';
 
 interface ResetResult {
   /** L1: the brand's Shopify store is not connected yet — the catalogue waits for it. */
@@ -50,10 +51,11 @@ export function DemoGuide({ brandId }: { brandId: string }) {
   const newTab = { target: '_blank', rel: 'noopener noreferrer' } as const;
 
   return (
-    <details className="demo-guide" open>
+    // UI-P3: inside the "Try the live demo" checklist, closed until opened.
+    <details className="demo-guide">
       <summary>
         <strong>Demo guide</strong>{' '}
-        <span className="muted small">— the 10-minute judge script, 8 steps, synthetic data</span>
+        <span className="muted small">— the full 10-minute judge script, 8 steps, synthetic data</span>
       </summary>
       <ol>
         <li>
@@ -104,35 +106,28 @@ export function DemoGuide({ brandId }: { brandId: string }) {
         </li>
       </ol>
 
-      <div className="inline">
-        <button type="button" className="secondary" onClick={() => setConfirming(true)} disabled={resetting}>
+      <div className="demo-guide__reset">
+        <Button variant="secondary" size="sm" onClick={() => setConfirming(true)} disabled={resetting}>
           Reset demo
-        </button>
+        </Button>
         <span className="muted small">
           Back to the seeded state: stock, catalogue and history; every judge&apos;s chats and demo shoppers are
           removed.
         </span>
       </div>
-      {confirming && (
-        <div role="alertdialog" aria-labelledby="reset-title" aria-describedby="reset-desc" className="notice">
-          <p id="reset-title">
-            <strong>This resets the shared demo for everyone.</strong>
-          </p>
-          <p id="reset-desc">
-            All conversations, reservations and outcomes of this demo brand are deleted, and the stock, catalogue and
-            synthetic history are rebuilt. Accounts, stores and the audit log stay. Anyone using the demo right now will
-            see their session disappear.
-          </p>
-          <div className="inline">
-            <button type="button" onClick={() => void reset()} disabled={resetting}>
-              {resetting ? 'Resetting…' : 'Yes, reset the demo'}
-            </button>
-            <button type="button" className="secondary" onClick={() => setConfirming(false)} disabled={resetting}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={confirming}
+        title="This resets the shared demo for everyone."
+        confirmLabel="Yes, reset the demo"
+        tone="danger"
+        busy={resetting}
+        onConfirm={() => void reset()}
+        onCancel={() => setConfirming(false)}
+      >
+        All conversations, reservations and outcomes of this demo brand are deleted, and the stock, catalogue and
+        synthetic history are rebuilt. Accounts, stores and the audit log stay. Anyone using the demo right now will see
+        their session disappear.
+      </ConfirmDialog>
       {result && (
         <p role="status" className="notice">
           {result}

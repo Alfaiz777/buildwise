@@ -299,20 +299,23 @@
 }
 @media (max-width: 768px) {
   /* The Platform sidebar collapses into a menu under the header. */
-  .shell--platform {
+  .shell--platform,
+  .shell--brand {
     grid-template-rows: auto auto 1fr;
     grid-template-areas:
       'top'
       'nav'
       'body';
   }
-  .shell--platform .shell-top__menu {
+  .shell--platform .shell-top__menu,
+  .shell--brand .shell-top__menu {
     display: inline-grid;
   }
   .shell--platform .shell-top__team {
     display: none;
   }
-  .shell--platform .shell-nav {
+  .shell--platform .shell-nav,
+  .shell--brand .shell-nav {
     display: none;
     position: static;
     padding: var(--space-2) var(--space-4);
@@ -321,13 +324,16 @@
     box-shadow: var(--shadow-md);
     animation: ui-fade var(--duration-fast) var(--ease-out);
   }
-  .shell--platform.shell--nav-open .shell-nav {
+  .shell--platform.shell--nav-open .shell-nav,
+  .shell--brand.shell--nav-open .shell-nav {
     display: block;
   }
-  .shell--platform .shell-nav ul {
+  .shell--platform .shell-nav ul,
+  .shell--brand .shell-nav ul {
     grid-auto-flow: row;
   }
-  .shell--platform .shell-nav__link {
+  .shell--platform .shell-nav__link,
+  .shell--brand .shell-nav__link {
     flex-direction: row;
     gap: var(--space-3);
     padding: var(--space-3);
@@ -364,5 +370,36 @@
 @media (max-width: 768px) {
   .shell--retail .shell-top__console {
     display: none;
+  }
+}
+
+/* ---------------------------------------------------------------- UI-P3: Brand header */
+.shell--brand .shell-top__console {
+  color: var(--color-text);
+}
+.shell--brand .shell-top__brand {
+  align-items: center;
+}
+.shell--brand .shell-top__context {
+  color: var(--color-text);
+  font-weight: 600;
+}
+.shell--brand .shell-top__context::before {
+  content: '· ';
+  color: var(--color-text-muted);
+}
+@media (max-width: 768px) {
+  .shell--brand .shell-top__console,
+  .shell--brand .shell-top__context::before {
+    display: none;
+  }
+  .shell--brand .shell-top__email,
+  .shell--brand .shell-top__chip {
+    display: none;
+  }
+  /* Sign out as an icon (its name stays for screen readers): the header fits in two rows. */
+  .shell--brand .shell-top__user > .ui-button--ghost {
+    gap: 0;
+    font-size: 0;
   }
 }

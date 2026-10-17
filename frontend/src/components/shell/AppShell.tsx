@@ -13,6 +13,7 @@ import { AiButton, Tip } from '../ui';
 import { AskQwikspotProvider, BRAND_ASK } from '../../pages/brand/askQwikspot';
 import { storeAsk } from '../../pages/retailer/storeAsk';
 import { PLATFORM_ASK } from '../../pages/platform/platformAsk';
+import { JudgeTour, SHOW_TOUR } from '../../pages/brand/JudgeTour';
 
 /** Dispatched on window when a page resolves or changes what the nav badge counts. */
 export const WAITING_CHANGED = 'qwikspot:waiting-changed';
@@ -41,8 +42,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         }
       : null;
   const platform = me.scope === 'PLATFORM';
-  // The role chip (in the role colour) and "?" to reopen the welcome note: Platform and Store.
-  const roleChip = me.scope !== 'BRAND';
+  const brand = me.scope === 'BRAND';
+  // The role chip (in the role colour) and "?" to reopen the welcome note: every console (UI-P3).
+  const roleChip = true;
+  // On a phone the sidebar collapses into a menu (Platform, UI-P1; Brand, UI-P3).
+  const collapsible = platform || brand;
   const banner = useRoleBanner(me.scope);
   // UI-P1: on a phone the Platform sidebar collapses into a menu.
   const [navOpen, setNavOpen] = useState(false);
@@ -113,7 +117,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className={`shell shell--${me.scope.toLowerCase()}${navOpen ? ' shell--nav-open' : ''}`}>
       <header className="shell-top">
         <div className="shell-top__brand">
-          {platform && (
+          {collapsible && (
             <button
               type="button"
               className="ui-icon-button shell-top__menu"
@@ -160,13 +164,17 @@ export function AppShell({ children }: { children: ReactNode }) {
               Ask Qwikspot
             </AiButton>
           )}
-          {roleChip && !banner.open && (
+          {roleChip && (!banner.open || shopperDemo) && (
             <button
               type="button"
               className="ui-icon-button"
               aria-label="Show the welcome note"
-              title="Show the welcome note"
-              onClick={banner.show}
+              title={shopperDemo ? 'Show the welcome note and the demo checklist' : 'Show the welcome note'}
+              onClick={() => {
+                banner.show();
+                // UI-P3: "?" also brings back the judge's "Try the live demo" checklist.
+                if (shopperDemo) window.dispatchEvent(new Event(SHOW_TOUR));
+              }}
             >
               <HelpCircle size={18} aria-hidden="true" />
             </button>
@@ -183,7 +191,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             </a>
           )}
           <span className="shell-top__email">{me.user.email ?? me.user.user_id}</span>
-          {!roleChip && <span className="ui-pill ui-pill--primary shell-role">{label(me.role)}</span>}
           <button type="button" className="ui-button ui-button--ghost ui-button--sm" onClick={() => void signOut()}>
             <LogOut size={16} aria-hidden="true" />
             Sign out
@@ -216,6 +223,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <RoleBanner me={me} open={banner.open} onDismiss={banner.dismiss} />
         <main className="shell-main">{children}</main>
       </div>
+      {shopperDemo && me.scope === 'BRAND' && <JudgeTour brandId={me.brand_id} />}
     </div>
   );
   // L5/L6/L7: every console carries "Ask Qwikspot" — the header button and the drawer (and
