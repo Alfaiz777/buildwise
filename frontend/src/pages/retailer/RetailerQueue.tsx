@@ -122,6 +122,15 @@ function outcomePill(r: QueueReservation): { text: string; tone: 'success' | 'da
   return { text: STATUS_LABEL[r.status] ?? enumLabel(r.status), tone: 'neutral' };
 }
 
+/** What a Refresh press found, for its toast. */
+function refreshedText(view: 'active' | 'history', n: number): string {
+  if (view === 'history') return `History refreshed — ${n === 1 ? '1 hold' : `${n} holds`}.`;
+  return n === 0 ? 'Holds refreshed — nothing waiting.' : `Holds refreshed — ${n} waiting.`;
+}
+
+/** "14:05" in this browser's time (when the list was last loaded). */
+const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
 /** The next step a store takes on a hold (never "Refuse"). */
 export const primaryAction = (r: QueueReservation) => r.allowed_actions.find((a) => a !== 'CANCELLED') ?? null;
 
@@ -212,6 +221,9 @@ export function RetailerQueue({
   const seen = useRef<Set<string> | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  // A Refresh press (not the first load or the 15 s poll): spin, dim the list, then say so.
+  const [refreshing, setRefreshing] = useState(false);
+  const pressedAt = useRef<number | null>(null);
 
   const list = useLoad(
     useCallback(() => api.get<{ reservations: QueueReservation[] }>(`/api/reservations?view=${view}`), [api, view]),
@@ -222,16 +234,25 @@ export function RetailerQueue({
   useEffect(() => {
     if (!list.data) return;
     setUpdatedAt(Date.now());
-    if (view !== 'active') return;
     const rows = list.data.reservations;
-    if (seen.current) {
-      const arrived = rows.filter((r) => !seen.current!.has(r.reservation_id));
-      if (arrived.length) {
-        setFresh((prev) => new Set([...prev, ...arrived.map((r) => r.reservation_id)]));
-        onNewHolds?.(arrived);
+    let arrived: QueueReservation[] = [];
+    if (view === 'active') {
+      if (seen.current) {
+        arrived = rows.filter((r) => !seen.current!.has(r.reservation_id));
+        if (arrived.length) {
+          setFresh((prev) => new Set([...prev, ...arrived.map((r) => r.reservation_id)]));
+          onNewHolds?.(arrived);
+        }
       }
+      seen.current = new Set([...(seen.current ?? []), ...rows.map((r) => r.reservation_id)]);
     }
-    seen.current = new Set([...(seen.current ?? []), ...rows.map((r) => r.reservation_id)]);
+    if (pressedAt.current !== null) {
+      // Spin for at least half a second, so a fast answer is still seen to happen.
+      const wait = Math.max(0, 500 - (Date.now() - pressedAt.current));
+      pressedAt.current = null;
+      setTimeout(() => setRefreshing(false), wait);
+      if (!arrived.length) toast.show(refreshedText(view, rows.length)); // a new hold has its own toast
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list.data, view]);
 
@@ -251,8 +272,18 @@ export function RetailerQueue({
     return () => clearInterval(id);
   }, [view]);
 
+  // A failed refresh stops the spinner; the error shows above the list.
+  useEffect(() => {
+    if (!list.error || pressedAt.current === null) return;
+    pressedAt.current = null;
+    setRefreshing(false);
+  }, [list.error]);
+
   const refresh = () => {
+    if (refreshing) return;
     setNow(Date.now());
+    pressedAt.current = Date.now();
+    setRefreshing(true);
     reload();
   };
 
@@ -315,13 +346,24 @@ export function RetailerQueue({
   });
 
   const refreshButton = (
-    <button type="button" className="ui-icon-button st-refresh" aria-label="Refresh" title="Refresh" onClick={refresh}>
-      <RefreshCw size={16} aria-hidden="true" />
+    <button
+      type="button"
+      className="ui-icon-button st-refresh"
+      aria-label="Refresh"
+      title={refreshing ? 'Refreshing…' : 'Refresh'}
+      aria-busy={refreshing}
+      onClick={refresh}
+    >
+      <RefreshCw size={16} aria-hidden="true" className={refreshing ? 'ui-spin' : undefined} />
     </button>
   );
 
   return (
-    <div className="queue" aria-label={view === 'active' ? 'Reservation queue' : 'Reservation history'}>
+    <div
+      className={`queue${refreshing ? ' is-refreshing' : ''}`}
+      aria-label={view === 'active' ? 'Reservation queue' : 'Reservation history'}
+      aria-busy={refreshing}
+    >
       {view === 'active' ? (
         <div className="st-hero__head">
           <h2 className="st-hero__title">Holds</h2>
@@ -344,7 +386,14 @@ export function RetailerQueue({
       ) : (
         <div className="st-history__head">
           <Segmented label="Show" value={filter} options={HISTORY_FILTERS} onChange={setFilter} />
-          {refreshButton}
+          <div className="st-hero__tools">
+            {updatedAt !== null && (
+              <span className="small muted" role="status">
+                {refreshing ? 'Refreshing…' : `Updated ${clock(updatedAt)}`}
+              </span>
+            )}
+            {refreshButton}
+          </div>
         </div>
       )}
       {notice && (

@@ -608,3 +608,33 @@ describe('UI-P2 fixes — less scrolling, the AI brief', () => {
     expect(briefCalls).toHaveLength(2); // the first load and one retry — never a loop
   });
 });
+
+describe('UI-P2 — Refresh feedback', () => {
+  it('Today: Refresh spins, then says what it found', async () => {
+    const api = storeApi((p) =>
+      p.startsWith('/api/reservations') ? { reservations: [] } : p.endsWith('/summary') ? SUMMARY : undefined,
+    );
+    renderAt('/store', api);
+    await screen.findByText("You're all caught up.");
+    const button = screen.getByRole('button', { name: 'Refresh' });
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(await screen.findByText('Holds refreshed — nothing waiting.')).toBeInTheDocument();
+    await waitFor(() => expect(button).toHaveAttribute('aria-busy', 'false'));
+  });
+
+  it('History: Refresh loads again, shows the time and a toast', async () => {
+    const api = storeApi((p) =>
+      p.startsWith('/api/reservations')
+        ? { reservations: [hold({ status: 'COMPLETED', allowed_actions: [] })] }
+        : undefined,
+    );
+    renderAt('/store/history', api);
+    expect(await screen.findByText(/^Updated \d\d:\d\d/)).toBeInTheDocument();
+    const before = (api.get as ReturnType<typeof vi.fn>).mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    expect(screen.getByText('Refreshing…')).toBeInTheDocument();
+    expect(await screen.findByText('History refreshed — 1 hold.')).toBeInTheDocument();
+    expect((api.get as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before + 1);
+  });
+});
