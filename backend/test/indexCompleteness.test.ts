@@ -37,6 +37,9 @@ const QUERIES: Record<string, Need> = {
     composite: ['commerceEvents', 'event_type', 'timestamp'],
   },
   "reservationRepository.ts 'store_id' == | 'pickup_code' ==": { none: 'equality only (index merging)' },
+  // Change 19: walk-in sales and stock movements — a range and its sort on one field (the store filtered in code).
+  "storeSaleRepository.ts 'created_at' >= | order 'created_at'": { none: 'range and order on one field' },
+  "storeSaleRepository.ts 'at' >= | order 'at'": { none: 'range and order on one field' },
   "reservationRepository.ts 'status' in | 'expires_at' <=": { composite: ['reservations', 'status', 'expires_at'] },
 };
 

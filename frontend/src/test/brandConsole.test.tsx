@@ -864,3 +864,64 @@ describe('UI-P3 — Reservations board, Insights, Settings', () => {
     expect(within(channels).getByText('1 storefront').closest('.status-dot')).toHaveClass('status-dot--connected');
   });
 });
+
+/** Change 19: the stores' walk-in sales beside Qwikspot pickups. */
+describe('Sales', () => {
+  it('shows walk-in sales, Qwikspot pickups (est.), the share and each store', async () => {
+    renderAt(
+      '/brand/sales',
+      apiWith({
+        '/api/brand/sales': {
+          period: { days: 7, from: ago(7 * 1440), to: ago(0) },
+          walk_in: { invoices: 3, units: 4, value: 1396, voided: 1, currency: 'INR' },
+          qwikspot_pickups: { pickups: 2, value: 698, currency: 'INR' },
+          qwikspot_share_pct: 33,
+          by_store: [
+            {
+              store_id: 'st_1',
+              store_name: 'Bandra',
+              invoices: 3,
+              units: 4,
+              value: 1396,
+              pickups: 2,
+              pickup_value: 698,
+            },
+          ],
+          by_product: [
+            {
+              sku: 'DBC-VCSERUM-30',
+              product_title: 'Vitamin C Glow Serum',
+              variant_title: '30 ml',
+              units: 4,
+              value: 1396,
+            },
+          ],
+          recent: [
+            {
+              sale_id: 'sale_1',
+              store_name: 'Bandra',
+              invoice_number: 'INV-000003',
+              units: 1,
+              total: 349,
+              payment_method: 'CASH',
+              status: 'RECORDED',
+              created_at: ago(30),
+              lines: [
+                { sku: 'DBC-VCSERUM-30', product_title: 'Vitamin C Glow Serum', variant_title: '30 ml', quantity: 1 },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    const tiles = await screen.findByRole('region', { name: 'Sales totals' });
+    expect(within(tiles).getByText('₹1,396')).toBeInTheDocument();
+    expect(within(tiles).getByText(/3 invoices · 4 units/)).toBeInTheDocument();
+    expect(within(tiles).getByText('33%')).toBeInTheDocument();
+    expect(within(tiles).getByText('est.')).toBeInTheDocument();
+    const stores = screen.getByRole('list', { name: 'Sales by store' });
+    expect(within(stores).getByText('Bandra')).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Recent invoices' })).toHaveTextContent('INV-000003');
+    expect(screen.getByText(/never counted as Qwikspot conversions/)).toBeInTheDocument();
+  });
+});

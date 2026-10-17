@@ -15,6 +15,7 @@ import type { FollowUpService } from './application/followUpService.js';
 import type { IntentService } from './application/intentService.js';
 import type { PlatformAdminService } from './application/platformAdminService.js';
 import type { ReservationService } from './application/reservationService.js';
+import type { StoreSalesService } from './application/storeSalesService.js';
 import type { FulfilmentService } from './application/fulfilmentService.js';
 import type { HandoffService } from './application/handoffService.js';
 import type { BrandSettingsQuery } from './application/brandSettingsQuery.js';
@@ -60,6 +61,7 @@ import { localFilesRouter } from './routes/localFiles.js';
 import { meRouter } from './routes/me.js';
 import { platformRouter } from './routes/platform.js';
 import { retailRouter } from './routes/retail.js';
+import { storeSalesBrandRouter, storeSalesRetailRouter } from './routes/storeSales.js';
 import { retailImportsRouter } from './routes/retailImports.js';
 import { reservationsRouter } from './routes/reservations.js';
 
@@ -78,6 +80,8 @@ export interface AppDeps {
     platformAdmin: PlatformAdminService;
     tenantAdmin: TenantAdminService;
     account: AccountService;
+    /** Change 19: walk-in sales (Store Console) and offline sales (Brand Console). */
+    storeSales?: StoreSalesService;
     commerceSync: CommerceSyncService;
     catalog: CatalogService;
     retailImports: RetailImportService;
@@ -256,6 +260,10 @@ export function createApp(deps: AppDeps): Express {
   );
   if (services.storeAssistant)
     tenant.use('/retail', requireScope('RETAIL'), storeAssistantRouter(services.storeAssistant));
+  if (services.storeSales) {
+    tenant.use('/retail', requireScope('RETAIL'), storeSalesRetailRouter(services.storeSales));
+    tenant.use('/brand', requireScope('BRAND'), storeSalesBrandRouter(services.storeSales));
+  }
   tenant.use('/reservations', reservationsRouter(services.reservations, services.fulfilment));
   api.use(tenant);
 

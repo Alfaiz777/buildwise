@@ -9,13 +9,22 @@ import { answerSchemaFor, jsonSchemaOf, money, plural, SHARED_RULES, type ModelA
 // The shared grounding helpers, re-exported for the brand agent's callers.
 export { numbersOf, redactPII, ungroundedNumbers } from './assistant.js';
 
-export const CONSOLE_PAGES = ['OVERVIEW', 'CONVERSATIONS', 'RESERVATIONS', 'INSIGHTS', 'NETWORK', 'SETTINGS'] as const;
+export const CONSOLE_PAGES = [
+  'OVERVIEW',
+  'CONVERSATIONS',
+  'RESERVATIONS',
+  'SALES',
+  'INSIGHTS',
+  'NETWORK',
+  'SETTINGS',
+] as const;
 export type ConsolePage = (typeof CONSOLE_PAGES)[number];
 
 export const PAGE_PATHS: Record<ConsolePage, string> = {
   OVERVIEW: '/brand',
   CONVERSATIONS: '/brand/conversations',
   RESERVATIONS: '/brand/reservations',
+  SALES: '/brand/sales',
   INSIGHTS: '/brand/insights',
   NETWORK: '/brand/network',
   SETTINGS: '/brand/settings',
@@ -69,6 +78,17 @@ export interface BrandPack {
   unmet_demand: { product: string; area: string; count: number }[];
   weekday_reading: { kind: string; text: string } | null;
   suggestions: { rule: string; text: string; store_id: string | null }[];
+  /**
+   * Change 19: the stores' offline sales — walk-in invoices recorded in the Store Console, beside
+   * Qwikspot pickups — for the period (live records; walk-in sales have no demo history).
+   */
+  in_store_sales?: {
+    walk_in: { invoices: number; units: number; value: number };
+    qwikspot_pickups: { pickups: number; value: number };
+    qwikspot_share_percent: number | null;
+    by_store: { store: string; walk_in_value: number; invoices: number; pickups: number }[];
+    top_products: { product: string; units: number }[];
+  } | null;
   holds_now: {
     active: number;
     waiting_for_store: number;
@@ -106,7 +126,7 @@ export interface ConversationPack {
   message_count: number;
 }
 
-export const BRAND_ASSISTANT_PROMPT_VERSION = 'ASK_QWIKSPOT_V3';
+export const BRAND_ASSISTANT_PROMPT_VERSION = 'ASK_QWIKSPOT_V4'; // V4 (Change 19): in-store sales
 
 export const BRAND_ASSISTANT_PROMPT = `You are "Ask Qwikspot", the analyst inside a brand's Qwikspot console. Qwikspot turns shoppers' online intent into store pickups through the brand's WhatsApp. You tell the brand's team what happened, why, and what to do next.
 
@@ -121,6 +141,7 @@ Call a tool only when the pack does not already answer the question. When no too
 
 RULES
 ${SHARED_RULES}
+- in_store_sales are the stores' own invoices for walk-in shoppers (recorded on each store's Sales page) beside Qwikspot pickups; qwikspot_share_percent is the share of that offline value that came through Qwikspot. Walk-in sales are not Qwikspot conversions: never count them in conversion or purchases.
 - Use the totals with their meaning: pickups_collected_in_store are pickups, online_orders are online orders, value_of_purchases is the value of purchases, conversion_percent is conversion. Name the store, the product, the area.
 - An empty list, a 0 or a null in the data is an answer, not missing data: say what it means. Never say the data "doesn't track" or "doesn't include" something the data has a field for. No holds waiting: "No holds are waiting right now, so no store is behind." median_minutes_to_confirm null: no hold was confirmed there in the period. Say the data does not cover something only when neither the data nor a tool result has it.
 - Write percentages with %: "100% fill rate", "conversion 0%". Never write a percentage the data does not have.

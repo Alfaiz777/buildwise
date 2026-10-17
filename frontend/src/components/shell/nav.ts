@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   MessagesSquare,
   Network,
+  Receipt,
   ScrollText,
   Server,
   Settings,
@@ -38,6 +39,8 @@ export const NAV: Record<Scope, NavItem[]> = {
     { to: '/brand', label: 'Overview', icon: LayoutDashboard, end: true },
     { to: '/brand/conversations', label: 'Conversations', icon: MessagesSquare, badge: 'handoffs' },
     { to: '/brand/reservations', label: 'Reservations', icon: CalendarCheck },
+    // Change 19: walk-in sales the stores record, beside Qwikspot pickups.
+    { to: '/brand/sales', label: 'Sales', icon: Receipt },
     { to: '/brand/insights', label: 'Insights', icon: BarChart3 },
     { to: '/brand/network', label: 'Network', icon: Network },
     { to: '/brand/settings', label: 'Settings', icon: Settings },
@@ -46,6 +49,8 @@ export const NAV: Record<Scope, NavItem[]> = {
     { to: '/store', label: 'Today', icon: ClipboardList, end: true, badge: 'pending' },
     { to: '/store/history', label: 'History', icon: History },
     { to: '/store/stock', label: 'Stock', icon: Boxes },
+    // Change 19: the invoice of a walk-in sale; it takes the units out of stock at once.
+    { to: '/store/sales', label: 'Sales', icon: Receipt },
     { to: '/store/demand', label: 'Demand', icon: TrendingUp },
   ],
   PLATFORM: [

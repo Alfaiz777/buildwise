@@ -150,6 +150,12 @@ export interface StoreInventoryOutput {
   variant_id: string;
   available_quantity: number;
   availability_status: string;
+  /**
+   * Change 19: why this store's stock of the variant last changed (IN_STORE_SALE, QWIKSPOT_PICKUP,
+   * RETAIL_IMPORT, HOLD_PLACED, HOLD_RELEASED, SALE_VOIDED) and when — so the agent knows the count
+   * is live. Never another shopper's identity.
+   */
+  last_stock_change: { reason: string; at: string } | null;
 }
 
 export interface StoreHoursOutput {

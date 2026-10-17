@@ -157,8 +157,14 @@ function summarize(tool: string, status: string, output: unknown): { [key: strin
         reservation_id: r?.reservation_id ?? null,
       };
     }
-    case 'check_store_inventory':
-      return { status: String(o.status), available_quantity: Number(o.available_quantity ?? 0) };
+    case 'check_store_inventory': {
+      const change = o.last_stock_change as { reason?: string } | null | undefined;
+      return {
+        status: String(o.status),
+        available_quantity: Number(o.available_quantity ?? 0),
+        last_change_reason: change?.reason ?? null,
+      };
+    }
     case 'get_store_hours':
       return { status: String(o.status), open_now: o.open_now === true, open_until: (o.open_until as string) ?? null };
     case 'get_customer_history':

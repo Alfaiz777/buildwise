@@ -69,6 +69,9 @@ export function retailRouter(
         availability_status: l.availabilityStatus,
         offline_price: l.offlinePrice,
         last_updated_at: l.lastUpdatedAt,
+        // Change 19: why the row last changed (IN_STORE_SALE, QWIKSPOT_PICKUP, RETAIL_IMPORT, …) and when.
+        last_change_reason: l.lastChangeReason ?? null,
+        last_change_at: l.lastChangeAt ?? null,
         stale: l.stale,
       })),
     });

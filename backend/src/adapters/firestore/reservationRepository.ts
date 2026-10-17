@@ -2,6 +2,7 @@ import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 import {
   ACTIVE_RESERVATION_STATUSES,
   applyInventoryPlan,
+  stockChangeReason,
   type ReservationStatus,
   type TransitionDecision,
 } from '../../domain/reservationStatus.js';
@@ -186,6 +187,8 @@ export class FirestoreReservationRepository implements ReservationRepository {
       tx.update(invRef, {
         reserved_quantity: reserved,
         availability_status: deriveAvailabilityStatus(inventory!.quantity, reserved),
+        last_change_reason: 'HOLD_PLACED',
+        last_change_at: new Date().toISOString(),
       });
       return { status: 'CREATED', reservation };
     });
@@ -233,6 +236,10 @@ export class FirestoreReservationRepository implements ReservationRepository {
           reserved_quantity: inventory.reservedQuantity,
           availability_status: deriveAvailabilityStatus(inventory.quantity, inventory.reservedQuantity),
           last_updated_at: FieldValue.serverTimestamp(),
+          // Change 19: why the store's stock changed (a pickup leaves stock; a cancel or expiry frees it).
+          ...(stockChangeReason(plan.to)
+            ? { last_change_reason: stockChangeReason(plan.to), last_change_at: new Date().toISOString() }
+            : {}),
         });
       }
       const next = { ...current, ...plan.patch, status: plan.to } as ReservationRecord;

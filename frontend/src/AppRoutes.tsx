@@ -7,6 +7,7 @@ import { ConversationsPage } from './pages/brand/ConversationsPage';
 import { InsightsPage } from './pages/brand/InsightsPage';
 import { NetworkPage } from './pages/brand/NetworkPage';
 import { ReservationsPage } from './pages/brand/ReservationsPage';
+import { SalesPage } from './pages/brand/SalesPage';
 import { SettingsPage } from './pages/brand/SettingsPage';
 import { LandingPage } from './pages/landing/LandingPage';
 import { LoginPage } from './pages/LoginPage';
@@ -15,6 +16,7 @@ import { PlatformBrands } from './pages/platform/PlatformBrands';
 import { PlatformHome } from './pages/platform/PlatformHome';
 import { PlatformAudit, PlatformNetwork, PlatformSystem } from './pages/platform/PlatformPages';
 import { RetailerHome, StoreHistory, StoreStock } from './pages/retailer/RetailerHome';
+import { StoreSales } from './pages/retailer/StoreSales';
 import { StoreDemand } from './pages/retailer/StoreDemand';
 import { UiKitPage } from './pages/uikit/UiKitPage';
 import type { FrontendProfile } from './config';
@@ -57,6 +59,7 @@ export function AppRoutes({ profile = 'local' }: { profile?: FrontendProfile }) 
               <Route path="/brand" element={<BrandHome />} />
               <Route path="/brand/conversations" element={<ConversationsPage autoPoll={local} />} />
               <Route path="/brand/reservations" element={<ReservationsPage />} />
+              <Route path="/brand/sales" element={<SalesPage />} />
               <Route path="/brand/insights" element={<InsightsPage />} />
               <Route path="/brand/outcomes" element={<Navigate to="/brand/insights" replace />} />
               <Route path="/brand/network" element={<NetworkPage />} />
@@ -66,6 +69,7 @@ export function AppRoutes({ profile = 'local' }: { profile?: FrontendProfile }) 
               <Route path="/store" element={<RetailerHome autoPoll={local} />} />
               <Route path="/store/history" element={<StoreHistory />} />
               <Route path="/store/stock" element={<StoreStock autoPoll={local} />} />
+              <Route path="/store/sales" element={<StoreSales />} />
               <Route path="/store/demand" element={<StoreDemand />} />
             </Route>
           </Route>

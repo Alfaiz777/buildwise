@@ -298,6 +298,23 @@ const ROUTES: [string, Step][] = [
       return res;
     },
   ],
+  // Change 19: a walk-in sale at the Retail Admin's own store, then its void.
+  [
+    'storeSales.ts POST /stores/:storeId/sales',
+    async (s, ctx) => {
+      const res = await as(s, 'radmin_scA').post('/api/retail/stores/sc_A/sales', {
+        lines: [{ sku: s.stock('sc_A').sku, quantity: 1 }],
+        payment_method: 'CASH',
+      });
+      ctx.saleId = res.body.sale_id;
+      return res;
+    },
+  ],
+  [
+    'storeSales.ts POST /stores/:storeId/sales/:saleId/void',
+    (s, ctx) =>
+      as(s, 'radmin_scA').post(`/api/retail/stores/sc_A/sales/${ctx.saleId}/void`, { reason: 'Entered twice' }),
+  ],
   // Last: it replaces the brand's storefront origins, which the steps above post from.
   [
     'brandSettings.ts PATCH /settings/storefront-origins',

@@ -15,7 +15,7 @@ import './askQwikspot.css';
  * data — within 20 s either way.
  */
 
-export type ConsolePage = 'OVERVIEW' | 'CONVERSATIONS' | 'RESERVATIONS' | 'INSIGHTS' | 'NETWORK' | 'SETTINGS';
+export type ConsolePage = 'OVERVIEW' | 'CONVERSATIONS' | 'RESERVATIONS' | 'SALES' | 'INSIGHTS' | 'NETWORK' | 'SETTINGS';
 
 export interface AssistantAnswer {
   answer: string;
@@ -31,6 +31,7 @@ export interface AssistantAnswer {
 export function pageOf(pathname: string): ConsolePage {
   if (pathname.startsWith('/brand/conversations')) return 'CONVERSATIONS';
   if (pathname.startsWith('/brand/reservations')) return 'RESERVATIONS';
+  if (pathname.startsWith('/brand/sales')) return 'SALES';
   if (pathname.startsWith('/brand/insights') || pathname.startsWith('/brand/outcomes')) return 'INSIGHTS';
   if (pathname.startsWith('/brand/network')) return 'NETWORK';
   if (pathname.startsWith('/brand/settings')) return 'SETTINGS';
@@ -42,6 +43,7 @@ export const SUGGESTED_QUESTIONS: Record<ConsolePage, string[]> = {
   OVERVIEW: ['How did we do this week?', 'What should I fix first?'],
   CONVERSATIONS: ['Why did chats end without a hold this week?', 'Show me chats where the shopper refused a store'],
   RESERVATIONS: ['Which holds are at risk?', 'Which store is slowest to accept?'],
+  SALES: ['How do walk-in sales compare with Qwikspot pickups?', 'Which store sells the most in-store?'],
   INSIGHTS: [
     'Which product is losing the most demand?',
     'Compare Satellite and Navrangpura',
@@ -59,6 +61,7 @@ const SOURCE_LINKS: Record<string, { label: string; to: string }> = {
   weekday_reading: { label: 'Insights', to: '/brand/insights' },
   stores: { label: 'Network', to: '/brand/network' },
   holds_now: { label: 'Reservations', to: '/brand/reservations' },
+  in_store_sales: { label: 'Sales', to: '/brand/sales' },
   conversations_now: { label: 'Conversations', to: '/brand/conversations' },
   conversation: { label: 'This conversation', to: '' },
 };

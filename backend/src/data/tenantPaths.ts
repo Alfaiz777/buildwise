@@ -12,6 +12,10 @@ export const TENANT_COLLECTIONS = [
   'stores',
   'retailInventory',
   'retailImports',
+  // Change 19: walk-in sales, their stock movements and each store's invoice counter.
+  'storeSales',
+  'stockMovements',
+  'storeSaleCounters',
   'customerIntents',
   'conversations',
   'aiRecommendations',

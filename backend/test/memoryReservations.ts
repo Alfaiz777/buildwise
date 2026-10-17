@@ -2,6 +2,7 @@
 import {
   ACTIVE_RESERVATION_STATUSES,
   applyInventoryPlan,
+  stockChangeReason,
   type ReservationStatus,
   type TransitionDecision,
 } from '../src/domain/reservationStatus.js';
@@ -101,6 +102,8 @@ export class MemoryReservations implements ReservationRepository {
       this.reservations.push(reservation);
       inv!.reservedQuantity += req.quantity;
       inv!.availabilityStatus = deriveAvailabilityStatus(inv!.quantity, inv!.reservedQuantity);
+      inv!.lastChangeReason = 'HOLD_PLACED';
+      inv!.lastChangeAt = new Date().toISOString();
       return { status: 'CREATED', reservation: clone(reservation) };
     });
   }
@@ -133,6 +136,11 @@ export class MemoryReservations implements ReservationRepository {
         inv.quantity = inventory.quantity;
         inv.reservedQuantity = inventory.reservedQuantity;
         inv.availabilityStatus = deriveAvailabilityStatus(inv.quantity, inv.reservedQuantity);
+        const reason = stockChangeReason(decision.plan.to);
+        if (reason) {
+          inv.lastChangeReason = reason;
+          inv.lastChangeAt = new Date().toISOString();
+        }
       }
       Object.assign(r, decision.plan.patch, { status: decision.plan.to });
       return { status: 'OK', reservation: clone(r), before, inventory };

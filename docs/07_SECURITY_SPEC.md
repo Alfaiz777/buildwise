@@ -399,6 +399,8 @@ Incorrect:
 Gemini guesses the store has stock
 ```
 
+**Walk-in sales (Change 19).** A Retail Admin records walk-in sales for its own store only (any other store → `404`, any other scope → `403`); brand, store and SKU prices come from the principal and the stored stock, never from the request (the body carries only SKUs, quantities and the payment method, strictly validated). A sale and a Qwikspot hold change the same stock row inside Firestore transactions, so a sale can never take a held unit and two writers cannot both take the last one. Invoices carry **no customer data**; the APIs never return who recorded a sale. The shopper agent sees only the reason a row last changed (`IN_STORE_SALE`), never invoices, and is told never to mention other shoppers' purchases. Recording, refusing and voiding a sale are audited.
+
 ---
 
 # 10. WhatsApp privacy and consent

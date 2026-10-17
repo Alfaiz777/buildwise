@@ -523,6 +523,8 @@ RetailInventory
 - offline_price
 - availability_status
 - last_updated_at
+- last_change_reason    (Change 19: RETAIL_IMPORT | IN_STORE_SALE | SALE_VOIDED | QWIKSPOT_PICKUP | HOLD_PLACED | HOLD_RELEASED)
+- last_change_at        (Change 19: when that change happened)
 ```
 
 Available-to-reserve quantity:
@@ -543,6 +545,35 @@ UNKNOWN
 ```
 
 `availability_status` is derived deterministically from `available_quantity` (`domain/storeTruth.ts`): ≤ 0 → `OUT_OF_STOCK`, ≤ 3 → `LOW_STOCK`, otherwise `IN_STOCK`. It is recomputed on every import from the stored `reserved_quantity`.
+
+## 10.0 StoreSale and StockMovement (Change 19)
+
+A walk-in sale recorded by the store's Retail Admin. It lowers `quantity` in the same transaction as the invoice; it can never take `reserved_quantity` (a sale needs `quantity − reserved_quantity ≥` the units sold).
+
+```text
+StoreSale (brands/{brand_id}/storeSales/{sale_id})
+- sale_id, brand_id, store_id
+- invoice_number        (per store, INV-000001 …; from storeSaleCounters/{store_id})
+- lines[] { sku, canonical_sku, variant_id, product_title, variant_title, quantity, unit_price, line_total }
+                        (1–20 lines, 1–50 units each; unit_price = the row's offline_price at the sale)
+- units, total, currency
+- payment_method        (CASH | UPI | CARD | OTHER)
+- status                (RECORDED | VOIDED)
+- created_at, created_by (the Retail Admin's uid; never returned by the APIs)
+- voided_at, voided_by, void_reason   (a void: within 24 hours, a reason of 3–200 characters)
+
+StockMovement (brands/{brand_id}/stockMovements/{movement_id})
+- movement_id, brand_id, store_id, sku, canonical_sku, variant_id
+- delta                 (−units for a sale, +units for its void)
+- quantity_after
+- reason                (IN_STORE_SALE | SALE_VOIDED)
+- sale_id, invoice_number, at
+
+StoreSaleCounter (brands/{brand_id}/storeSaleCounters/{store_id})
+- next                  (the last invoice number used)
+```
+
+No customer data is stored on a sale. Queries use one field each (`created_at >=` ordered by `created_at`; `at >=` ordered by `at`), so no composite index is needed. Reset demo wipes the three collections.
 
 ## 10.1 RetailImport
 
@@ -1231,6 +1262,9 @@ brands/{brand_id}/retailers/{retailer_id}
 brands/{brand_id}/stores/{store_id}
 brands/{brand_id}/retailInventory/{inventory_id}
 brands/{brand_id}/retailImports/{import_id}
+brands/{brand_id}/storeSales/{sale_id}                              (Change 19: walk-in invoices; no customer data)
+brands/{brand_id}/stockMovements/{movement_id}                      (Change 19: stock moved by a sale or its void)
+brands/{brand_id}/storeSaleCounters/{store_id}                      (Change 19: the store's invoice number)
 brands/{brand_id}/customerIntents/{intent_id}
 brands/{brand_id}/conversations/{conversation_id}
 brands/{brand_id}/conversations/{conversation_id}/messages/{message_id}
@@ -1273,6 +1307,9 @@ Entity → collection:
 | RetailStore | `stores` |
 | RetailInventory | `retailInventory` |
 | RetailImport | `retailImports` |
+| StoreSale | `storeSales` |
+| StockMovement | `stockMovements` |
+| StoreSaleCounter | `storeSaleCounters` |
 | CustomerIntent | `customerIntents` |
 | IntentToken | `intentTokens` |
 | Conversation | `conversations` |

@@ -5,12 +5,13 @@ import type { AskConfig } from '../brand/askQwikspot';
  * agent about the signed-in Retail Admin's own store only (POST /api/retail/stores/:id/assistant).
  */
 
-export type StorePage = 'TODAY' | 'HISTORY' | 'STOCK' | 'DEMAND';
+export type StorePage = 'TODAY' | 'HISTORY' | 'STOCK' | 'SALES' | 'DEMAND';
 
 /** The page a Store Console path belongs to. */
 export function storePageOf(pathname: string): StorePage {
   if (pathname.startsWith('/store/history')) return 'HISTORY';
   if (pathname.startsWith('/store/stock')) return 'STOCK';
+  if (pathname.startsWith('/store/sales')) return 'SALES';
   if (pathname.startsWith('/store/demand')) return 'DEMAND';
   return 'TODAY';
 }
@@ -29,6 +30,7 @@ const STORE_SOURCES: Record<string, { label: string; to: string }> = {
   now: { label: 'Today', to: '/store' },
   waiting_holds: { label: 'Today', to: '/store' },
   stock_attention: { label: 'Stock', to: '/store/stock' },
+  walk_in_sales: { label: 'Sales', to: '/store/sales' },
   demand_near_you: { label: 'Demand', to: '/store/demand' },
   busiest_weekdays: { label: 'Demand', to: '/store/demand' },
   suggestions: { label: 'Demand', to: '/store/demand' },
@@ -41,7 +43,7 @@ export const storeAsk = (storeId: string): AskConfig => ({
   suggestions: () => STORE_QUESTIONS,
   sourceLinks: STORE_SOURCES,
   dataOf: "your store's",
-  placeholder: 'Ask about your holds, stock or demand…',
+  placeholder: 'Ask about your holds, stock, sales or demand…',
 });
 
 export const storeBriefPath = (storeId: string) => `/api/retail/stores/${encodeURIComponent(storeId)}/assistant/brief`;

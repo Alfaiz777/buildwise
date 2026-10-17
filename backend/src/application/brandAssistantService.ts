@@ -7,6 +7,7 @@
  *   checked; otherwise the rules "Quick summary" — every answer within the 20 s ceiling.
  * - Read-only. Brand-scoped by the caller's BRAND principal.
  */
+import type { StoreSalesService } from './storeSalesService.js';
 import {
   BRAND_ASSISTANT_PROMPT,
   BRAND_ASSISTANT_PROMPT_VERSION,
@@ -56,6 +57,8 @@ export class BrandAssistantService {
       conversations: Pick<ConversationQueryService, 'listConversations' | 'conversationDetail'>;
       summaries: ConversationSummaryStore;
       brands: { getById(brandId: string): Promise<{ name: string } | null> };
+      /** Change 19: walk-in sales beside Qwikspot pickups (optional: absent in older wiring). */
+      sales?: Pick<StoreSalesService, 'brandSummary'>;
       now?: () => Date;
     },
   ) {}
@@ -100,11 +103,12 @@ export class BrandAssistantService {
   async pack(principal: BrandPrincipal, scope: PackScope = DEFAULT_SCOPE): Promise<BrandPack> {
     const brandId = principal.brandId;
     const now = this.now();
-    const [panels, stores, records, brand] = await Promise.all([
+    const [panels, stores, records, brand, offline] = await Promise.all([
       this.deps.insights.panels(brandId, { days: scope.days, includeHistory: scope.includeHistory }),
       this.deps.tenantAdmin.listStores(principal),
       this.records(principal, scope),
       this.deps.brands.getById(brandId),
+      this.deps.sales?.brandSummary(brandId, scope.days) ?? null,
     ]);
     const { active, history, conversations } = records;
     const fromMs = now.getTime() - scope.days * 86_400_000;
@@ -187,6 +191,23 @@ export class BrandAssistantService {
         ? { kind: panels.weekday.reading.kind, text: panels.weekday.reading.text }
         : null,
       suggestions: panels.suggestions.map((s) => ({ rule: s.rule, text: s.text, store_id: s.store_id })),
+      in_store_sales: offline
+        ? {
+            walk_in: { invoices: offline.walk_in.invoices, units: offline.walk_in.units, value: offline.walk_in.value },
+            qwikspot_pickups: { pickups: offline.qwikspot_pickups.pickups, value: offline.qwikspot_pickups.value },
+            qwikspot_share_percent: offline.qwikspot_share_pct,
+            by_store: offline.by_store.slice(0, 10).map((s) => ({
+              store: s.store_name,
+              walk_in_value: s.value,
+              invoices: s.invoices,
+              pickups: s.pickups,
+            })),
+            top_products: offline.by_product.slice(0, 5).map((p) => ({
+              product: `${p.product_title ?? p.sku}${p.variant_title ? ` ${p.variant_title}` : ''}`,
+              units: p.units,
+            })),
+          }
+        : null,
       holds_now: {
         active: rows.length,
         waiting_for_store: waiting.length,

@@ -1,0 +1,345 @@
+/*
+ * Sales (Change 19): the Store Console's walk-in invoice screen and the Brand Console's sales
+ * view. Tokens only; the same frame as the other console pages (pf-* tiles, ui-card).
+ */
+
+/* ---------------------------------------------------------------- Store: totals and the till */
+.sl-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.sl-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.sl-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+.sl-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--color-text);
+}
+.sl-search:focus-within {
+  border-color: var(--color-primary);
+}
+.sl-pick,
+.sl-lines,
+.sl-invoices,
+.sl-moves,
+.sl-stores,
+.sl-products {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sl-pick {
+  margin-top: var(--space-3);
+}
+.sl-pick li,
+.sl-lines li,
+.sl-invoices li,
+.sl-moves li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--color-border);
+}
+.sl-pick li:first-child,
+.sl-lines li:first-child,
+.sl-invoices li:first-child,
+.sl-moves li:first-child {
+  border-top: 0;
+}
+.sl-pick__name,
+.sl-lines__name,
+.sl-invoices__what {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+.sl-pick__name strong {
+  font-weight: 600;
+}
+
+/* An invoice line: the name on its own line, then the stepper, the line total and remove. */
+.sl-lines li {
+  flex-wrap: wrap;
+  row-gap: var(--space-1);
+}
+.sl-lines__name {
+  flex-basis: 100%;
+}
+.sl-lines .sl-qty {
+  margin-right: auto;
+}
+.sl-bill {
+  position: sticky;
+  top: var(--space-4);
+}
+.sl-lines__total,
+.sl-invoices__total {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sl-qty {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.sl-qty__n {
+  min-width: 2ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.sl-bill__pay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.sl-bill__total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: var(--space-3) 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-lg);
+}
+.sl-bill__total strong {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-variant-numeric: tabular-nums;
+}
+.sl-bill__record {
+  width: 100%;
+  min-height: 48px;
+}
+
+/* ---------------------------------------------------------------- Store: invoices and receipt */
+.sl-invoices__no {
+  min-width: 9ch;
+  font-size: var(--text-sm);
+}
+.sl-invoices__total {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sl-invoices li.is-voided .sl-invoices__what,
+.sl-invoices li.is-voided .sl-invoices__total,
+.ui-table tr.is-voided td {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--color-text-muted) 60%, transparent);
+}
+.sl-receipt {
+  display: grid;
+  gap: var(--space-4);
+}
+.sl-receipt header {
+  display: grid;
+  gap: 2px;
+  text-align: center;
+}
+.sl-receipt table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.sl-receipt td,
+.sl-receipt th {
+  padding: var(--space-2) 0;
+  border-bottom: 1px dashed var(--color-border);
+  text-align: left;
+}
+.sl-receipt .is-numeric {
+  text-align: right;
+}
+.sl-void {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.sl-void input {
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-weight: 400;
+}
+
+/* Stock history (a drawer from the Stock page). */
+.sl-moves li > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+.sl-moves__delta {
+  min-width: 3.5ch;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.sl-moves__delta.is-out {
+  color: var(--danger);
+}
+.sl-moves__delta.is-in {
+  color: var(--success);
+}
+
+/* ---------------------------------------------------------------- Brand: the sales view */
+.sl-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.sl-brand-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.sl-stores li {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr);
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-border);
+}
+.sl-stores li:first-child {
+  border-top: 0;
+}
+.sl-stores__name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.sl-bars {
+  display: grid;
+  gap: var(--space-1);
+}
+.sl-bar {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr) 6rem;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+.sl-bar__label {
+  color: var(--color-text-muted);
+}
+.sl-bar__track {
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  overflow: hidden;
+}
+.sl-bar__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+.sl-bar__fill--walkin {
+  background: var(--color-text-muted);
+}
+.sl-bar__fill--qwikspot {
+  background: var(--color-primary);
+}
+.sl-bar__value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.sl-products li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--color-border);
+}
+.sl-products li:first-child {
+  border-top: 0;
+}
+.sl-products__n {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- phones */
+@media (max-width: 860px) {
+  .sl-layout,
+  .sl-brand-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sl-bill {
+    position: static;
+  }
+  /* On a phone the invoice moves above the product list once something is on it. */
+  .sl-layout.has-lines .sl-bill {
+    order: -1;
+  }
+  .sl-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 520px) {
+  .sl-stores li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sl-bar {
+    grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+  }
+  .sl-invoices li {
+    flex-wrap: wrap;
+  }
+  .sl-invoices__what {
+    flex-basis: 100%;
+    order: 3;
+  }
+}
+
+/* A printed receipt: only the receipt. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #sl-receipt,
+  #sl-receipt * {
+    visibility: visible;
+  }
+  #sl-receipt {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 80mm;
+  }
+  #sl-receipt button {
+    display: none;
+  }
+}

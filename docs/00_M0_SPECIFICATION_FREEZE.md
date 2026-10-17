@@ -842,6 +842,36 @@ are drawn in the browser by a small dependency-free encoder (the same in the con
 for module against the reference Python `qrcode` package). Backend: `GET /api/wa` accepts `via=qr` without a
 `Referer` (07, the `GET /api/wa` row); the `/api/shopper` and `/api/demo-storefront` endpoints remain but nothing links to them.
 
+### Change 19 — Walk-in sales: one stock for the store and the AI (Oct 2026)
+
+A store also sells to shoppers who simply walk in, without Qwikspot. Until now that sale only reached Qwikspot with
+the next retail file, so the agent could offer a unit the store had already sold. Now:
+
+1. **Store Console → Sales** (new tab after Stock). The Retail Admin records the invoice of a walk-in sale: products
+   from the store's own stock (search; the price and the available units shown), quantities, the payment method
+   (Cash · UPI · Card · Other) and **Record sale**. In **one Firestore transaction** the units leave `quantity`,
+   each stock row records why it changed (`last_change_reason = IN_STORE_SALE`), a stock movement is written per
+   line and the invoice gets the store's next number (`INV-000001`). A receipt opens (Print). Only **available**
+   units can be sold — units held for a Qwikspot shopper stay theirs (`409 NOT_ENOUGH_STOCK` names them); a sale and
+   a hold racing for the last unit cannot both win. **No customer details** are recorded. A sale can be **voided**
+   within 24 hours with a reason (a mistake or a same-day return); the stock comes back (`SALE_VOIDED`). Both are
+   audited.
+2. **Store Console → Stock** says why each product last changed ("Last change: In-store sale · 5 min ago") with a
+   **History** drawer of its sales and voids. Every stock change now records its reason: `RETAIL_IMPORT`,
+   `IN_STORE_SALE`, `SALE_VOIDED`, `QWIKSPOT_PICKUP`, `HOLD_PLACED`, `HOLD_RELEASED`.
+3. **The shopper agent** reads stock live through `check_store_inventory` (as before), which now also returns
+   `last_stock_change { reason, at }`; its trace shows the reason. The prompt (V3) tells it never to mention other
+   shoppers' purchases. **Ask Qwikspot (store)** gains `walk_in_sales` (today and the period) and the reason on each
+   stock-attention row; it can point to the Sales page.
+4. **Brand Console → Sales** (new tab after Reservations): walk-in sales of every store (value, invoices, units,
+   voided) beside **Qwikspot pickups** (completed holds at the stores' current offline prices, "est."), the
+   **Qwikspot share** of the stores' offline sales, each store's walk-in vs Qwikspot bars, top products sold in
+   store and recent invoices. **Ask Qwikspot (brand)** gains `in_store_sales` and the Sales page. Walk-in sales are
+   never counted as Qwikspot conversions or attributed outcomes.
+
+The retail file stays the stock baseline: an import still sets `quantity` from the file (`RETAIL_IMPORT`), so a
+file exported after the day's sales already includes them.
+
 # 12. Shopify integration boundary
 
 Shopify is the source of truth for Qwikspot's **online commerce context**.
