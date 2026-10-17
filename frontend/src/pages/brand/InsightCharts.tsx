@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * Hand-built SVG charts for Insights (Change 16, UI-3; audit P2): the same numbers as the
@@ -112,6 +112,20 @@ function ticksFor(max: number): number[] {
  * "Busiest" label; the day the reading names is marked "problem day". Hover or focus a day for
  * its numbers; "Show as table" has the same numbers.
  */
+/** True at phone width (≤ 768 px), following resizes. */
+function useNarrow(): boolean {
+  const query = '(max-width: 768px)';
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const m = window.matchMedia?.(query);
+    if (!m) return;
+    const on = () => setNarrow(m.matches);
+    m.addEventListener('change', on);
+    return () => m.removeEventListener('change', on);
+  }, []);
+  return narrow;
+}
+
 export function WeekdayChart({
   days,
   problemDay,
@@ -139,7 +153,8 @@ export function WeekdayChart({
   const left = 32;
   const plotTop = 18;
   const plotH = 150;
-  const W = 900; // wide, so the chart fills a card at ~200 px tall
+  // Wide on a desktop card (~200 px tall); narrow on a phone, so the labels stay readable.
+  const W = useNarrow() ? 360 : 900;
   const colW = (W - left) / Math.max(1, days.length);
   const barW = 28;
   const y = (v: number) => plotTop + plotH - (v / top) * plotH;

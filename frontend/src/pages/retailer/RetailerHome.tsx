@@ -405,19 +405,17 @@ export function StoreStock({ autoPoll = false }: { autoPoll?: boolean }) {
                               <ProductThumb
                                 src={item.image_url ?? null}
                                 name={item.product_title ?? item.sku}
-                                size={36}
+                                size={28}
                               />
                               <span className="st-product">
-                                <span>
+                                <span className="st-product__name">
                                   {item.product_title ?? '—'}
                                   {item.variant_title && <span className="muted"> · {item.variant_title}</span>}
+                                  {item.availability_status !== 'IN_STOCK' && (
+                                    <StatusPill status={item.availability_status} />
+                                  )}
                                 </span>
                                 <span className="mono small muted">{item.sku}</span>
-                                {item.availability_status !== 'IN_STOCK' && (
-                                  <span>
-                                    <StatusPill status={item.availability_status} />
-                                  </span>
-                                )}
                                 {(differs || item.stale) && (
                                   <span className="small muted">
                                     Stock as of {formatDateTime(item.last_updated_at)}{' '}
@@ -434,9 +432,11 @@ export function StoreStock({ autoPoll = false }: { autoPoll?: boolean }) {
                             {item.reserved_quantity}
                           </td>
                           <td data-label="Available" className="is-numeric">
-                            <span className={`st-avail st-avail--${tone}`}>{item.available_quantity}</span>
-                            <span className={`st-avail__bar st-avail__bar--${tone}`}>
-                              <ProgressBar value={item.available_quantity} max={mostAvailable} />
+                            <span className="st-avail__cell">
+                              <span className={`st-avail__bar st-avail__bar--${tone}`}>
+                                <ProgressBar value={item.available_quantity} max={mostAvailable} />
+                              </span>
+                              <span className={`st-avail st-avail--${tone}`}>{item.available_quantity}</span>
                             </span>
                           </td>
                         </tr>

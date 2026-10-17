@@ -1,5 +1,5 @@
 import { RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../../api/apiContext';
 import type { ApiClient } from '../../api/client';
@@ -24,6 +24,10 @@ export function AiBriefCard({ url, title, days, includeHistory }: AskScopeValue 
   const [brief, setBrief] = useState<AssistantAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // A Quick summary is the fallback when the AI was slow (a timeout) or unavailable: ask for the
+  // AI brief once more in the background and swap it in. Once per card, so never a loop.
+  const [retrying, setRetrying] = useState(false);
+  const retried = useRef(false);
   const load = useCallback(
     (refresh = false) => {
       setLoading(true);
@@ -37,6 +41,18 @@ export function AiBriefCard({ url, title, days, includeHistory }: AskScopeValue 
     [api, url, days, includeHistory],
   );
   useEffect(() => load(), [load]);
+  useEffect(() => {
+    if (brief?.source !== 'QUICK_SUMMARY' || retried.current) return;
+    retried.current = true;
+    setRetrying(true);
+    api
+      .get<AssistantAnswer>(`${url}?days=${days}&include_history=${includeHistory}&refresh=true`)
+      .then((b) => {
+        if (isAnswer(b) && b.source === 'AI') setBrief(b);
+      })
+      .catch(() => undefined) // the Quick summary stays
+      .finally(() => setRetrying(false));
+  }, [brief, api, url, days, includeHistory]);
 
   if (error && !brief) return null; // the rest of the page still tells the story
   return (
@@ -65,6 +81,11 @@ export function AiBriefCard({ url, title, days, includeHistory }: AskScopeValue 
               Refresh
             </Button>
           </div>
+          {retrying && (
+            <p className="small muted" role="status">
+              Writing the AI brief…
+            </p>
+          )}
           <p className="ask-used small muted">
             {days === 7 ? 'Last 7 days' : 'Last 28 days'} ·{' '}
             {includeHistory ? 'including synthetic demo history' : 'live activity only'}

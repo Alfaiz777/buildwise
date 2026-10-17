@@ -302,7 +302,8 @@
   grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  min-height: 44px;
+  padding: 6px var(--space-3);
   list-style: none;
   cursor: pointer;
 }
@@ -312,9 +313,17 @@
 .st-row summary:hover {
   background: var(--color-surface-2);
 }
+/* One line: the item, then the masked customer. */
 .st-row__item {
-  display: grid;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.st-row__item > .muted {
+  flex: none;
 }
 .st-row__item strong {
   overflow: hidden;
@@ -690,5 +699,126 @@
   }
   .st-stock-table td:first-child::before {
     content: none;
+  }
+}
+
+/* UI-P2 fix: less scrolling — compact history and stock rows. */
+.st-history {
+  gap: var(--space-3);
+}
+.st-history__date {
+  margin-bottom: var(--space-1);
+}
+.st-row__detail {
+  padding-left: calc(28px + var(--space-6));
+}
+.st-history__more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.st-stock-table .ui-table td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.st-product__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-2);
+}
+.st-avail__cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.st-avail__cell .st-avail__bar {
+  margin: 0;
+}
+.st-avail__cell .st-avail {
+  min-width: 1.5rem;
+  text-align: right;
+}
+.st-suggest-rule {
+  display: block;
+  margin-top: var(--space-2);
+}
+@media (max-width: 768px) {
+  .st-row__item {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+  .st-row__detail {
+    padding-left: var(--space-3);
+  }
+  .st-stock-table td:not(:first-child) .st-avail__cell {
+    justify-content: flex-start;
+  }
+}
+
+/* UI-P2 fix (phone): one compact row per hold and per stock item. */
+@media (max-width: 768px) {
+  .st-row summary {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 2px var(--space-2);
+    padding: 6px var(--space-2);
+  }
+  .st-row__item strong {
+    white-space: normal;
+    font-size: var(--text-sm);
+  }
+  /* The times sit in their tooltip wrapper: that wrapper is the grid item. */
+  .st-row summary > .ui-tip {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: center;
+  }
+  .st-row__pills {
+    grid-column: 2 / 4;
+    grid-row: 2;
+    justify-self: end;
+    flex-wrap: nowrap;
+  }
+  .st-stock-table tr {
+    grid-template-columns: minmax(0, 1fr) repeat(3, auto);
+    align-items: center;
+    margin-bottom: var(--space-2);
+  }
+  .st-stock-table td:first-child {
+    grid-column: auto;
+    background: transparent;
+    padding: var(--space-2);
+  }
+  .st-stock-table td:not(:first-child) {
+    justify-items: center;
+    padding: var(--space-2) 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .st-stock-table td::before {
+    font-size: 10px;
+  }
+  .st-stock-table td[data-label='Reserved']::before {
+    content: 'Held';
+  }
+  .st-stock-table td[data-label='Quantity']::before {
+    content: 'Qty';
+  }
+  .st-stock-table td:not(:first-child) .st-avail__cell {
+    justify-content: center;
+  }
+  .st-stock-table .st-avail__bar {
+    display: none;
+  }
+  .st-stock-table .cell-product .ui-thumb {
+    display: none;
+  }
+  /* Demand summary: the ring across, then two small tiles side by side. */
+  .st-demand-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .st-demand-summary > :first-child {
+    grid-column: 1 / -1;
   }
 }
