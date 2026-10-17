@@ -424,7 +424,11 @@ describe('the conversation summary (GET /api/brand/conversations/:id/summary)', 
       /^The shopper wanted Vitamin C Glow Serum 30 ml; a hold at Wellness Mart is pending\./,
     );
     const handoff = await s.as().get(`/api/brand/conversations/${s.conversationOf('c3')}/summary`);
-    expect(handoff.body.handoff_brief).toMatch(/^They asked for a person after \d+ messages\./);
+    // L9: what they want and what was already tried — never the shopper's own words (no phone, no name).
+    expect(handoff.body.handoff_brief).toMatch(
+      /^Asked for a person after \d+ messages?, without naming a product\.\nAlready tried: /,
+    );
+    expect(handoff.body.handoff_brief).not.toMatch(/98765|\[phone\]|Call me/);
   });
 
   it('Gemini: the transcript it gets is redacted; the summary is stored and reused until a new message', async () => {

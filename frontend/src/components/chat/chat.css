@@ -202,6 +202,33 @@
   color: #8696a0;
   cursor: default;
 }
+/* L9: suggested replies — chips under the last message (WhatsApp shows them as reply buttons). */
+.wa-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  max-width: 100%;
+}
+.wa-quick__chip {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--wa-link);
+  border-radius: 16px;
+  background: var(--wa-in);
+  color: var(--wa-link);
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+.wa-quick__chip:hover:not(:disabled) {
+  background: #f5f6f6;
+}
+.wa-quick__chip:disabled {
+  border-color: #c5ccd1;
+  color: #8696a0;
+  cursor: default;
+}
 .wa-location {
   display: flex;
   gap: 10px;

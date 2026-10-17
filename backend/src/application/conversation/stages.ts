@@ -6,10 +6,20 @@
  * order is enforced by ConversationPipeline.
  */
 import { whatsappDisplayRef } from '../../domain/whatsappNumbers.js';
-import { isWriteTool, type NearbyStoresOutput } from '../../domain/agentTools.js';
+import { isWriteTool, type NearbyStoresOutput, type ProductContextOutput } from '../../domain/agentTools.js';
 import { isRuleTap, parseOption, toOutboundOptions, type Reply } from '../../domain/agentReplies.js';
 import type { AgentRuntimeName } from '../../domain/ai.js';
 import { resolveMessagingSettings } from '../../domain/brandSettings.js';
+import { compareWord, suggestedReplies } from '../../domain/quickReplies.js';
+import type { Language } from '../../domain/conversationalReplies.js';
+
+/** The verified alternative to compare with: its full title and the one word for the button. */
+const compareWith = (bound: string | undefined, alternative: string | undefined, language: Language) => {
+  const word = bound && alternative ? compareWord(bound, alternative, language) : null;
+  return word && alternative ? { title: alternative, word } : null;
+};
+import { classifyTurn, detectLanguage } from '../../domain/conversationalReplies.js';
+import { inServiceWindow } from '../../domain/conversationPolicy.js';
 import {
   checkCancelProposal,
   checkOfferedStores,
@@ -873,12 +883,44 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
               recommendationId,
             })
           : reply.text;
+        // Parts only ever come from the deterministic composer, never from runtime output.
+        const parts = 'parts' in reply ? (reply as Reply).parts : undefined;
+        // L9: 2–3 suggested replies by rules (never model text), only where the turn has no buttons.
+        const agentContext = context.data.agentContext;
+        // The product this turn answered about (its lookup), else the bound intent's, with its verified alternative.
+        const looked = [...tools.outputsOf<ProductContextOutput>('get_product_context')]
+          .reverse()
+          .find((c) => c.output.status === 'FOUND' && c.output.product)?.output;
+        const [bound, alternative] = looked
+          ? [looked.product!, ...looked.alternatives]
+          : (agentContext?.products ?? []);
+        const language = detectLanguage(context.data.text ?? '');
+        const suggestions = suggestedReplies({
+          action: nba.action,
+          executed: executed?.type ?? null,
+          hasButtons: (reply.options?.length ?? 0) > 0 || Boolean(parts?.ctaUrl),
+          turn: nba.turn_type ?? classifyTurn(context.data.text),
+          language,
+          handedOff: Boolean(context.data.handoffStarted || context.data.conversation?.humanHandoff),
+          handoffEnabled: resolveMessagingSettings(need(context.data.brand, 'brand').settings, '').handoffEnabled,
+          productBound: Boolean(bound || context.data.intent?.productId),
+          productTitle: bound?.title ?? null,
+          compareWith: compareWith(bound?.title, alternative?.title, language),
+          onlinePurchaseAvailable: Boolean(agentContext?.brand.online_purchase_available),
+          storeSearchRan: finds.some((f) => f.output.status === 'OK'),
+          storesFound: finds.some((f) => f.output.eligible.length > 0),
+          windowOpen: inServiceWindow(context.data.conversation?.lastInboundAt ?? null, now()),
+        });
+        const options = reply.options?.length
+          ? toOutboundOptions(reply.options)
+          : suggestions.length
+            ? suggestions
+            : undefined;
         drafts.push({
           text,
-          messageType: reply.options?.length ? ('INTERACTIVE' as const) : ('TEXT' as const),
-          options: toOutboundOptions(reply.options),
-          // Parts only ever come from the deterministic composer, never from runtime output.
-          parts: 'parts' in reply ? (reply as Reply).parts : undefined,
+          messageType: options?.length ? ('INTERACTIVE' as const) : ('TEXT' as const),
+          options,
+          parts,
           origin: 'AUTOMATED_REPLY' as const,
           messageKind: 'SESSION' as const,
           templateName: null,

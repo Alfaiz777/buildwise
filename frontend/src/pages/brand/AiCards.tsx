@@ -2,6 +2,7 @@ import { MessageCircleQuestion, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../../api/apiContext';
+import type { ApiClient } from '../../api/client';
 import { errorMessage } from '../../components/ConsoleShell';
 import { Button, Card, Skeleton } from '../../components/ui';
 import { AiLabel, DataUsed, isAnswer, useAskQwikspot, type AskScopeValue, type AssistantAnswer } from './askQwikspot';
@@ -80,8 +81,63 @@ export function AiBriefCard({ url, title, days, includeHistory }: AskScopeValue 
   );
 }
 
+/**
+ * A conversation's summary, loaded once per conversation and version (`key`): the inbox items
+ * and the open conversation share one request. At most 2 load at a time, so a long Handoff
+ * inbox never fires a burst of requests. The backend keeps an AI summary until a new message.
+ */
+const summaries = new Map<string, Promise<AssistantAnswer>>();
+let loading = 0;
+const queue: (() => void)[] = [];
+const MAX_LOADING = 2;
+
+export function loadConversationSummary(
+  api: ApiClient,
+  conversationId: string,
+  key: unknown,
+): Promise<AssistantAnswer> {
+  const id = `${conversationId}|${String(key ?? '')}`;
+  const cached = summaries.get(id);
+  if (cached) return cached;
+  const run = () =>
+    api
+      .get<AssistantAnswer>(`/api/brand/conversations/${encodeURIComponent(conversationId)}/summary`)
+      .then((s) => {
+        if (!isAnswer(s)) throw new Error('invalid summary');
+        return s;
+      })
+      .finally(() => {
+        loading--;
+        queue.shift()?.();
+      });
+  const promise = new Promise<AssistantAnswer>((resolve, reject) => {
+    const start = () => {
+      loading++;
+      run().then(resolve, reject);
+    };
+    if (loading < MAX_LOADING) start();
+    else queue.push(start);
+  });
+  // A failed load is not kept: the next open retries.
+  promise.catch(() => summaries.delete(id));
+  summaries.set(id, promise);
+  return promise;
+}
+
+/** Tests only: forget the loaded summaries. */
+export const forgetConversationSummaries = () => summaries.clear();
+
 /** Conversations: 2 lines on what the shopper wanted and what happened; a handoff brief for the person taking over. */
-export function ConversationSummary({ conversationId, refreshKey }: { conversationId: string; refreshKey?: unknown }) {
+export function ConversationSummary({
+  conversationId,
+  refreshKey,
+  showHandoffBrief = true,
+}: {
+  conversationId: string;
+  refreshKey?: unknown;
+  /** False where the handoff brief is already shown (the "Needs a person" panel). */
+  showHandoffBrief?: boolean;
+}) {
   const api = useApi();
   const [summary, setSummary] = useState<AssistantAnswer | null>(null);
   const [failed, setFailed] = useState(false);
@@ -89,9 +145,8 @@ export function ConversationSummary({ conversationId, refreshKey }: { conversati
     let live = true;
     setSummary(null);
     setFailed(false);
-    api
-      .get<AssistantAnswer>(`/api/brand/conversations/${encodeURIComponent(conversationId)}/summary`)
-      .then((s) => live && (isAnswer(s) ? setSummary(s) : setFailed(true)))
+    loadConversationSummary(api, conversationId, refreshKey)
+      .then((s) => live && setSummary(s))
       .catch(() => live && setFailed(true));
     return () => {
       live = false;
@@ -107,7 +162,7 @@ export function ConversationSummary({ conversationId, refreshKey }: { conversati
         <div className="ai-card__body">
           <AiLabel source={summary.source} />
           <p>{summary.answer}</p>
-          {summary.handoff_brief && (
+          {showHandoffBrief && summary.handoff_brief && (
             <div className="ai-card__handoff">
               <strong className="small">Handoff brief</strong>
               <p>{summary.handoff_brief}</p>

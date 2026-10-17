@@ -295,6 +295,39 @@ const actionWords: Record<string, string> = {
   NO_ACTION: 'chatted',
 };
 
+const lower = (s: string) => s.toLowerCase().replace(/_/g, ' ');
+/** What each decision offered, as the handoff brief lists it. */
+const TRIED: Record<string, string> = {
+  STORE_DISCOVERY: 'nearby stores shown',
+  STORE_RESERVATION: 'a hold offered',
+  ONLINE_PURCHASE: 'the online store link',
+  ALTERNATIVE_PRODUCT: 'an alternative offered',
+  EDUCATE: 'product details',
+  COMPARE: 'a comparison',
+};
+
+/**
+ * The rules handoff brief (L9): 2 lines for the person taking over — what the shopper wants and
+ * what was already tried (stores shown, holds and how they ended). Never the shopper's own
+ * words, so no name or phone number can appear.
+ */
+function quickHandoffBrief(pack: ConversationPack): string {
+  const wants = pack.product
+    ? `Wants ${pack.product}; asked for a person after ${plural(pack.message_count, 'message')}.`
+    : `Asked for a person after ${plural(pack.message_count, 'message')}, without naming a product.`;
+  const tried = new Set<string>();
+  for (const d of pack.decisions) {
+    if (d.action === 'NO_ACTION' || d.action === 'HUMAN_HANDOFF') continue;
+    tried.add(`${TRIED[d.action] ?? lower(d.action)}${d.store ? ` (${d.store})` : ''}`);
+  }
+  for (const h of pack.holds)
+    tried.add(
+      `a hold at ${h.store}, ${lower(h.status)}${h.cancelled_by === 'RETAILER' ? ` (the store refused: ${lower(h.cancel_reason ?? 'other')})` : ''}`,
+    );
+  const list = [...tried].slice(0, 4);
+  return `${wants}\nAlready tried: ${list.length ? list.join('; ') : 'nothing yet'}.`;
+}
+
 /** The rules summary of one conversation (and the handoff brief, when a person took over). */
 export function quickConversationSummary(pack: ConversationPack): BrandAnswer {
   const wanted = pack.product ? `The shopper wanted ${pack.product}` : 'The shopper did not name a product';
@@ -306,12 +339,9 @@ export function quickConversationSummary(pack: ConversationPack): BrandAnswer {
       ? `they ${actionWords[last.action] ?? 'chatted'}${last.store ? ` (${last.store})` : ''}`
       : 'nothing has been decided yet';
   const why = last?.reason ? ` ${last.reason}` : '';
-  const shopperSaid = [...pack.messages].reverse().find((m) => m.from === 'SHOPPER')?.text;
   return {
     answer: `${wanted}; ${happened}.${why}`.trim(),
-    handoff_brief: pack.handed_to_person
-      ? `They asked for a person after ${plural(pack.message_count, 'message')}. ${pack.product ? `Product: ${pack.product}. ` : ''}${hold ? `Hold: ${hold.store}, ${hold.status.toLowerCase().replace(/_/g, ' ')}. ` : 'No hold. '}${shopperSaid ? `Their last message: "${shopperSaid.slice(0, 160)}"` : ''}`.trim()
-      : null,
+    handoff_brief: pack.handed_to_person ? quickHandoffBrief(pack) : null,
     next_action: null,
     used: ['conversation'],
   };

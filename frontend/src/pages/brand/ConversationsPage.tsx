@@ -16,7 +16,7 @@ import {
 import { AskScope } from './askQwikspot';
 import { DecisionTrace } from './DecisionTrace';
 import { ConversationSummary } from './AiCards';
-import { HandoffPanel, waitingFor } from './HandoffPanel';
+import { HandoffBrief, HandoffPanel, waitingFor } from './HandoffPanel';
 import { IntentPanel } from './IntentPanel';
 import { buildJourney } from './journey';
 import { formatDateTime } from './types';
@@ -265,6 +265,10 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
                       </div>
                       <div className="muted small">{formatDateTime(r.last_message_at)}</div>
                     </button>
+                    {/* L9: the handoff brief under each "needs a person" item, loaded after the list. */}
+                    {r.human_handoff && (
+                      <HandoffBrief conversationId={r.conversation_id} cacheKey={r.last_message_at} compact />
+                    )}
                   </li>
                 ))}
               </ul>
@@ -299,11 +303,16 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
                 }
                 description={selectedRow?.intent?.product_title ?? undefined}
               >
-                <ConversationSummary conversationId={detail.conversation_id} refreshKey={detail.messages.length} />
+                <ConversationSummary
+                  conversationId={detail.conversation_id}
+                  refreshKey={detail.messages.length}
+                  showHandoffBrief={!detail.human_handoff}
+                />
                 {detail.human_handoff && (
                   <HandoffPanel
                     conversationId={detail.conversation_id}
                     handoffAt={detail.handoff_at}
+                    refreshKey={detail.messages.length}
                     onChanged={() => {
                       list.reload();
                       void loadDetail(detail.conversation_id);
