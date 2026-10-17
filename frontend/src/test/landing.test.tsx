@@ -115,6 +115,27 @@ describe('landing page (/)', () => {
     }
   });
 
+  it('UI-L2: the hero holds the whole example (AI decision, hold, store) and the previews are labelled', () => {
+    demoConfig({ demo_mode: false });
+    landing();
+    const visual = screen.getByRole('figure', { name: /Example/ });
+    expect(within(visual).getByRole('group', { name: 'Example AI decision' })).toHaveTextContent(
+      'Safety re-check passed',
+    );
+    expect(within(visual).getByRole('group', { name: 'Example store queue card' })).toHaveTextContent(
+      'Customer •••• 4821',
+    );
+    expect(within(visual).getByText(/Held for you at/)).toBeInTheDocument();
+    expect(screen.getAllByText('Illustrative example')).toHaveLength(3);
+    // The moving band repeats itself for the loop; only the first copy is read out.
+    const band = screen.getByRole('list', { name: 'What Qwikspot does' });
+    expect(
+      within(band)
+        .getAllByRole('listitem')
+        .filter((li) => !li.getAttribute('aria-hidden')),
+    ).toHaveLength(8);
+  });
+
   it('on phones the Menu opens a drawer with the sections and both logins', () => {
     demoConfig({ demo_mode: false });
     landing();
