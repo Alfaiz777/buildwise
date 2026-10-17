@@ -239,6 +239,9 @@ export interface InventoryRecord {
   availabilityStatus: string;
   /** ISO-8601 */
   lastUpdatedAt: string | null;
+  /** Change 19: why the row last changed (StockChangeReason) and when (ISO); null before Change 19. */
+  lastChangeReason?: string | null;
+  lastChangeAt?: string | null;
 }
 
 export interface InventoryUpsert {

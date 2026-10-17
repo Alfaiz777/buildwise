@@ -26,6 +26,7 @@ import { ago, AskAction, PageHeader } from '../platform/PlatformChrome';
 import { itemLabel, RetailerQueue, storeTime, type QueueReservation } from './RetailerQueue';
 import { playNewHoldTone, useNewHoldTitle, useStoreSound } from './storeAlert';
 import { storeBriefPath } from './storeAsk';
+import { StockHistoryDrawer, stockReason } from './StockHistory';
 import './store.css';
 
 const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -266,6 +267,9 @@ interface StockItem {
   available_quantity: number;
   availability_status: string;
   last_updated_at: string | null;
+  /** Change 19: why the row last changed and when. */
+  last_change_reason?: string | null;
+  last_change_at?: string | null;
   stale?: boolean;
 }
 
@@ -294,6 +298,7 @@ export function StoreStock({ autoPoll = false }: { autoPoll?: boolean }) {
   );
   const [filter, setFilter] = useState<StockFilter>(null);
   const [query, setQuery] = useState('');
+  const [historyOf, setHistoryOf] = useState<StockItem | null>(null);
   const items = useMemo(() => stock.data?.items ?? [], [stock.data]);
   const latest = items
     .map((i) => i.last_updated_at)
@@ -422,6 +427,20 @@ export function StoreStock({ autoPoll = false }: { autoPoll?: boolean }) {
                                     {item.stale && <span className="badge stale">stale</span>}
                                   </span>
                                 )}
+                                {item.last_change_reason && (
+                                  <span className="small muted st-change">
+                                    Last change: {stockReason(item.last_change_reason)}
+                                    {item.last_change_at && ` · ${ago(item.last_change_at)}`}{' '}
+                                    <button
+                                      type="button"
+                                      className="ui-link-button"
+                                      aria-label={`Stock history of ${item.product_title ?? item.sku}`}
+                                      onClick={() => setHistoryOf(item)}
+                                    >
+                                      History
+                                    </button>
+                                  </span>
+                                )}
                               </span>
                             </span>
                           </td>
@@ -491,6 +510,16 @@ export function StoreStock({ autoPoll = false }: { autoPoll?: boolean }) {
           </ul>
         </Card>
       </div>
+      <StockHistoryDrawer
+        storeId={storeId}
+        sku={historyOf?.sku ?? null}
+        name={
+          historyOf
+            ? `${historyOf.product_title ?? historyOf.sku}${historyOf.variant_title ? ` ${historyOf.variant_title}` : ''}`
+            : ''
+        }
+        onClose={() => setHistoryOf(null)}
+      />
     </ConsoleShell>
   );
 }

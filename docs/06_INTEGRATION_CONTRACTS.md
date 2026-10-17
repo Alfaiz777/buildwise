@@ -687,6 +687,11 @@ POST  /api/brand/demo/reset                        (M7: Reset demo — DEMO_MODE
 GET   /api/retail/stores/:storeId                  (own store; any other store → 404)
 GET   /api/retail/stores/:storeId/inventory        (own store's stock, read-only; any other store → 404)
 GET   /api/retail/stores/:storeId/insights         (Change 16, UI-4: the own store's demand slice; any other store → 404)
+POST  /api/retail/stores/:storeId/sales            (Change 19: record a walk-in sale; stock deducted in the same transaction; audited)
+GET   /api/retail/stores/:storeId/sales            (Change 19: ?days=1|7|28 — the own store's invoices and totals)
+POST  /api/retail/stores/:storeId/sales/:saleId/void (Change 19: { reason } within 24 h; the stock comes back; audited)
+GET   /api/retail/stores/:storeId/stock-history    (Change 19: ?sku= — the own store's stock movements)
+GET   /api/brand/sales                             (Change 19, BRAND_ADMIN: ?days=7|28 — walk-in sales of every store beside Qwikspot pickups)
 
 # Brand + Retailer Consoles (BRAND_ADMIN view, RETAIL_ADMIN operate its own store)
 GET   /api/reservations
@@ -1260,7 +1265,15 @@ Auth: `FIREBASE`, role `RETAIL_ADMIN`, for every route in this section. Scope is
 |---|---|
 | `GET /api/retail/stores/:storeId` | the principal's own store: `store_id, store_name, city, address, store_status, store_hours`. Any other store (same brand, another retailer, unassigned, another brand, or missing) → `404 NOT_FOUND`. |
 
-| `GET /api/retail/stores/:storeId/inventory` | the own store's stock, read-only: `items[] { sku, canonical_sku, variant_id, product_title, variant_title, quantity, reserved_quantity, available_quantity, availability_status, offline_price, last_updated_at }`. Any other store — including another store of the same retailer — → `404`. |
+| `GET /api/retail/stores/:storeId/inventory` | the own store's stock, read-only: `items[] { sku, canonical_sku, variant_id, product_title, variant_title, quantity, reserved_quantity, available_quantity, availability_status, offline_price, last_updated_at }`; Change 19 adds `last_change_reason` and `last_change_at`. Any other store — including another store of the same retailer — → `404`. |
+
+| `POST /api/retail/stores/:storeId/sales` | Change 19: a walk-in sale. Body (strict; any other field → `400`): `{ lines: [{ sku, quantity 1–50 }] (1–20), payment_method: CASH\|UPI\|CARD\|OTHER }`. One transaction: checks every line against `quantity − reserved_quantity`, lowers `quantity`, sets `last_change_reason = IN_STORE_SALE`, writes a stock movement per line and the invoice with the store's next number. `201` → the sale `{ sale_id, store_id, invoice_number, lines[] { sku, product_title, variant_title, quantity, unit_price, line_total }, units, total, currency, payment_method, status, created_at, voided_at, void_reason }`. A SKU not in the store's stock → `422 UNKNOWN_SKU`; too few available → `409 NOT_ENOUGH_STOCK` ("… 7 available (1 held for Qwikspot shoppers)"). Audited `STORE_SALE_RECORDED` (success and refusals). |
+
+| `GET /api/retail/stores/:storeId/sales?days=1\|7\|28` | the own store's invoices, newest first, and `totals { invoices, units, value, voided, currency }` (recorded sales only; `voided` counts voids). |
+
+| `POST /api/retail/stores/:storeId/sales/:saleId/void` | `{ reason }` (3–200 characters). Within 24 hours of the sale: the units come back (`SALE_VOIDED`), the sale becomes `VOIDED`. Another store's sale → `404`; already voided → `409 ALREADY_VOIDED`; later than 24 h → `409 VOID_WINDOW_PASSED`. Audited `STORE_SALE_VOIDED`. |
+
+| `GET /api/retail/stores/:storeId/stock-history?sku=` | the own store's stock movements, newest first: `movements[] { sku, delta, quantity_after, reason, invoice_number, at }`. |
 
 | `GET /api/retail/stores/:storeId/summary` | M6 "This week" for the own store: `{ days: 7, reservations, completed, refused, expired }`; UI-4 adds `completion_pct` (completed ÷ finished holds, `null` when none finished), `value { amount, currency }` (Σ completed quantity × the store's current offline price — an estimate) and `synthetic` (how many counted holds are generated history). Any other store → `404`. |
 

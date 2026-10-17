@@ -46,6 +46,13 @@ export function inventoryEffect(to: ReservationStatus, quantity: number): { rese
   return { reserved: 0, onHand: 0 };
 }
 
+/** Change 19: the stock-change reason a transition writes on the stock row (none for the store's own steps). */
+export function stockChangeReason(to: ReservationStatus): 'QWIKSPOT_PICKUP' | 'HOLD_RELEASED' | null {
+  if (to === 'COMPLETED') return 'QWIKSPOT_PICKUP';
+  if (to === 'CANCELLED' || to === 'EXPIRED') return 'HOLD_RELEASED';
+  return null;
+}
+
 export type ReservationRejection =
   'OUT_OF_STOCK' | 'STORE_INACTIVE' | 'RESERVATIONS_DISABLED' | 'QUANTITY_LIMIT_EXCEEDED' | 'UNKNOWN_VARIANT';
 

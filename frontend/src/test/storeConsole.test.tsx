@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiContext, type MeResponse } from '../api/apiContext';
-import type { ApiClient } from '../api/client';
+import { ApiError, type ApiClient } from '../api/client';
 import { AppRoutes } from '../AppRoutes';
 import { AuthContext, type AuthState } from '../auth/authContext';
 import { hoursText } from '../pages/retailer/RetailerHome';
@@ -327,7 +327,7 @@ describe('Demand near you', () => {
 });
 
 describe('Store navigation', () => {
-  it('Today · History · Stock · Demand', async () => {
+  it('Today · History · Stock · Sales · Demand', async () => {
     renderAt(
       '/store',
       storeApi((p) =>
@@ -339,7 +339,7 @@ describe('Store navigation', () => {
       within(nav)
         .getAllByRole('link')
         .map((a) => a.textContent),
-    ).toEqual(['Today', 'History', 'Stock', 'Demand']);
+    ).toEqual(['Today', 'History', 'Stock', 'Sales', 'Demand']);
   });
 });
 
@@ -636,5 +636,152 @@ describe('UI-P2 — Refresh feedback', () => {
     expect(screen.getByText('Refreshing…')).toBeInTheDocument();
     expect(await screen.findByText('History refreshed — 1 hold.')).toBeInTheDocument();
     expect((api.get as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before + 1);
+  });
+});
+
+/** Change 19: walk-in sales — the invoice takes the units out of stock at once. */
+describe('Sales', () => {
+  const STOCK = {
+    items: [
+      {
+        sku: 'DBC-VCSERUM-30',
+        product_title: 'Vitamin C Glow Serum',
+        variant_title: '30 ml',
+        image_url: null,
+        quantity: 3,
+        reserved_quantity: 1,
+        available_quantity: 2,
+        availability_status: 'IN_STOCK',
+        offline_price: 349,
+        last_updated_at: inMin(-60),
+        last_change_reason: 'IN_STORE_SALE',
+        last_change_at: inMin(-5),
+      },
+    ],
+  };
+  const sale = (over: Record<string, unknown> = {}) => ({
+    sale_id: 'sale_1',
+    store_id: 'st_north_2',
+    invoice_number: 'INV-000001',
+    lines: [
+      {
+        sku: 'DBC-VCSERUM-30',
+        product_title: 'Vitamin C Glow Serum',
+        variant_title: '30 ml',
+        quantity: 2,
+        unit_price: 349,
+        line_total: 698,
+      },
+    ],
+    units: 2,
+    total: 698,
+    currency: 'INR',
+    payment_method: 'UPI',
+    status: 'RECORDED',
+    created_at: inMin(-1),
+    voided_at: null,
+    void_reason: null,
+    ...over,
+  });
+  const routes = (sales: unknown[]) => (p: string) =>
+    p.endsWith('/inventory')
+      ? STOCK
+      : p.includes('/sales?days=')
+        ? {
+            store_id: 'st_north_2',
+            sales,
+            totals: { invoices: sales.length, units: 2, value: 698, voided: 0, currency: 'INR' },
+          }
+        : undefined;
+
+  it('records a sale: only available units, the payment method, then a receipt', async () => {
+    const api = storeApi(routes([]));
+    (api.post as ReturnType<typeof vi.fn>).mockResolvedValue(sale());
+    renderAt('/store/sales', api);
+    const add = await screen.findByRole('button', { name: 'Add Vitamin C Glow Serum 30 ml' });
+    expect(screen.getByText(/2 available/)).toHaveTextContent('(1 held for Qwikspot)');
+    fireEvent.click(add);
+    fireEvent.click(screen.getByRole('button', { name: 'One more Vitamin C Glow Serum 30 ml' }));
+    // 2 available: the stepper stops there (the held unit stays the Qwikspot shopper's).
+    expect(screen.getByRole('button', { name: 'One more Vitamin C Glow Serum 30 ml' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'UPI' }));
+    expect(screen.getByText('₹698', { selector: 'strong' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Record sale' }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/api/retail/stores/st_north_2/sales', {
+        lines: [{ sku: 'DBC-VCSERUM-30', quantity: 2 }],
+        payment_method: 'UPI',
+      }),
+    );
+    expect(await screen.findByRole('dialog', { name: 'Receipt INV-000001' })).toHaveTextContent(
+      '2 × Vitamin C Glow Serum 30 ml',
+    );
+  });
+
+  it('a refused sale says why (the units held for Qwikspot shoppers)', async () => {
+    const api = storeApi(routes([]));
+    (api.post as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new ApiError(
+        409,
+        'NOT_ENOUGH_STOCK',
+        'Not enough stock — DBC-VCSERUM-30: 2 available (1 held for Qwikspot shoppers)',
+        false,
+        null,
+      ),
+    );
+    renderAt('/store/sales', api);
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Vitamin C Glow Serum 30 ml' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Record sale' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('1 held for Qwikspot shoppers');
+  });
+
+  it('a void needs a reason and gives the stock back', async () => {
+    const api = storeApi(routes([sale()]));
+    (api.post as ReturnType<typeof vi.fn>).mockResolvedValue(sale({ status: 'VOIDED', void_reason: 'Entered twice' }));
+    renderAt('/store/sales', api);
+    const list = await screen.findByRole('list', { name: 'Invoices' });
+    expect(within(list).getByText('INV-000001')).toBeInTheDocument();
+    fireEvent.click(within(list).getByRole('button', { name: 'More for INV-000001' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Void…' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Void INV-000001?' });
+    const confirm = within(dialog).getByRole('button', { name: 'Void sale' });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText('Why is this sale voided?'), { target: { value: 'Entered twice' } });
+    fireEvent.click(confirm);
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/api/retail/stores/st_north_2/sales/sale_1/void', {
+        reason: 'Entered twice',
+      }),
+    );
+  });
+
+  it('the Stock page says why each product last changed, with its history', async () => {
+    renderAt(
+      '/store/stock',
+      storeApi((p) =>
+        p.endsWith('/inventory')
+          ? STOCK
+          : p.includes('/stock-history')
+            ? {
+                store_id: 'st_north_2',
+                movements: [
+                  {
+                    sku: 'DBC-VCSERUM-30',
+                    delta: -2,
+                    quantity_after: 3,
+                    reason: 'IN_STORE_SALE',
+                    invoice_number: 'INV-000001',
+                    at: inMin(-5),
+                  },
+                ],
+              }
+            : undefined,
+      ),
+    );
+    expect(await screen.findByText(/Last change: In-store sale · 5 min ago/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Stock history of Vitamin C Glow Serum' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Stock history · Vitamin C Glow Serum 30 ml' });
+    expect(await within(drawer).findByText('-2')).toBeInTheDocument();
+    expect(within(drawer).getByText(/INV-000001/)).toBeInTheDocument();
   });
 });

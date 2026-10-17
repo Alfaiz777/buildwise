@@ -728,6 +728,8 @@ const InventoryDoc = z.object({
   offline_price: z.number(),
   availability_status: z.string(),
   last_updated_at: z.unknown().optional(),
+  last_change_reason: z.string().nullable().optional(),
+  last_change_at: z.string().nullable().optional(),
 });
 
 /** Deterministic: one document per store and canonical SKU (docs/04 §10). */
@@ -754,6 +756,8 @@ export class FirestoreInventoryRepository implements InventoryRepository {
       offlinePrice: d.offline_price,
       availabilityStatus: d.availability_status,
       lastUpdatedAt: isoOrNull(d.last_updated_at),
+      lastChangeReason: d.last_change_reason ?? null,
+      lastChangeAt: d.last_change_at ?? null,
     };
   }
 
@@ -810,6 +814,8 @@ export class FirestoreInventoryRepository implements InventoryRepository {
           offline_price: row.offlinePrice,
           availability_status: availabilityOf(row.quantity, reserved),
           last_updated_at: now,
+          last_change_reason: 'RETAIL_IMPORT',
+          last_change_at: new Date().toISOString(),
         };
         writes.push((batch) =>
           snap.exists

@@ -6,13 +6,14 @@
  */
 import { answerSchemaFor, jsonSchemaOf, money, plural, SHARED_RULES, type ModelAnswer } from './assistant.js';
 
-export const STORE_PAGES = ['TODAY', 'HISTORY', 'STOCK', 'DEMAND'] as const;
+export const STORE_PAGES = ['TODAY', 'HISTORY', 'STOCK', 'SALES', 'DEMAND'] as const;
 export type StorePage = (typeof STORE_PAGES)[number];
 
 export const STORE_PAGE_PATHS: Record<StorePage, string> = {
   TODAY: '/store',
   HISTORY: '/store/history',
   STOCK: '/store/stock',
+  SALES: '/store/sales',
   DEMAND: '/store/demand',
 };
 
@@ -53,7 +54,15 @@ export interface StorePack {
     low: boolean;
     stale: boolean;
     updated_hours_ago: number | null;
+    /** Change 19: why it last changed (e.g. IN_STORE_SALE), or null. */
+    last_change: string | null;
   }[];
+  /** Change 19: walk-in sales recorded as invoices in the Store Console (not Qwikspot pickups). */
+  walk_in_sales?: {
+    today: { invoices: number; units: number; value: number };
+    period: { invoices: number; units: number; value: number };
+    currency: string;
+  } | null;
   /** "Demand near your store": what shoppers asked for when this store was the nearest, and why it could not help. */
   demand_near_you: { product: string; weekday: string; reason: string; count: number }[];
   refusals: { reason: string; count: number }[];
@@ -62,7 +71,7 @@ export interface StorePack {
   suggestions: string[];
 }
 
-export const STORE_ASSISTANT_PROMPT_VERSION = 'ASK_QWIKSPOT_STORE_V2'; // V2 (UI-P2): money as ₹6,360
+export const STORE_ASSISTANT_PROMPT_VERSION = 'ASK_QWIKSPOT_STORE_V3'; // V3 (Change 19): walk-in sales
 
 export const STORE_ASSISTANT_PROMPT = `You are "Ask Qwikspot", the assistant inside one store's Qwikspot console (the Store Console). Qwikspot sends this store shoppers' holds through the brand's WhatsApp: the store confirms a hold, gets it ready, and the shopper picks it up and pays here. You tell the store's team how their store is doing and what to do next.
 
@@ -73,6 +82,7 @@ RULES
 ${SHARED_RULES}
 - Use the totals with their meaning: holds were sent to this store, picked_up were collected here, completion_percent is completion, value_of_pickups is the value at the store's current prices.
 - Money: write it with the rupee sign and thousands separators, like ₹6,360 — never "INR 6360" or a bare number.
+- walk_in_sales are the store's own invoices for shoppers who walked in (recorded on the Sales page), separate from Qwikspot pickups; never add the two up as one number. stock_attention.last_change says why a product's stock last changed (IN_STORE_SALE = a walk-in sale, QWIKSPOT_PICKUP = a Qwikspot pickup, RETAIL_IMPORT = the brand's stock file).
 - A customer appears only as the masked label in the data (e.g. "Customer •••• 4353"); never anything else about them.
 - You cannot confirm, refuse or complete a hold, or change stock. To act on a hold, say to use Confirm / Mark ready on the Today page. Stock comes from the brand's retail file: the Stock page shows it, and the brand updates it.
 

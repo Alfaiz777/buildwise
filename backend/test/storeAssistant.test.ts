@@ -245,7 +245,7 @@ describe('read-only, Hinglish, the event and the brief', () => {
 
 describe('store prompt — money (UI-P2)', () => {
   it('asks for ₹ with thousands separators, never INR', () => {
-    expect(STORE_ASSISTANT_PROMPT_VERSION).toBe('ASK_QWIKSPOT_STORE_V2');
+    expect(STORE_ASSISTANT_PROMPT_VERSION).toBe('ASK_QWIKSPOT_STORE_V3');
     expect(STORE_ASSISTANT_PROMPT).toContain('like ₹6,360 — never "INR 6360"');
   });
 });

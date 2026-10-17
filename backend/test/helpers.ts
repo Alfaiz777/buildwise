@@ -1,4 +1,6 @@
 import { ShopifyHttpAdminApi } from '../src/adapters/commerce/shopifyAdminApi.js';
+import { StoreSalesService } from '../src/application/storeSalesService.js';
+import { MemoryStoreSales } from './memoryStoreSales.js';
 import { HttpWhatsAppGraphApi } from '../src/adapters/messaging/whatsappGraphApi.js';
 import { WhatsAppMessagingProvider } from '../src/adapters/messaging/whatsappMessagingProvider.js';
 import { WhatsAppConnections } from '../src/application/whatsappConnections.js';
@@ -335,6 +337,8 @@ export class MemoryInventory implements InventoryRepository {
         reservedQuantity,
         availabilityStatus: availabilityOf(row.quantity, reservedQuantity),
         lastUpdatedAt: iso(),
+        lastChangeReason: 'RETAIL_IMPORT',
+        lastChangeAt: iso(),
       };
       if (existing) Object.assign(existing, record);
       else this.rows.push(record);
@@ -886,6 +890,17 @@ export function buildTestWorld(
     recordEvent: (event) => conversation.recorder.record(event),
     now: options.now,
   });
+  const account = new AccountService({ stores, inventory, products, brands, now: options.now });
+  const sales = new MemoryStoreSales(inventory);
+  const storeSales = new StoreSalesService({
+    sales,
+    storeStock: (principal, storeId) => account.storeStock(principal, storeId),
+    inventory,
+    stores,
+    reservations,
+    audit,
+    now: options.now,
+  });
   const brandAssistant = new BrandAssistantService({
     runner: assistantRunner,
     insights,
@@ -894,9 +909,9 @@ export function buildTestWorld(
     conversations: conversation.queries,
     summaries,
     brands,
+    sales: storeSales,
     now: options.now,
   });
-  const account = new AccountService({ stores, inventory, products, brands, now: options.now });
   const platformAdmin = new PlatformAdminService({
     brands,
     users,
@@ -921,6 +936,7 @@ export function buildTestWorld(
     account,
     reservations: conversation.reservations,
     insights,
+    sales: storeSales,
     now: options.now,
   });
 
@@ -938,6 +954,7 @@ export function buildTestWorld(
       platformAssistant,
       tenantAdmin,
       account,
+      storeSales,
       commerceSync,
       catalog: new CatalogService({ products, mappings, inventory }),
       retailImports,
@@ -1006,6 +1023,10 @@ export function buildTestWorld(
     sunk,
     conversation,
     reservations,
+    sales,
+    storeSales,
+    brandAssistant,
+    storeAssistant,
     outcomes,
     attributionRefs,
     demoData,

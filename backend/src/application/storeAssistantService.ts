@@ -9,6 +9,7 @@
  *   the store's questions) within 17 s, checked; otherwise the rules "Quick summary".
  * - Read-only: it never confirms a hold or changes stock — it names the button or page instead.
  */
+import type { StoreSalesService } from './storeSalesService.js';
 import type { RetailPrincipal } from '../domain/principal.js';
 import {
   LOW_STOCK_AVAILABLE,
@@ -56,6 +57,8 @@ export class StoreAssistantService {
       account: Pick<AccountService, 'ownStore' | 'storeStock'>;
       reservations: Pick<ReservationService, 'weekSummary' | 'listFor'>;
       insights: Pick<InsightsService, 'storePanel'>;
+      /** Change 19: the store's walk-in sales (optional: absent in older wiring). */
+      sales?: Pick<StoreSalesService, 'storeSales'>;
       now?: () => Date;
     },
   ) {}
@@ -67,7 +70,7 @@ export class StoreAssistantService {
   /** One store's pack: its tiles, queue, stock and demand — for the page's period and history choice. */
   async pack(principal: RetailPrincipal, scope: AssistantScope = DEFAULT_SCOPE): Promise<StorePack> {
     const now = this.now().getTime();
-    const [store, summary, active, stock, panel] = await Promise.all([
+    const [store, summary, active, stock, panel, today, period] = await Promise.all([
       this.deps.account.ownStore(principal),
       storeWeekSummary(this.deps, principal, scope),
       this.deps.reservations.listFor(principal, { view: 'active', limit: 500 }),
@@ -76,6 +79,8 @@ export class StoreAssistantService {
         days: scope.days,
         includeHistory: scope.includeHistory,
       }),
+      this.deps.sales?.storeSales(principal, principal.storeId, 1) ?? null,
+      this.deps.sales?.storeSales(principal, principal.storeId, scope.days) ?? null,
     ]);
     const queue = (active as unknown as QueueRow[]).filter((r) => scope.includeHistory || !r.demo_history);
     const minutes = (iso: string) => Math.round((Date.parse(iso) - now) / 60_000);
@@ -124,6 +129,7 @@ export class StoreAssistantService {
           low: l.availableQuantity <= LOW_STOCK_AVAILABLE,
           stale: l.stale,
           updated_hours_ago: l.lastUpdatedAt ? Math.round((now - Date.parse(l.lastUpdatedAt)) / 3_600_000) : null,
+          last_change: l.lastChangeReason ?? null,
         }))
         .sort((a, b) => a.available - b.available)
         .slice(0, 12),
@@ -135,6 +141,14 @@ export class StoreAssistantService {
         .map(([reason, count]) => ({ reason, count })),
       busiest_weekdays: busiest,
       suggestions: panel.suggestions.map((s) => s.text),
+      walk_in_sales:
+        today && period
+          ? {
+              today: { invoices: today.totals.invoices, units: today.totals.units, value: today.totals.value },
+              period: { invoices: period.totals.invoices, units: period.totals.units, value: period.totals.value },
+              currency: period.totals.currency,
+            }
+          : null,
     };
   }
 

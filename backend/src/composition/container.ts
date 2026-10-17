@@ -46,6 +46,8 @@ import {
 } from '../adapters/firestore/repositories.js';
 import { SimulatorMessagingProvider } from '../adapters/messaging/simulatorMessagingProvider.js';
 import { FirestoreReservationRepository } from '../adapters/firestore/reservationRepository.js';
+import { FirestoreStoreSaleRepository } from '../adapters/firestore/storeSaleRepository.js';
+import { StoreSalesService } from '../application/storeSalesService.js';
 import {
   FirestoreAttributionRefRepository,
   FirestoreOutcomeRepository,
@@ -421,6 +423,17 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     recordEvent: (event) => conversation.recorder.record(event),
     now: options.now,
   });
+  const account = new AccountService({ stores, inventory, products, brands, now: options.now });
+  // Change 19: walk-in sales recorded in the Store Console deduct stock in the hold's transaction.
+  const storeSales = new StoreSalesService({
+    sales: new FirestoreStoreSaleRepository(db),
+    storeStock: (principal, storeId) => account.storeStock(principal, storeId),
+    inventory,
+    stores,
+    reservations: reservationRepo,
+    audit,
+    now: options.now,
+  });
   const brandAssistant = new BrandAssistantService({
     runner: assistantRunner,
     insights,
@@ -429,9 +442,9 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     conversations: conversation.queries,
     summaries: new FirestoreConversationSummaryStore(db),
     brands,
+    sales: storeSales,
     now: options.now,
   });
-  const account = new AccountService({ stores, inventory, products, brands, now: options.now });
   const platformAdmin = new PlatformAdminService({
     brands,
     users,
@@ -456,6 +469,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
     account,
     reservations: conversation.reservations,
     insights,
+    sales: storeSales,
     now: options.now,
   });
 
@@ -474,6 +488,7 @@ export function buildContainer(config: Config, logger: Logger, options: { now?: 
         platformAssistant,
         tenantAdmin,
         account,
+        storeSales,
         commerceSync,
         catalog: new CatalogService({ products, mappings, inventory }),
         retailImports,

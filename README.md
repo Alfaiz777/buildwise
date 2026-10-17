@@ -100,6 +100,7 @@ flowchart LR
 
 - **Ports and adapters:** the core never imports an adapter (tested); the `local` and `gcp` profiles differ only in which adapters `composition/container.ts` wires. The `gcp` profile refuses every mock/local adapter and checks all required settings at startup.
 - **Multi-tenant by construction:** scope comes only from the verified token and the user record — never from a client-supplied `brand_id`. Retail Admins see exactly one store.
+- **One stock for the store and the AI (Change 19):** a store records each walk-in sale in the Store Console (Sales); the units leave its stock in the same transaction, so the agent never offers what was just sold, and the stock row says why it changed. The Brand Console's Sales tab shows those sales beside Qwikspot pickups.
 - **Safety:** the agent's writes run only after the guardrail; reservations change stock in one transaction; every mutating route is audited; logs carry IDs, never PII or message text.
 
 Locally everything runs on the Firebase emulators with a mock commerce catalogue, a WhatsApp simulator (it renders only what WhatsApp can) and a deterministic mock agent (labelled "Mock AI · deterministic" — it verifies the pipeline, not AI quality). Shopify can be connected locally (above, L2-Shopify); Gemini and WhatsApp are wired in the live phases (L1–L2).

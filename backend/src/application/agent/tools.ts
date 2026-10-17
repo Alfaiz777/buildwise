@@ -502,6 +502,8 @@ export function createToolHandlers(deps: ToolDeps): ToolHandlers {
         variant_id: input.variant_id,
         available_quantity: store ? available : 0,
         availability_status: row ? deriveAvailabilityStatus(row.quantity, row.reservedQuantity) : 'OUT_OF_STOCK',
+        last_stock_change:
+          row?.lastChangeReason && row.lastChangeAt ? { reason: row.lastChangeReason, at: row.lastChangeAt } : null,
       };
       return ok(output);
     },
