@@ -1,15 +1,25 @@
-import { Info, X } from 'lucide-react';
+import { ArrowRight, Info, X } from 'lucide-react';
 import { useState } from 'react';
-import type { MeResponse } from '../../api/apiContext';
+import { Link } from 'react-router-dom';
+import type { MeResponse, Scope } from '../../api/apiContext';
 import { storeLabel } from '../../lib/storeLabel';
 
 const key = (scope: string) => `qs_role_banner_dismissed:${scope}`;
 
-function readDismissed(scope: string): boolean {
+export function readDismissed(scope: string): boolean {
   try {
     return window.localStorage.getItem(key(scope)) === '1';
   } catch {
     return false;
+  }
+}
+
+function writeDismissed(scope: Scope, dismissed: boolean) {
+  try {
+    if (dismissed) window.localStorage.setItem(key(scope), '1');
+    else window.localStorage.removeItem(key(scope));
+  } catch {
+    // storage blocked: the choice holds for this page view only
   }
 }
 
@@ -25,22 +35,44 @@ export function roleSentence(me: MeResponse): string {
   }
 }
 
-/** Shown on the first visit to a console; dismissed per browser and console. */
-export function RoleBanner({ me }: { me: MeResponse }) {
-  const [hidden, setHidden] = useState(() => readDismissed(me.scope));
-  if (hidden) return null;
-  const dismiss = () => {
-    try {
-      window.localStorage.setItem(key(me.scope), '1');
-    } catch {
-      // storage blocked: hide for this page view only
-    }
-    setHidden(true);
+/**
+ * The welcome note: shown on the first visit to a console, dismissed per browser and console.
+ * UI-P1: the shell may control it (the Platform header's "?" shows it again).
+ */
+export function useRoleBanner(scope: Scope) {
+  const [open, setOpen] = useState(() => !readDismissed(scope));
+  return {
+    open,
+    dismiss: () => {
+      writeDismissed(scope, true);
+      setOpen(false);
+    },
+    show: () => {
+      writeDismissed(scope, false);
+      setOpen(true);
+    },
   };
+}
+
+export function RoleBanner({ me, open, onDismiss }: { me: MeResponse; open?: boolean; onDismiss?: () => void }) {
+  const own = useRoleBanner(me.scope);
+  const visible = open ?? own.open;
+  const dismiss = onDismiss ?? own.dismiss;
+  if (!visible) return null;
   return (
     <div className="shell-banner" role="note">
       <Info size={16} aria-hidden="true" />
-      <span>{roleSentence(me)}</span>
+      <span>
+        {roleSentence(me)}
+        {me.scope === 'PLATFORM' && (
+          <>
+            {' '}
+            <Link className="shell-banner__link" to="/platform#attention">
+              Start with what needs attention <ArrowRight size={14} aria-hidden="true" />
+            </Link>
+          </>
+        )}
+      </span>
       <button type="button" className="ui-icon-button" aria-label="Dismiss this note" onClick={dismiss}>
         <X size={16} aria-hidden="true" />
       </button>

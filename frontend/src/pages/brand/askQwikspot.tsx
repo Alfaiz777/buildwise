@@ -223,6 +223,16 @@ function AskQwikspotDrawer({
   const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const run = useRef(0);
+  // The question box grows with its text, up to 4 lines (then it scrolls).
+  const box = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const line = parseFloat(getComputedStyle(el).lineHeight) || 20;
+    const pad = el.offsetHeight - el.clientHeight + 16;
+    el.style.height = `${Math.min(el.scrollHeight, line * 4 + pad) || ''}px`;
+  }, [question, open]);
 
   const submit = useCallback(
     (q: string) => {
@@ -304,18 +314,36 @@ function AskQwikspotDrawer({
         <label className="sr-only" htmlFor="ask-question">
           Your question
         </label>
-        <input
+        {/* UI-P1: grows with the question (up to 4 lines); Enter asks, Shift+Enter is a new line. */}
+        <textarea
           id="ask-question"
+          ref={box}
+          rows={1}
           value={question}
           maxLength={300}
           placeholder={config.placeholder}
+          aria-describedby="ask-hint"
           onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              submit(question);
+            }
+          }}
         />
         <Button type="submit" loading={busy} disabled={question.trim().length < 2}>
           Ask
         </Button>
       </form>
+      <p id="ask-hint" className="ask-hint small muted">
+        Enter to ask · Shift+Enter for a new line
+      </p>
       <div className="ask-result" aria-live="polite">
+        {!asked && (
+          <p className="ask-empty small muted">
+            Or ask in your own words — for example “Why did this number change?” or “What should I look at first?”
+          </p>
+        )}
         {asked && <p className="ask-question small">“{asked}”</p>}
         {status === 'reading' && <p className="muted small">Reading your data…</p>}
         {status === 'writing' && <p className="muted small">Writing the answer…</p>}

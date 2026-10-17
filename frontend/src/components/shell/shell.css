@@ -240,3 +240,98 @@
     padding: var(--space-4);
   }
 }
+
+/* ---------------------------------------------------------------- UI-P1: Platform header */
+/* Purple marks the role only: the top line, the active nav item, the role chip, the welcome strip. */
+.shell--platform .shell-top__console {
+  color: var(--color-text);
+}
+.shell--platform .shell-top__brand {
+  align-items: center;
+}
+.shell-top__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--role) 12%, var(--color-surface));
+  color: var(--role);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.shell-top__team {
+  font-weight: 500;
+}
+.shell-top__privacy {
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.shell-top__privacy .ui-tip__bubble {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+.shell-top__menu {
+  display: none;
+}
+.shell-ask {
+  box-shadow: var(--shadow-sm);
+}
+.shell-banner__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: var(--space-1);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .shell--platform .shell-top__privacy span:not(.ui-tip__bubble) {
+    display: none;
+  }
+}
+@media (max-width: 768px) {
+  /* The Platform sidebar collapses into a menu under the header. */
+  .shell--platform {
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      'top'
+      'nav'
+      'body';
+  }
+  .shell--platform .shell-top__menu {
+    display: inline-grid;
+  }
+  .shell--platform .shell-top__team {
+    display: none;
+  }
+  .shell--platform .shell-nav {
+    display: none;
+    position: static;
+    padding: var(--space-2) var(--space-4);
+    border-top: 0;
+    border-bottom: 1px solid var(--color-border);
+    box-shadow: var(--shadow-md);
+    animation: ui-fade var(--duration-fast) var(--ease-out);
+  }
+  .shell--platform.shell--nav-open .shell-nav {
+    display: block;
+  }
+  .shell--platform .shell-nav ul {
+    grid-auto-flow: row;
+  }
+  .shell--platform .shell-nav__link {
+    flex-direction: row;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    font-size: var(--text-sm);
+    text-align: left;
+  }
+}
