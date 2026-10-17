@@ -199,8 +199,26 @@ export function AskQwikspotProvider({
   );
 }
 
-type Status = 'idle' | 'reading' | 'writing' | 'done' | 'error';
+type TurnStatus = 'reading' | 'writing' | 'done' | 'error';
 
+/** One question and its answer in the conversation. */
+interface Turn {
+  id: number;
+  question: string;
+  status: TurnStatus;
+  answer: AssistantAnswer | null;
+  error: string | null;
+}
+
+const EXAMPLES =
+  'Or ask in your own words — for example “Why did this number change?” or “What should I look at first?”';
+
+/**
+ * UI-P1: the drawer is a conversation — every question and its answer stay in a list that
+ * scrolls, newest at the bottom; the question box is pinned under it. Each question is still
+ * asked on its own (the agent is stateless); the conversation lives until the page reloads or
+ * "New chat".
+ */
 function AskQwikspotDrawer({
   open,
   prefill,
@@ -218,11 +236,9 @@ function AskQwikspotDrawer({
   const { pathname } = useLocation();
   const page = config.pageOf(pathname);
   const [question, setQuestion] = useState('');
-  const [asked, setAsked] = useState<string | null>(null);
-  const [status, setStatus] = useState<Status>('idle');
-  const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const run = useRef(0);
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const next = useRef(0);
+  const log = useRef<HTMLDivElement>(null);
   // The question box grows with its text, up to 4 lines (then it scrolls).
   const box = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -234,17 +250,18 @@ function AskQwikspotDrawer({
     el.style.height = `${Math.min(el.scrollHeight, line * 4 + pad) || ''}px`;
   }, [question, open]);
 
+  const update = (id: number, change: Partial<Turn>) =>
+    setTurns((all) => all.map((t) => (t.id === id ? { ...t, ...change } : t)));
+
   const submit = useCallback(
     (q: string) => {
       const text = q.trim();
       if (text.length < 2) return;
-      const id = ++run.current;
-      setAsked(text);
-      setAnswer(null);
-      setError(null);
-      setStatus('reading');
+      const id = ++next.current;
+      setTurns((all) => [...all, { id, question: text, status: 'reading', answer: null, error: null }]);
+      setQuestion('');
       // The data pack takes about a second; then the model writes.
-      const step = setTimeout(() => run.current === id && setStatus('writing'), 1_200);
+      const step = setTimeout(() => update(id, { status: 'writing' }), 1_200);
       api
         .post<AssistantAnswer>(config.askPath, {
           question: text,
@@ -252,122 +269,125 @@ function AskQwikspotDrawer({
           days: scope.days,
           include_history: scope.includeHistory,
         })
-        .then((a) => {
-          if (run.current !== id) return;
-          if (!isAnswer(a)) {
-            setError('Ask Qwikspot could not answer just now. Please try again.');
-            setStatus('error');
-            return;
-          }
-          setAnswer(a);
-          setStatus('done');
-        })
-        .catch((err: unknown) => {
-          if (run.current !== id) return;
-          setError(errorMessage(err));
-          setStatus('error');
-        })
+        .then((a) =>
+          isAnswer(a)
+            ? update(id, { status: 'done', answer: a })
+            : update(id, { status: 'error', error: 'Ask Qwikspot could not answer just now. Please try again.' }),
+        )
+        .catch((err: unknown) => update(id, { status: 'error', error: errorMessage(err) }))
         .finally(() => clearTimeout(step));
     },
     [api, page, scope, config.askPath],
   );
 
-  // "Ask about this": the question is filled in and asked at once.
+  // "Ask about this": the question is asked at once, as the next turn.
   useEffect(() => {
-    if (open && prefill) {
-      setQuestion(prefill.question);
-      submit(prefill.question);
-    }
+    if (open && prefill) submit(prefill.question);
   }, [open, prefill, submit]);
 
-  const busy = status === 'reading' || status === 'writing';
+  // The newest turn stays in view (on opening, and as it is answered).
+  useEffect(() => {
+    if (!open) return;
+    const el = log.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [open, turns]);
+
+  const busy = turns.some((t) => t.status === 'reading' || t.status === 'writing');
   return (
-    <Drawer open={open} title="Ask Qwikspot" icon={<AiMark size={24} />} onClose={onClose}>
-      <p className="muted small">
-        Answers come only from {config.dataOf} Qwikspot data. Qwikspot can explain and suggest; it never changes
-        anything.
-      </p>
-      <p className="small ask-scope">{scopeText(scope)}</p>
-      <div className="ask-suggestions" role="group" aria-label="Suggested questions">
-        {config.suggestions(page).map((q) => (
-          <button
-            key={q}
-            type="button"
-            className="ask-chip"
-            disabled={busy}
-            onClick={() => {
-              setQuestion(q);
-              submit(q);
-            }}
-          >
-            {q}
-          </button>
-        ))}
-      </div>
-      <form
-        className="ask-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit(question);
-        }}
-      >
-        <label className="sr-only" htmlFor="ask-question">
-          Your question
-        </label>
-        {/* UI-P1: grows with the question (up to 4 lines); Enter asks, Shift+Enter is a new line. */}
-        <textarea
-          id="ask-question"
-          ref={box}
-          rows={1}
-          value={question}
-          maxLength={300}
-          placeholder={config.placeholder}
-          aria-describedby="ask-hint"
-          onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+    <Drawer open={open} title="Ask Qwikspot" icon={<AiMark size={24} />} onClose={onClose} flush>
+      <div className="ask-chat">
+        <div className="ask-chat__log" ref={log} aria-live="polite">
+          <div className="ask-chat__intro">
+            <p className="muted small">
+              Answers come only from {config.dataOf} Qwikspot data. Qwikspot can explain and suggest; it never changes
+              anything.
+            </p>
+            <p className="small ask-scope">{scopeText(scope)}</p>
+            <div className="ask-suggestions" role="group" aria-label="Suggested questions">
+              {config.suggestions(page).map((q) => (
+                <button key={q} type="button" className="ask-chip" disabled={busy} onClick={() => submit(q)}>
+                  {q}
+                </button>
+              ))}
+            </div>
+            {turns.length === 0 && <p className="ask-empty small muted">{EXAMPLES}</p>}
+          </div>
+          {turns.length > 0 && (
+            <ol className="ask-turns" aria-label="Conversation">
+              {turns.map((t) => (
+                <li key={t.id} className="ask-turn">
+                  <p className="ask-question">{t.question}</p>
+                  {t.status === 'reading' && <p className="ask-pending muted small">Reading your data…</p>}
+                  {t.status === 'writing' && <p className="ask-pending muted small">Writing the answer…</p>}
+                  {t.status === 'error' && (
+                    <p role="alert" className="error">
+                      {t.error}
+                    </p>
+                  )}
+                  {t.answer && (
+                    <article className="ask-answer">
+                      <AiLabel source={t.answer.source} />
+                      <p>{t.answer.answer}</p>
+                      {t.answer.next_action && (
+                        <Link
+                          className="ui-button ui-button--secondary ui-button--sm"
+                          to={t.answer.next_action.path}
+                          onClick={onClose}
+                        >
+                          {t.answer.next_action.label} →
+                        </Link>
+                      )}
+                      <DataUsed used={t.answer.used} />
+                    </article>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+        <div className="ask-chat__composer">
+          <form
+            className="ask-form"
+            onSubmit={(e) => {
               e.preventDefault();
               submit(question);
-            }
-          }}
-        />
-        <Button type="submit" loading={busy} disabled={question.trim().length < 2}>
-          Ask
-        </Button>
-      </form>
-      <p id="ask-hint" className="ask-hint small muted">
-        Enter to ask · Shift+Enter for a new line
-      </p>
-      <div className="ask-result" aria-live="polite">
-        {!asked && (
-          <p className="ask-empty small muted">
-            Or ask in your own words — for example “Why did this number change?” or “What should I look at first?”
-          </p>
-        )}
-        {asked && <p className="ask-question small">“{asked}”</p>}
-        {status === 'reading' && <p className="muted small">Reading your data…</p>}
-        {status === 'writing' && <p className="muted small">Writing the answer…</p>}
-        {status === 'error' && (
-          <p role="alert" className="error">
-            {error}
-          </p>
-        )}
-        {answer && (
-          <article className="ask-answer">
-            <AiLabel source={answer.source} />
-            <p>{answer.answer}</p>
-            {answer.next_action && (
-              <Link
-                className="ui-button ui-button--secondary ui-button--sm"
-                to={answer.next_action.path}
-                onClick={onClose}
-              >
-                {answer.next_action.label} →
-              </Link>
+            }}
+          >
+            <label className="sr-only" htmlFor="ask-question">
+              Your question
+            </label>
+            {/* Grows with the question (up to 4 lines); Enter asks, Shift+Enter is a new line. */}
+            <textarea
+              id="ask-question"
+              ref={box}
+              rows={1}
+              value={question}
+              maxLength={300}
+              placeholder={config.placeholder}
+              aria-describedby="ask-hint"
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  submit(question);
+                }
+              }}
+            />
+            <Button type="submit" variant="brand" loading={busy} disabled={question.trim().length < 2}>
+              Ask
+            </Button>
+          </form>
+          <div className="ask-chat__foot">
+            <p id="ask-hint" className="ask-hint small muted">
+              Enter to ask · Shift+Enter for a new line
+            </p>
+            {turns.length > 0 && (
+              <button type="button" className="ask-new" onClick={() => setTurns([])} disabled={busy}>
+                New chat
+              </button>
             )}
-            <DataUsed used={answer.used} />
-          </article>
-        )}
+          </div>
+        </div>
       </div>
     </Drawer>
   );

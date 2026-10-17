@@ -438,6 +438,8 @@
 }
 .ui-overlay--drawer {
   place-items: stretch end;
+  /* One row exactly the viewport's height: the drawer never grows past the screen, its body scrolls. */
+  grid-template-rows: minmax(0, 1fr);
   padding: 0;
   z-index: var(--z-drawer);
 }
@@ -446,6 +448,8 @@
   flex-direction: column;
   width: min(26rem, 100vw);
   height: 100%;
+  max-height: 100dvh;
+  min-height: 0;
   background: var(--color-surface);
   box-shadow: var(--shadow-lg);
   animation: ui-slide var(--duration-base) var(--ease-out);
@@ -469,6 +473,7 @@
 }
 .ui-drawer__body {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: var(--space-5);
 }
@@ -816,4 +821,33 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* UI-P1: main actions share the Ask Qwikspot look — teal gradient, pill, soft glow. */
+.ui-button--brand {
+  border: 0;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--teal-700), var(--teal-500) 55%, var(--teal-400));
+  color: #fff;
+  box-shadow:
+    0 0 0 1px rgb(31 151 138 / 0.35),
+    0 4px 14px rgb(31 151 138 / 0.3);
+  transition:
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.ui-button--brand:hover:not(:disabled) {
+  flex-basis: auto;
+  background: linear-gradient(135deg, var(--teal-800), var(--teal-600) 55%, var(--teal-500));
+  box-shadow:
+    0 0 0 1px rgb(31 151 138 / 0.5),
+    0 6px 20px rgb(31 151 138 / 0.4);
+  transform: translateY(-1px);
+}
+.ui-drawer__body--flush {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
 }

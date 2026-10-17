@@ -531,7 +531,7 @@ export function PlatformSystem() {
         purpose="How Qwikspot runs right now, read from the backend's health check. No secrets are shown."
         action={
           <Button
-            variant="secondary"
+            variant="brand"
             icon={<RefreshCw size={16} aria-hidden="true" />}
             loading={checking}
             onClick={() => load(true)}

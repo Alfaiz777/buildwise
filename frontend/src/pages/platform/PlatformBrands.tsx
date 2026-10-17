@@ -372,7 +372,7 @@ export function PlatformBrands() {
         title="Brands"
         purpose="Onboard brands and see how each one is doing — counts only, the platform never sees customers."
         action={
-          <Button icon={<Plus size={16} aria-hidden="true" />} onClick={() => setCreating(true)}>
+          <Button variant="brand" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setCreating(true)}>
             New brand
           </Button>
         }
@@ -447,7 +447,7 @@ export function PlatformBrands() {
               autoFocus
             />
           </label>
-          <Button type="submit" loading={busy} disabled={name.trim().length === 0}>
+          <Button type="submit" variant="brand" loading={busy} disabled={name.trim().length === 0}>
             Create brand <ArrowRight size={16} aria-hidden="true" />
           </Button>
         </form>

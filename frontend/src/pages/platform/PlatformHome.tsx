@@ -96,7 +96,7 @@ export function PlatformHome() {
         title="Overview"
         purpose="How every brand on Qwikspot is doing — totals and health, never a customer."
         action={
-          <Link className="ui-button ui-button--primary" to="/platform/brands">
+          <Link className="ui-button ui-button--brand" to="/platform/brands">
             Manage brands
           </Link>
         }
