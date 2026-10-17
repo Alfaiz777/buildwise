@@ -1,5 +1,5 @@
-import { Section } from '../../components/ConsoleShell';
-import { ProductThumb } from '../../components/ui';
+import { RefreshCw } from 'lucide-react';
+import { Badge, Button, Card, ProductThumb } from '../../components/ui';
 import { formatPrice, type CatalogResponse } from './types';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -24,7 +24,18 @@ export function mappingReason(reason: string): string {
   return words[reason] ?? reason.toLowerCase().replace(/_/g, ' ');
 }
 
-/** Catalogue & mapping: products → variants (SKU, price, mapping status), plus retail SKUs to fix. */
+const STATUS_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral'> = {
+  AUTO_MATCHED: 'success',
+  MANUAL_MATCH_REQUIRED: 'warning',
+  CONFLICT: 'danger',
+  UNMAPPED: 'neutral',
+};
+
+/**
+ * Catalogue & mapping (UI-P3 layout): a sync status card with "Sync now", the products as a grid
+ * of cards (thumbnail, variants with SKU, price, mapping and stores stocked), and the retail SKUs
+ * that did not match. Same data and actions as before.
+ */
 export function CatalogSection(props: {
   catalog: CatalogResponse | null;
   error: string | null;
@@ -32,48 +43,83 @@ export function CatalogSection(props: {
   onSync: () => void;
 }) {
   const { catalog } = props;
+  const variants = catalog?.products.reduce((n, p) => n + p.variants.length, 0) ?? 0;
   return (
-    <Section title="Catalog & mapping" id="catalog">
+    <Card title="Catalog & mapping" id="catalog" description="Your products, as your commerce store has them.">
       {props.error && <p className="error">{props.error}</p>}
-      <button type="button" className="secondary" onClick={props.onSync} disabled={props.syncing}>
-        {props.syncing ? 'Syncing…' : 'Sync catalog'}
-      </button>
+      <div className="nw-sync">
+        <div className="nw-sync__facts">
+          <span>
+            <strong>{catalog?.products.length ?? '—'}</strong> products
+          </span>
+          <span>
+            <strong>{catalog ? variants : '—'}</strong> variants
+          </span>
+          <span>
+            <strong>{catalog?.mapping_summary.auto_matched ?? '—'}</strong> retail SKUs matched
+          </span>
+          <span className={catalog?.mapping_summary.needs_attention ? 'nw-sync__warn' : undefined}>
+            <strong>{catalog?.mapping_summary.needs_attention ?? '—'}</strong> need attention
+          </span>
+        </div>
+        <Button
+          variant="brand"
+          size="sm"
+          loading={props.syncing}
+          icon={<RefreshCw size={16} aria-hidden="true" />}
+          onClick={props.onSync}
+        >
+          {props.syncing ? 'Syncing…' : 'Sync catalog'}
+        </Button>
+      </div>
       {catalog && catalog.products.length === 0 ? (
         <p className="muted">No products yet. Sync the catalog from your commerce store.</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Variant</th>
-              <th>SKU</th>
-              <th>Price</th>
-              <th>Mapping</th>
-              <th>Stores</th>
-            </tr>
-          </thead>
-          <tbody>
-            {catalog?.products.flatMap((p) =>
-              p.variants.map((v, i) => (
-                <tr key={v.variant_id}>
-                  <td>
-                    {i === 0 && (
-                      <span className="cell-product">
-                        <ProductThumb src={p.image_url ?? null} name={p.title} size={36} />
-                        {p.title}
-                      </span>
-                    )}
-                  </td>
-                  <td>{v.title}</td>
-                  <td className="mono">{v.sku}</td>
-                  <td>{formatPrice(v.price, v.currency)}</td>
-                  <td>{v.mapping_status ? STATUS_LABEL[v.mapping_status] : '—'}</td>
-                  <td>{v.stores_stocked}</td>
-                </tr>
-              )),
-            )}
-          </tbody>
-        </table>
+        <ul className="nw-products" aria-label="Products">
+          {catalog?.products.map((p) => (
+            <li key={p.product_id ?? p.title}>
+              <article className="nw-product" aria-label={p.title}>
+                <header className="nw-product__head">
+                  <ProductThumb src={p.image_url ?? null} name={p.title} size={48} />
+                  <strong>{p.title}</strong>
+                </header>
+                <table className="nw-product__variants">
+                  <thead className="sr-only">
+                    <tr>
+                      <th>Variant</th>
+                      <th>SKU</th>
+                      <th>Price</th>
+                      <th>Mapping</th>
+                      <th>Stores</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {p.variants.map((v) => (
+                      <tr key={v.variant_id}>
+                        <td>{v.title}</td>
+                        <td className="mono small">{v.sku}</td>
+                        <td>{formatPrice(v.price, v.currency)}</td>
+                        <td>
+                          {v.mapping_status ? (
+                            <Badge tone={STATUS_TONE[v.mapping_status] ?? 'neutral'}>
+                              {STATUS_LABEL[v.mapping_status]}
+                            </Badge>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="small muted">
+                          {v.stores_stocked} <span className="sr-only">stores stocked</span>
+                          <span aria-hidden="true"> stores</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </article>
+            </li>
+          ))}
+        </ul>
       )}
       {!!catalog?.retail_mappings_needing_attention.length && (
         <>
@@ -81,26 +127,30 @@ export function CatalogSection(props: {
           <p className="muted small">
             These SKUs from retail files did not match the catalog automatically; their stock is not used until fixed.
           </p>
-          <table>
-            <thead>
-              <tr>
-                <th>Retail SKU</th>
-                <th>Status</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {catalog.retail_mappings_needing_attention.map((m) => (
-                <tr key={m.source_identifier}>
-                  <td className="mono">{m.source_identifier}</td>
-                  <td>{STATUS_LABEL[m.mapping_status]}</td>
-                  <td className="small">{mappingReason(m.mapping_reason)}</td>
+          <div className="ui-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Retail SKU</th>
+                  <th>Status</th>
+                  <th>Reason</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {catalog.retail_mappings_needing_attention.map((m) => (
+                  <tr key={m.source_identifier}>
+                    <td className="mono">{m.source_identifier}</td>
+                    <td>
+                      <Badge tone={STATUS_TONE[m.mapping_status] ?? 'neutral'}>{STATUS_LABEL[m.mapping_status]}</Badge>
+                    </td>
+                    <td className="small">{mappingReason(m.mapping_reason)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
-    </Section>
+    </Card>
   );
 }
