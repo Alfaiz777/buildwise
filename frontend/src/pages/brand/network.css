@@ -1,0 +1,328 @@
+/* Brand Console → Network (UI-P3): tabs, store health, product cards, the stock import. */
+
+.nw-panel {
+  display: grid;
+  gap: var(--space-4);
+}
+.nw-stores {
+  margin-top: var(--space-3);
+}
+.nw-store {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+}
+.nw-store .ask-about {
+  margin-top: 2px;
+}
+.nw-flags,
+.nw-stock,
+.nw-admin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+tr.is-target td {
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+}
+
+/* Catalogue */
+.nw-sync {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+.nw-sync__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  font-size: var(--text-sm);
+}
+.nw-sync__facts strong {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+}
+.nw-sync__warn strong {
+  color: var(--warning);
+}
+.nw-products {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+.nw-product {
+  height: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+.nw-product__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.nw-product__variants {
+  width: 100%;
+  font-size: var(--text-sm);
+}
+.nw-product__variants td {
+  padding: var(--space-1) var(--space-1);
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Stock import */
+.nw-steps {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+}
+.nw-steps__step {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.nw-steps__step:not(:last-child)::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: var(--color-border-strong);
+}
+.nw-steps__dot {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+}
+.nw-steps__step.is-current {
+  color: var(--color-text);
+}
+.nw-steps__step.is-current .nw-steps__dot {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+.nw-steps__step.is-done {
+  color: var(--color-text);
+}
+.nw-steps__step.is-done .nw-steps__dot {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+}
+.nw-steps__step.is-done::after {
+  background: var(--success);
+}
+.nw-upload {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.nw-drop {
+  position: relative;
+  display: flex;
+  flex: 1 1 22rem;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 2px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.nw-drop:hover,
+.nw-drop.is-dragging {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface));
+}
+.nw-drop.has-file {
+  border-style: solid;
+  border-color: var(--success);
+  color: var(--color-text);
+}
+.nw-drop:focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.nw-drop input[type='file'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.nw-report-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+.nw-report-tile {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.nw-report-tile strong {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+}
+.nw-report-tile--ok strong {
+  color: var(--success);
+}
+.nw-report-tile--bad strong {
+  color: var(--danger);
+}
+.nw-history {
+  position: relative;
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nw-history::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 6px;
+  width: 2px;
+  background: var(--color-border);
+}
+.nw-history__item {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.nw-history__dot {
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--color-surface);
+}
+.nw-history__item--warn .nw-history__dot {
+  background: var(--warning);
+}
+.nw-history__item--bad .nw-history__dot {
+  background: var(--danger);
+}
+.nw-history__body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Retailers */
+.nw-retailers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.nw-retailer {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+.nw-retailer h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-md);
+}
+.nw-retailer__stores {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nw-retailer__stores li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+}
+.nw-retailer-form {
+  display: grid;
+  gap: var(--space-3);
+}
+.nw-retailer-form label {
+  display: grid;
+  gap: var(--space-1);
+  font-weight: 600;
+}
+.nw-retailer-form .ui-button {
+  justify-self: start;
+}
+
+/* Phone: the stores table becomes cards. */
+@media (max-width: 768px) {
+  .nw-stores table,
+  .nw-stores tbody,
+  .nw-stores tr,
+  .nw-stores td {
+    display: block;
+    width: 100%;
+  }
+  .nw-stores thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .nw-stores.ui-table-wrap {
+    border: 0;
+  }
+  .nw-stores tr {
+    margin-bottom: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+  .nw-stores td {
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+  }
+  .nw-steps__step {
+    font-size: var(--text-xs);
+  }
+  .nw-history__item {
+    grid-template-columns: 14px minmax(0, 1fr);
+  }
+  .nw-history__item .ui-button {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

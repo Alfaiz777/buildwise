@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '../../api/apiContext';
 import { errorMessage, useLoad } from '../../components/ConsoleShell';
 import { Badge, Button, Card, ConfirmDialog, useToast } from '../../components/ui';
+import { StatusDot } from './StatusDot';
 
 export interface WhatsAppStatus {
   enabled: boolean;
@@ -181,6 +182,7 @@ export function WhatsAppCard({ loadSdk = loadFacebookSdk }: { loadSdk?: () => Pr
   return (
     <Card
       title="Channels: WhatsApp"
+      actions={<StatusDot state={!connected ? 'off' : s.status === 'RESTRICTED' ? 'attention' : 'connected'} />}
       description="Customers chat with your own WhatsApp Business number. Without one, the web simulator answers."
     >
       {error && (

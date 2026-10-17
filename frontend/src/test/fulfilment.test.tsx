@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import '../lib/intentTracker';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiContext, type MeResponse } from '../api/apiContext';
@@ -315,18 +316,22 @@ describe('Brand Console — Outcomes & insights (M6)', () => {
     render_('/brand/outcomes', api); // the old link redirects to /brand/insights
     expect(await screen.findByText(/Saturday lookups for Vitamin C Glow Serum 30 ml were 2.4×/)).toBeInTheDocument();
     expect(screen.getByText(/Includes synthetic demo history \(412 generated records\)/)).toBeInTheDocument();
-    // The funnel is a chart with the step conversion, and a table on request.
-    expect(screen.getByRole('img', { name: /Journey funnel: Storefront intents 40/ })).toBeInTheDocument();
-    expect(screen.getByText('→ 58%')).toBeInTheDocument(); // holds 12 → pickups 7
+    // UI-P3: the funnel is the shopper journey with the step conversion, and a table on request.
+    const journey = screen.getByRole('list', { name: 'Shopper journey' });
+    expect(within(journey).getByRole('link', { name: /^Intents caught: 40/ })).toBeInTheDocument();
+    expect(within(journey).getByText('58%')).toBeInTheDocument(); // holds 12 → pickups 7
     fireEvent.click(screen.getAllByRole('button', { name: 'Show as table' })[0]!);
     const funnel = screen.getByRole('table', { name: 'Journey funnel' });
     expect(within(funnel).getByText('Pickups').closest('tr')).toHaveTextContent('7');
     expect(screen.getByText(/ask Ahmedabad Retail Partners to stock HealthPlus Chemist/)).toBeInTheDocument();
     expect(screen.getByText('Based on 4 store lookups')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Conversion by action' })).toHaveTextContent('70%');
+    const converted = screen.getByRole('region', { name: 'Did the recommendation convert?' });
+    fireEvent.click(within(converted).getByRole('button', { name: 'Show as table' }));
     expect(screen.getByRole('table', { name: 'Conversion by action' })).toHaveTextContent('7 (70%)');
-    fireEvent.click(screen.getByLabelText('Include synthetic demo history'));
+    fireEvent.click(screen.getByRole('button', { name: 'Live only' }));
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/brand/insights?days=7&include_history=false'));
-    fireEvent.click(screen.getByRole('button', { name: 'Last 28 days' }));
+    fireEvent.click(screen.getByRole('button', { name: '28 days' }));
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/brand/insights?days=28&include_history=false'));
   });
 });

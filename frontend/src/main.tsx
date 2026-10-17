@@ -15,7 +15,6 @@ import './components/shell/shell.css';
 import './pages/landing/landing.css';
 import './pages/uikit/uikit.css';
 import './components/chat/chat.css';
-import './pages/shopper/shop.css';
 
 const config = readConfig(import.meta.env);
 const auth = initFirebaseAuth(config);

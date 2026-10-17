@@ -550,7 +550,11 @@ describe('Settings', () => {
         '/api/brand/conversations': { conversations: [] },
       }),
     );
-    const policy = await screen.findByRole('table', { name: 'Follow-up policy' });
+    // UI-P3: the policy reads as cards; the table is one click away.
+    const rules = await screen.findByRole('list', { name: 'Follow-up rules' });
+    expect(within(rules).getByText('Added to cart, then left')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show as table' }));
+    const policy = screen.getByRole('table', { name: 'Follow-up policy' });
     const cart = within(policy).getByText('Added to cart, then left').closest('tr')!;
     expect(cart).toHaveTextContent('On');
     expect(cart).toHaveTextContent('2 min');
@@ -719,20 +723,22 @@ describe('UI-P3 — the judge tour', () => {
     const tour = await screen.findByRole('complementary', { name: 'Try the live demo' });
     const steps = within(tour).getAllByRole('checkbox');
     expect(steps.map((s) => s.getAttribute('aria-label'))).toEqual([
-      'Open the shopper demo and ask about a product',
-      'Watch the conversation appear in Conversations',
-      'See the hold reach the store',
+      'Open the AquaSkin store and look at a product',
+      'Tap “Need it today?” and send the WhatsApp message',
+      'Watch it in Conversations and see the hold reach the store',
       'Ask Qwikspot how your brand did',
     ]);
-    await waitFor(() => expect(steps[0]).toHaveAttribute('aria-checked', 'true'));
+    // A live chat after the tour started: the store visit and the WhatsApp message are ticked.
+    await waitFor(() => expect(steps[1]).toHaveAttribute('aria-checked', 'true'));
+    expect(steps[0]).toHaveAttribute('aria-checked', 'true');
     expect(steps[2]).toHaveAttribute('aria-checked', 'false');
     // A manual tick, remembered for this viewer.
     fireEvent.click(steps[2]!);
     expect(steps[2]).toHaveAttribute('aria-checked', 'true');
     expect(JSON.parse(window.localStorage.getItem('qs_judge_tour:brd_demo')!).done['2']).toBe(true);
     fireEvent.click(within(tour).getByRole('button', { name: 'Collapse the checklist' }));
-    const pill = screen.getByRole('button', { name: /Try the live demo: 2 of 4 steps done/ });
-    expect(pill).toHaveTextContent('2/4');
+    const pill = screen.getByRole('button', { name: /Try the live demo: 3 of 4 steps done/ });
+    expect(pill).toHaveTextContent('3/4');
     fireEvent.click(pill);
     fireEvent.click(screen.getByRole('button', { name: 'Close the checklist' }));
     expect(screen.queryByRole('complementary', { name: 'Try the live demo' })).not.toBeInTheDocument();
@@ -749,5 +755,112 @@ describe('UI-P3 — the judge tour', () => {
     const tour = await screen.findByRole('complementary', { name: 'Try the live demo' });
     await new Promise((r) => setTimeout(r, 50));
     expect(within(tour).getAllByRole('checkbox')[0]).toHaveAttribute('aria-checked', 'false');
+  });
+});
+
+describe('UI-P3 — Reservations board, Insights, Settings', () => {
+  // The board's countdowns run on the real clock.
+  const soon = (min: number) => new Date(Date.now() + min * 60_000).toISOString();
+  const holds = [
+    reservation({ reservation_id: 'a', status: 'PENDING', created_at: soon(-20), expires_at: soon(30) }),
+    reservation({ reservation_id: 'b', status: 'CONFIRMED', expires_at: soon(90) }),
+    reservation({ reservation_id: 'c', status: 'READY', expires_at: soon(120) }),
+    reservation({ reservation_id: 'd', status: 'COMPLETED', active: false, completed_at: soon(-60) }),
+    reservation({
+      reservation_id: 'e',
+      status: 'CANCELLED',
+      active: false,
+      cancelled_by: 'RETAILER',
+      cancel_reason: 'DAMAGED',
+      cancelled_at: soon(-30),
+    }),
+  ];
+
+  it('the board: a column per status with its count; the strip counts waiting and expiring holds', async () => {
+    renderAt(
+      '/brand/reservations',
+      apiWith({ '/api/reservations': { reservations: holds }, '/api/brand/demo': { reset_available: false } }),
+    );
+    const board = await screen.findByLabelText('Reservations board');
+    for (const name of ['Waiting: 1', 'Confirmed: 1', 'Ready: 1', 'Picked up: 1']) {
+      expect(within(board).getByRole('region', { name })).toBeInTheDocument();
+    }
+    expect(within(board).getByText('Ended').closest('details')).toHaveTextContent('1');
+    const strip = screen.getByRole('region', { name: 'Holds right now' });
+    expect(within(strip).getByText('Waiting for store').parentElement).toHaveTextContent('1');
+    expect(within(strip).getByText('Expiring within 60 min').parentElement).toHaveTextContent('1');
+    expect(within(strip).getByText('Picked up').parentElement).toHaveTextContent('1');
+    // ?filter=refused opens the board on the refusals only.
+  });
+
+  it('a card opens the drawer with its timeline; generated history has no conversation link', async () => {
+    renderAt(
+      '/brand/reservations?filter=refused',
+      apiWith({ '/api/reservations': { reservations: holds }, '/api/brand/demo': { reset_available: false } }),
+    );
+    const ended = (await screen.findByText('Ended')).closest('details')!;
+    expect(ended).toHaveAttribute('open');
+    fireEvent.click(within(ended).getByRole('button', { name: /Customer •••• 4821/ }));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByText('Outcome').nextElementSibling).toHaveTextContent('Refused: damaged');
+    expect(within(drawer).getByRole('list', { name: 'Hold timeline' })).toHaveTextContent('Refused: damaged');
+    expect(within(drawer).getByText(/No conversation recorded for this hold/)).toBeInTheDocument();
+  });
+
+  it('Insights: in-page nav, action cards with their evidence and "Ask about this", ranked fill rate, the chart tooltip', async () => {
+    renderAt(
+      '/brand/insights',
+      apiWith({
+        '/api/brand/insights': INSIGHTS,
+        '/api/brand/stores': {
+          stores: [{ store_id: 'st_north_2', store_name: 'HealthPlus Chemist', area: 'Navrangpura' }],
+        },
+        '/api/brand/demo': { reset_available: false },
+      }),
+    );
+    const nav = await screen.findByRole('navigation', { name: 'Insights sections' });
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual(['Funnel', 'Demand', 'Actions', 'Stores']);
+    const actions = await screen.findByRole('region', { name: 'Suggested next actions' });
+    expect(within(actions).getByText('Based on 6 store lookups')).toBeInTheDocument();
+    expect(
+      within(actions).getByRole('button', { name: /^Ask Qwikspot about: HealthPlus Chemist/ }),
+    ).toBeInTheDocument();
+    const fill = screen.getByRole('list', { name: 'Fill rate by store, worst first' });
+    expect(within(fill).getByText('HealthPlus Chemist').closest('li')).toHaveClass('in-fill--danger'); // 2 of 8 = 25%
+    expect(within(fill).getByText('25%')).toBeInTheDocument();
+    const unmet = screen.getByRole('list', { name: 'Unmet local demand, most missed first' });
+    expect(within(unmet).getAllByRole('listitem')[0]).toHaveClass('is-top');
+    expect(within(unmet).getByText(/nearest store here: HealthPlus Chemist/)).toBeInTheDocument();
+    // The shared weekday chart: focus a day for its numbers.
+    fireEvent.focus(screen.getByLabelText(/^Sat · 12 store lookups/));
+    expect(document.querySelector('.chart__tooltip')).toHaveTextContent(
+      'Sat · 12 store lookups · 6 found no store with stock',
+    );
+  });
+
+  it('Settings: a sub-nav to four sections; each channel shows a status dot', async () => {
+    renderAt(
+      '/brand/settings',
+      apiWith({
+        '/api/brand/settings': SETTINGS,
+        '/api/brand/demo': { reset_available: false },
+        '/api/brand/connections': { connections: [] },
+        '/api/integrations/whatsapp': { enabled: false },
+      }),
+    );
+    const nav = await screen.findByRole('navigation', { name: 'Settings sections' });
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((a) => a.getAttribute('href')),
+    ).toEqual(['#channels', '#follow-ups', '#conversations', '#stores']);
+    const channels = screen.getByRole('region', { name: 'Channels' });
+    expect(within(channels).getByText('Mock catalogue').closest('.status-dot')).toHaveClass('status-dot--simulator');
+    expect(within(channels).getByText('Simulator').closest('.status-dot')).toHaveClass('status-dot--simulator');
+    expect(within(channels).getByText('1 storefront').closest('.status-dot')).toHaveClass('status-dot--connected');
   });
 });

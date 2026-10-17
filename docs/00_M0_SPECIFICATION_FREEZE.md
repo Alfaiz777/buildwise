@@ -820,6 +820,28 @@ The demo brand's stores are now six synthetic stores in Ahmedabad, in two areas,
 
 ---
 
+### Change 18 — The judge flow runs on the brand's real Shopify store (Oct 2026)
+
+The shopper demo (`/shop`, `/chat`, Demo controls, the web phone chat) is removed from the product: one store, the
+brand's real Shopify store, so a judge never has to choose between two. The flow:
+
+1. **Brand Console header: "Open AquaSkin store"** — the brand's connected Shopify store (from its Shopify
+   connection, never hard-coded), in a new tab, with a QR button whose popover a judge scans to open the same store
+   on a phone. Shown to any brand with a connected store.
+2. **On the store** the theme snippet records the steps (visit, search, product, size, cart, checkout) as before.
+3. **"Need it today? Ask on WhatsApp"** opens WhatsApp. **On a computer** a QR under the button ("On your phone?
+   Scan to chat on WhatsApp") carries the same `/api/wa` link with `via=qr`: the phone camera opens it, the click is
+   recorded and the one-time reference is created then, and WhatsApp opens on the phone with the message ready — the
+   chat is bound to the computer's browsing.
+4. **The judge tour** ("Try the live demo", demo brand, DEMO_MODE): open the store (or scan it) → tap "Need it
+   today?" and send the message → watch the chat and the hold → ask Qwikspot. Steps tick from live intents,
+   conversations and holds created after the tour started.
+
+`/shop`, `/chat` and `/demo-store` now land on the landing page; the landing page has no shopper-demo link. QR codes
+are drawn in the browser by a small dependency-free encoder (the same in the console and the snippet; checked module
+for module against the reference Python `qrcode` package). Backend: `GET /api/wa` accepts `via=qr` without a
+`Referer` (07, the `GET /api/wa` row); the `/api/shopper` and `/api/demo-storefront` endpoints remain but nothing links to them.
+
 # 12. Shopify integration boundary
 
 Shopify is the source of truth for Qwikspot's **online commerce context**.

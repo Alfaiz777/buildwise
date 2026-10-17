@@ -149,6 +149,33 @@ describe('GET /api/wa — the storefront link that opens WhatsApp', () => {
     expect(world.tokens.tokens).toEqual([]);
   });
 
+  it('the desktop QR (via=qr): a phone camera sends no Referer — the click is recorded and bound', async () => {
+    const res = await wa(world, { variant: '2001', via: 'qr' }, null);
+    expect(res.status).toBe(302);
+    expect(textOf(res.headers.location)).toMatch(/^Hi Brand brand_A! I'd like Vitamin C Glow Serum \(30 ml\) today\./);
+    expect(world.intents.intents).toEqual([
+      expect.objectContaining({ webSessionId: 'ws_shop_000001', variantId: 'var_2001', type: 'STORE_ORIENTED' }),
+    ]);
+    expect(world.tokens.tokens).toHaveLength(1);
+  });
+
+  it('via=qr never excuses another website: a Referer must still be an allowed storefront', async () => {
+    const res = await wa(world, { variant: '2001', via: 'qr' }, 'https://evil.example/page');
+    expect(res.headers.location).toBe(
+      `https://wa.me/910000000000?text=${encodeURIComponent('Hi Brand brand_A! I have a question.')}`,
+    );
+    expect(world.intents.intents).toEqual([]);
+  });
+
+  it('via=qr for a brand with no allowed storefront: the plain chat, nothing recorded', async () => {
+    const brand = world.brands.brands.find((b) => b.brandId === 'brand_A')!;
+    brand.settings = { ...brand.settings, allowed_storefront_origins: [] };
+    const res = await wa(world, { variant: '2001', via: 'qr' }, null);
+    expect(res.status).toBe(302);
+    expect(world.intents.intents).toEqual([]);
+    expect(world.tokens.tokens).toEqual([]);
+  });
+
   it('no WhatsApp number for the brand: back to the store page it came from', async () => {
     const brand = world.brands.brands.find((b) => b.brandId === 'brand_A')!;
     brand.settings = { ...brand.settings, messaging: { display_name: 'Brand brand_A', whatsapp_number: null } };

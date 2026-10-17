@@ -6,10 +6,8 @@ import type { ApiClient } from '../api/client';
 import { AppRoutes } from '../AppRoutes';
 import { AuthContext, type AuthState } from '../auth/authContext';
 import { ChatThread } from '../components/chat/ChatThread';
-import type { ShopperChat, ShopperMessage } from '../lib/shopperApi';
 import { forgetConversationSummaries } from '../pages/brand/AiCards';
 import type { ChatMessage } from '../pages/brand/conversationTypes';
-import { ShopperPhone } from '../pages/shopper/ShopperPhone';
 
 /** L9: the handoff brief in the Handoff inbox, and suggested replies after an answer. */
 
@@ -198,22 +196,6 @@ describe('suggested replies on the web chat', () => {
     render(<ChatThread messages={[PRODUCT_ANSWER, SHOPPER]} mode="brand" />);
     const chips = within(screen.getByRole('group', { name: 'Suggested replies' })).getAllByRole('button');
     expect(chips.every((c) => c.hasAttribute('disabled'))).toBe(true);
-  });
-
-  it('a tapped chip is sent as the shopper message (its text is written by the backend from the choice)', async () => {
-    const shopperMessage = (m: ChatMessage): ShopperMessage => ({ ...m, from: 'BRAND' }) as ShopperMessage;
-    const chat = {
-      brand: { brand_id: 'brand_A', display_name: 'Demo Beauty Co', logo_url: null },
-      start: vi.fn(),
-      send: vi.fn(async () => ({})),
-      messages: vi.fn(async () => ({ conversation_id: 'conv_1', messages: [shopperMessage(PRODUCT_ANSWER)] })),
-    } as unknown as ShopperChat;
-    render(<ShopperPhone chat={chat} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Show stores near me' }));
-    expect(chat.send).toHaveBeenCalledWith({
-      type: 'INTERACTIVE_REPLY',
-      option_id: 'qr:stores:en:Mineral Sunscreen SPF 50',
-    });
   });
 
   it('Hinglish choices render as they come', () => {

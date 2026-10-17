@@ -93,24 +93,12 @@ describe('landing page (/)', () => {
     expect(within(header).queryByRole('link', { name: 'Brand login' })).not.toBeInTheDocument();
   });
 
-  it('"See it as a shopper" appears only with demo mode on, where the shopper demo exists', async () => {
-    demoConfig({ demo_mode: true, logins: [], shopper_demo: { brand_id: 'brd_demo' } });
-    const { unmount } = landing();
-    const links = await screen.findAllByRole('link', { name: /See it as a shopper/ });
-    expect(links[0]).toHaveAttribute('href', '/shop');
-    expect(links[0]).toHaveAttribute('target', '_blank');
-    expect(screen.getByText('Demo data is synthetic.')).toBeInTheDocument();
-    unmount();
-
-    demoConfig({ demo_mode: true, logins: [], shopper_demo: { brand_id: 'brd_demo' } });
-    const gcp = landing({ profile: 'gcp' }); // gcp with DEMO_MODE on serves the shopper demo (Change 16)
-    expect(await screen.findAllByRole('link', { name: /See it as a shopper/ })).not.toHaveLength(0);
-    gcp.unmount();
-
-    demoConfig({ demo_mode: false });
-    landing({ profile: 'gcp' });
-    await waitFor(() => expect(screen.getAllByRole('link', { name: 'Brand login' }).length).toBeGreaterThan(0));
+  it("no shopper demo link: shoppers use the brand's real Shopify store", async () => {
+    demoConfig({ demo_mode: true, logins: [] });
+    landing();
+    expect(await screen.findByText('Demo data is synthetic.')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /See it as a shopper/ })).not.toBeInTheDocument();
+    expect(document.querySelector('a[href="/shop"]')).toBeNull();
   });
 
   it('illustrations are labelled as examples, and the chat says it comes from the brand', () => {

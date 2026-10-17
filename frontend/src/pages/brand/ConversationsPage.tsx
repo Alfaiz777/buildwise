@@ -23,6 +23,7 @@ import { ConversationSummary } from './AiCards';
 import { HandoffBrief, HandoffPanel, waitingFor } from './HandoffPanel';
 import { IntentPanel } from './IntentPanel';
 import { buildJourney } from './journey';
+import { useShopifyStore } from './shopifyStore';
 import { formatDateTime } from './types';
 import './brand.css';
 import './conversations.css';
@@ -329,7 +330,8 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
     [all],
   );
   const journey = useMemo(() => (detail ? buildJourney(detail) : []), [detail]);
-  const shopUrl = me.scope === 'BRAND' ? `/shop?brand=${encodeURIComponent(me.brand_id)}` : '/shop';
+  // The brand's real Shopify store: where a shopper starts a conversation.
+  const store = useShopifyStore(me.scope === 'BRAND');
 
   return (
     <ConsoleShell>
@@ -415,15 +417,18 @@ export function ConversationsPage({ autoPoll = false }: { autoPoll?: boolean }) 
                 <EmptyState icon={<MessagesSquare size={22} />}>
                   {all.length === 0 ? (
                     <>
-                      No conversations yet. Open the shopper demo to start one.
-                      <a
-                        className="ui-button ui-button--brand ui-button--sm cv-empty-cta"
-                        href={shopUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Open shopper demo <ExternalLink size={14} aria-hidden="true" />
-                      </a>
+                      No conversations yet. Open your store, tap “Need it today?” on a product and send the WhatsApp
+                      message to start one.
+                      {store && (
+                        <a
+                          className="ui-button ui-button--brand ui-button--sm cv-empty-cta"
+                          href={store.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Open {store.name ?? 'your'} store <ExternalLink size={14} aria-hidden="true" />
+                        </a>
+                      )}
                     </>
                   ) : (
                     'No conversations match this filter.'

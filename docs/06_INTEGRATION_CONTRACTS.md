@@ -805,12 +805,15 @@ Errors: `400 INVALID_EVENT`, `403 ORIGIN_NOT_ALLOWED`, `404 UNKNOWN_VARIANT`, `4
 The Shopify snippet's "Need it today?" button and WhatsApp bubble are plain links to this redirect, so a tap navigates at once: no API call has to finish first, a phone keeps the tap's permission to open the WhatsApp app, and a computer's popup blocker allows the new tab.
 
 ```text
-GET /api/wa?brand=<brand_id>&entry=STORE_NEED|CHAT&variant=<numeric id | gid://shopify/ProductVariant/<id>>&session=<web_session_id>&visitor=<visitor_id>
+GET /api/wa?brand=<brand_id>&entry=STORE_NEED|CHAT&variant=<numeric id | gid://shopify/ProductVariant/<id>>&session=<web_session_id>&visitor=<visitor_id>[&via=qr]
 ```
 
 - Strictly those fields (`variant` and `visitor` optional), with the `IntentEvent` id rules → otherwise `400 INVALID_EVENT`; an unknown or inactive brand → `404`.
 - The storefront is the origin of the `Referer` (a link has no `Origin`; browsers send the referring origin cross-origin under the default `strict-origin-when-cross-origin`, and the snippet sets that policy on its links).
 - Origin allowed and within the `POST /api/intents` limits: the `WHATSAPP_CLICK` is recorded exactly as there (validation, token, readable text) → `302` to the `wa.me` link.
+- **`via=qr` (Change 18).** The snippet's desktop QR carries the same link with `via=qr`; a phone camera opens it with
+  no `Referer`. Such a request counts as from the brand's storefront when the brand allows at least one storefront
+  origin. A request that does carry a `Referer` is always checked against `allowed_storefront_origins`, `via=qr` or not.
 - The click cannot be recorded (origin not allowed or no `Referer`, unknown variant, rate limited, token limit): `302` to `https://wa.me/<brand number>?text=Hi {brand}! I have a question.` (no reference) when the brand can be reached on WhatsApp; otherwise `302` back to the referring page if its origin is allowed, else `404`. Logged as `intents.wa_redirect_fallback` with the brand id and the reason only.
 - Every answer carries `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. The request logger never logs query strings, so the two random ids in the URL are not logged.
 
