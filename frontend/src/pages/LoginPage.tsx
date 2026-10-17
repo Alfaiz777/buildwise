@@ -7,7 +7,10 @@ import { Wordmark } from '../components/shell/Wordmark';
 import { Button } from '../components/ui';
 import { useDemoConfig } from '../lib/demoConfig';
 import { usePageTitle } from '../lib/pageTitle';
+import { label } from '../lib/labels';
 import { DemoLoginPanel } from './demo/DemoLoginPanel';
+import { LoginStory } from './login/LoginStory';
+import './login/login.css';
 
 function friendlyAuthError(err: unknown): string {
   const code = (err as { code?: string }).code ?? '';
@@ -99,6 +102,8 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
 
   // Also reached right after a successful sign-in (Firebase updates the user before signIn()
   // resolves): carry the chosen role so /app can explain a different account's console.
@@ -107,6 +112,7 @@ export function LoginPage() {
   const choose = (next: LoginAs) => {
     setParams({ as: next }, { replace: true, state: location.state });
     setError(null);
+    setPicked(null);
   };
   const onKey = (e: KeyboardEvent, index: number) => {
     const delta =
@@ -137,18 +143,43 @@ export function LoginPage() {
   const Icon = copy.icon;
 
   return (
-    <div className="login">
-      <header className="login__header">
+    <div className="login" data-as={as}>
+      <section className="login__story" aria-labelledby="login-story-title">
         <Link to="/" className="login__home" aria-label="Qwikspot home">
           <Wordmark />
         </Link>
-        <Link to="/" className="login__back">
-          <ArrowLeft size={16} aria-hidden="true" /> Back to home
-        </Link>
-      </header>
-      <main className="login__main">
+        <div className="login__pitch">
+          <p className="login__kicker">Online intent → in-store pickup</p>
+          <h2 id="login-story-title">Your online shoppers, picking up in your stores today.</h2>
+        </div>
+        <LoginStory />
+        <aside className="login__aside" aria-label="What you'll find here">
+          <span className="login__aside-icon" aria-hidden="true">
+            <Icon size={18} />
+          </span>
+          <h2>What you&apos;ll find here</h2>
+          <ul>
+            {copy.findHere.map(([title, text]) => (
+              <li key={title}>
+                <strong>{title}</strong>
+                <span>{text}</span>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      </section>
+      <main className="login__side">
+        <div className="login__topbar">
+          <Link to="/" className="login__home login__home--compact" aria-label="Qwikspot home">
+            <Wordmark />
+          </Link>
+          <Link to="/" className="login__back">
+            <ArrowLeft size={16} aria-hidden="true" /> Back to home
+          </Link>
+        </div>
         <section className="login__card" aria-labelledby="login-heading">
-          <div className="login__segments" role="radiogroup" aria-label="Sign in as">
+          <div className="login__segments" role="radiogroup" aria-label="Sign in as" data-index={ORDER.indexOf(as)}>
+            <span className="login__thumb" aria-hidden="true" />
             {ORDER.map((key, i) => (
               <button
                 key={key}
@@ -167,8 +198,10 @@ export function LoginPage() {
               </button>
             ))}
           </div>
-          <h1 id="login-heading">{copy.heading}</h1>
-          <p className="login__line">{copy.line}</p>
+          <div className="login__intro" key={as}>
+            <h1 id="login-heading">{copy.heading}</h1>
+            <p className="login__line">{copy.line}</p>
+          </div>
           <form onSubmit={onSubmit} className="login__form">
             <label>
               Email
@@ -177,7 +210,10 @@ export function LoginPage() {
                 autoComplete="username"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setPicked(null);
+                }}
               />
             </label>
             <label>
@@ -187,7 +223,10 @@ export function LoginPage() {
                 autoComplete="current-password"
                 required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setPicked(null);
+                }}
               />
             </label>
             {error && (
@@ -195,34 +234,25 @@ export function LoginPage() {
                 {error}
               </p>
             )}
-            <Button type="submit" loading={submitting}>
+            <Button type="submit" loading={submitting} ref={submitRef}>
               {submitting ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
-          {copy.noAccount && <p className="login__note">{copy.noAccount}</p>}
+          {copy.noAccount && demoLogins.length === 0 && <p className="login__note">{copy.noAccount}</p>}
           <DemoLoginPanel
+            key={as}
             logins={demoLogins}
+            roleLabel={label(copy.role)}
+            picked={picked}
             onUse={(login) => {
               setEmail(login.email);
               setPassword(login.password);
+              setPicked(login.email);
               setError(null);
+              submitRef.current?.focus();
             }}
           />
         </section>
-        <aside className="login__aside" aria-label="What you'll find here">
-          <span className="login__aside-icon" aria-hidden="true">
-            <Icon size={22} />
-          </span>
-          <h2>What you&apos;ll find here</h2>
-          <ul>
-            {copy.findHere.map(([title, text]) => (
-              <li key={title}>
-                <strong>{title}</strong>
-                <span>{text}</span>
-              </li>
-            ))}
-          </ul>
-        </aside>
       </main>
     </div>
   );

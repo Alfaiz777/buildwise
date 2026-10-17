@@ -1,0 +1,938 @@
+/*
+ * Login (UI-L). Two halves on one screen, no page scroll on a laptop: the Qwikspot story on the
+ * left (always deep teal, with the logo's pin-and-check motif) and the sign-in card on the right
+ * (tokens, light and dark). Phones get the card alone. Every animation stops with reduced motion.
+ */
+
+.login {
+  --ls-ink: #eafaf7;
+  --ls-muted: rgb(234 250 247 / 0.72);
+  --ls-line: rgb(234 250 247 / 0.14);
+  --ls-amber: var(--amber-400);
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(26rem, 34rem);
+  background: var(--color-bg);
+}
+
+/* ---------------------------------------------------------------- the story half */
+.login__story {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+  padding: var(--space-6) clamp(var(--space-6), 4vw, var(--space-12));
+  overflow: hidden;
+  color: var(--ls-ink);
+  background:
+    radial-gradient(38rem 26rem at 85% 8%, rgb(63 179 163 / 0.35), transparent 65%),
+    radial-gradient(30rem 22rem at 0% 100%, rgb(251 174 44 / 0.16), transparent 70%),
+    linear-gradient(160deg, var(--teal-700), var(--teal-900) 70%);
+}
+/* A faint dot grid, like a map seen from above. */
+.login__story::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgb(234 250 247 / 0.09) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(180deg, transparent, #000 25%, #000 75%, transparent);
+  pointer-events: none;
+}
+.login__story > * {
+  position: relative;
+}
+.login__home {
+  align-self: flex-start;
+  text-decoration: none;
+  color: inherit;
+}
+.login__story .wordmark {
+  color: var(--ls-ink);
+}
+.login__story .wordmark path:first-child {
+  fill: var(--teal-300);
+}
+.login__pitch {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 34rem;
+  animation: lg-rise 600ms var(--ease-out) both;
+}
+.login__kicker {
+  margin: 0;
+  color: var(--ls-amber);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.login__pitch h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 2.4vw, 2.35rem);
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+}
+
+/* What you'll find here: three short items in a row. */
+.login__aside {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--ls-line);
+}
+.login__aside-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: rgb(234 250 247 / 0.12);
+  color: var(--ls-ink);
+}
+.login__aside h2 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+.login__aside ul {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.login__aside li {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  font-size: var(--text-xs, 0.8125rem);
+  animation: lg-rise 500ms var(--ease-out) both;
+}
+.login__aside li:nth-child(2) {
+  animation-delay: 60ms;
+}
+.login__aside li:nth-child(3) {
+  animation-delay: 120ms;
+}
+.login__aside li span {
+  color: var(--ls-muted);
+  line-height: 1.4;
+}
+
+/* ---------------------------------------------------------------- the animated scene */
+.ls {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 0;
+}
+.ls-scene {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 220px;
+  max-height: 420px;
+}
+.ls-map {
+  position: absolute;
+  inset: 0 0 0 18%;
+  border: 1px solid var(--ls-line);
+  border-radius: 20px;
+  background: rgb(10 40 38 / 0.35);
+  overflow: hidden;
+}
+.ls-streets,
+.ls-route {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.ls-streets path {
+  fill: none;
+  stroke: rgb(234 250 247 / 0.1);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+.ls-route path {
+  fill: none;
+  stroke: var(--ls-amber);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: 0;
+  transition:
+    stroke-dashoffset 900ms var(--ease-out),
+    opacity 200ms;
+}
+/* The shopper on the map, with the search ring. */
+.ls-you {
+  position: absolute;
+  left: 27%;
+  top: 78%;
+  translate: -50% -50%;
+}
+.ls-you__dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border: 3px solid var(--ls-ink);
+  border-radius: 50%;
+  background: var(--teal-400);
+  box-shadow: 0 0 0 6px rgb(63 179 163 / 0.25);
+}
+.ls-ping {
+  position: absolute;
+  left: 27%;
+  top: 78%;
+  width: 18px;
+  height: 18px;
+  translate: -50% -50%;
+  border: 2px solid var(--teal-300);
+  border-radius: 50%;
+  opacity: 0;
+}
+/* Stores: three Qwikspot pins. */
+.ls-store {
+  position: absolute;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  translate: -50% -100%;
+  opacity: 0;
+  scale: 0.6;
+  transition:
+    opacity 400ms var(--ease-out),
+    scale 400ms var(--ease-out);
+}
+.ls-store--a {
+  left: 30%;
+  top: 34%;
+}
+.ls-store--b {
+  left: 60%;
+  top: 52%;
+  transition-delay: 120ms;
+}
+.ls-store--c {
+  left: 84%;
+  top: 30%;
+  transition-delay: 240ms;
+}
+.ls-pin {
+  width: 34px;
+  height: 34px;
+  filter: drop-shadow(0 4px 8px rgb(0 0 0 / 0.3));
+}
+.ls-pin path:first-child {
+  fill: rgb(234 250 247 / 0.35);
+  transition: fill 400ms var(--ease-out);
+}
+.ls-store--b .ls-pin {
+  width: 44px;
+  height: 44px;
+}
+.ls-store--b .ls-pin path:first-child {
+  fill: var(--teal-300);
+}
+.ls-pin__check {
+  fill: none;
+  stroke: var(--teal-900);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 500ms 500ms var(--ease-out);
+}
+.ls-store__tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgb(10 40 38 / 0.8);
+  color: var(--ls-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ls-store__tag--ok {
+  color: var(--ls-ink);
+}
+
+/* The phone. */
+.ls-phone {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  width: clamp(150px, 34%, 196px);
+  height: min(100%, 360px);
+  padding: 22px 12px 12px;
+  border: 1px solid rgb(234 250 247 / 0.28);
+  border-radius: 26px;
+  background: linear-gradient(180deg, #0d2e2b, #0a2422);
+  box-shadow:
+    0 24px 48px rgb(0 0 0 / 0.35),
+    inset 0 0 0 4px rgb(0 0 0 / 0.25);
+  overflow: hidden;
+}
+.ls-phone__notch {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 44px;
+  height: 6px;
+  translate: -50% 0;
+  border-radius: 999px;
+  background: rgb(234 250 247 / 0.2);
+}
+.ls-product {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgb(234 250 247 / 0.08);
+  transition:
+    opacity 500ms var(--ease-out),
+    translate 500ms var(--ease-out),
+    max-height 500ms var(--ease-out);
+  max-height: 200px;
+}
+.ls-product__img {
+  height: 64px;
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 50% 60%, rgb(251 174 44 / 0.7) 0 16%, transparent 17%),
+    linear-gradient(135deg, rgb(116 207 192 / 0.5), rgb(31 151 138 / 0.25));
+}
+.ls-product__lines {
+  display: grid;
+  gap: 5px;
+}
+.ls-product__lines span {
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(234 250 247 / 0.25);
+}
+.ls-product__lines span:last-child {
+  width: 55%;
+}
+.ls-product__cta {
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: var(--ls-amber);
+  color: var(--amber-ink);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-align: center;
+}
+.ls-chat {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+.ls-bubble {
+  max-width: 92%;
+  padding: 7px 10px;
+  border-radius: 12px;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  opacity: 0;
+  translate: 0 8px;
+  transition:
+    opacity 400ms var(--ease-out),
+    translate 400ms var(--ease-out);
+}
+.ls-bubble--out {
+  justify-self: end;
+  border-bottom-right-radius: 4px;
+  background: #1f6f4a;
+  color: #effaf3;
+}
+.ls-bubble--in {
+  justify-self: start;
+  border-bottom-left-radius: 4px;
+  background: rgb(234 250 247 / 0.92);
+  color: var(--teal-900);
+}
+.ls-bubble--in b {
+  font-variant-numeric: tabular-nums;
+}
+.ls-typing {
+  display: none;
+  gap: 3px;
+  justify-self: start;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgb(234 250 247 / 0.14);
+}
+.ls-typing i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ls-ink);
+  animation: lg-typing 1s infinite ease-in-out;
+}
+.ls-typing i:nth-child(2) {
+  animation-delay: 150ms;
+}
+.ls-typing i:nth-child(3) {
+  animation-delay: 300ms;
+}
+
+/* The pickup pass that ends the story. */
+.ls-pass {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px dashed rgb(251 174 44 / 0.7);
+  border-radius: 12px;
+  background: rgb(251 174 44 / 0.12);
+  opacity: 0;
+  translate: 0 10px;
+  transition:
+    opacity 400ms var(--ease-out),
+    translate 400ms var(--ease-out);
+}
+.ls-pass__qr {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  background:
+    conic-gradient(from 90deg at 30% 30%, var(--ls-ink) 25%, transparent 0) 0 0 / 10px 10px,
+    rgb(234 250 247 / 0.2);
+}
+.ls-pass__text {
+  display: grid;
+  font-size: 0.625rem;
+  color: var(--ls-muted);
+}
+.ls-pass__text b {
+  color: var(--ls-amber);
+  font-size: 0.6875rem;
+}
+.ls[data-step='3'] .ls-pass {
+  opacity: 1;
+  translate: 0 0;
+  transition-delay: 1100ms;
+}
+
+/* ---- the beats: 0 browsing · 1 asks · 2 checks stock · 3 held and picked up */
+.ls[data-step='0'] .ls-product__cta {
+  animation: lg-nudge 1.6s 1s ease-in-out infinite;
+}
+.ls:not([data-step='0']) .ls-product {
+  max-height: 0;
+  padding-block: 0;
+  opacity: 0;
+  translate: 0 -12px;
+}
+.ls:not([data-step='0']) .ls-bubble--out {
+  opacity: 1;
+  translate: 0 0;
+}
+.ls[data-step='1'] .ls-typing,
+.ls[data-step='2'] .ls-typing {
+  display: inline-flex;
+}
+.ls[data-step='2'] .ls-ping {
+  animation: lg-ping 1.4s var(--ease-out) infinite;
+}
+.ls[data-step='2'] .ls-store,
+.ls[data-step='3'] .ls-store {
+  opacity: 1;
+  scale: 1;
+}
+.ls[data-step='3'] .ls-store--a,
+.ls[data-step='3'] .ls-store--c {
+  opacity: 0.45;
+}
+.ls[data-step='3'] .ls-store--b .ls-pin path:first-child {
+  fill: var(--ls-amber);
+}
+.ls[data-step='3'] .ls-store--b {
+  animation: lg-bounce 600ms var(--ease-out);
+}
+.ls[data-step='3'] .ls-pin__check,
+.ls[data-step='3'] .ls-route path {
+  stroke-dashoffset: 0;
+  opacity: 1;
+}
+.ls[data-step='3'] .ls-bubble--in {
+  opacity: 1;
+  translate: 0 0;
+  transition-delay: 500ms;
+}
+
+/* ---- the four beats as text, with a progress line under the current one */
+.ls-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ls-steps li {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  color: var(--ls-muted);
+  transition: color 300ms var(--ease-out);
+}
+.ls-steps li::before,
+.ls-steps li::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 999px;
+}
+.ls-steps li::before {
+  right: 0;
+  background: var(--ls-line);
+}
+.ls-steps li.is-done::after {
+  right: 0;
+  background: rgb(234 250 247 / 0.45);
+}
+.ls-steps li.is-on {
+  color: var(--ls-ink);
+}
+.ls-steps li.is-on::after {
+  background: var(--ls-amber);
+  animation: lg-progress 3.2s linear both;
+}
+.ls-steps__n {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+.ls-steps li.is-on .ls-steps__n {
+  border-color: var(--ls-amber);
+  background: var(--ls-amber);
+  color: var(--amber-ink);
+}
+.ls-steps strong {
+  display: block;
+  font-size: var(--text-sm);
+}
+.ls-steps__text {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+/* ---------------------------------------------------------------- the sign-in half */
+.login__side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--space-5) clamp(var(--space-5), 3vw, var(--space-10));
+  background: radial-gradient(30rem 20rem at 100% 0%, var(--color-primary-soft), transparent 70%), var(--color-bg);
+}
+.login__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+.login__home--compact {
+  display: none;
+  margin-right: auto;
+}
+.login__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+.login__card {
+  width: 100%;
+  max-width: 28rem;
+  margin: auto;
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  animation: lg-rise 500ms 80ms var(--ease-out) both;
+}
+
+/* The role switch: a sliding thumb under three choices. */
+.login__segments {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+.login__thumb {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / 3);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transition: translate 300ms var(--ease-out);
+}
+.login__segments[data-index='1'] .login__thumb {
+  translate: 100% 0;
+}
+.login__segments[data-index='2'] .login__thumb {
+  translate: 200% 0;
+}
+.login__segment {
+  position: relative;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-weight: 600;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: color 200ms var(--ease-out);
+}
+.login__segment {
+  white-space: nowrap;
+}
+.login__segment:hover:not(:disabled) {
+  background: transparent;
+  color: var(--color-text);
+}
+.login__segment[aria-checked='true'] {
+  color: var(--color-primary);
+}
+
+.login__intro {
+  margin-top: var(--space-5);
+  animation: lg-fade 350ms var(--ease-out) both;
+}
+.login__intro h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  letter-spacing: -0.01em;
+}
+.login__line {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+.login__form {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+.login__form label {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.login__form input {
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 400;
+  transition:
+    border-color 150ms,
+    box-shadow 150ms;
+}
+.login__form input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+.login__form .ui-button {
+  min-height: 46px;
+  margin-top: var(--space-1);
+}
+.login__note {
+  margin: var(--space-4) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Try the demo: tiles, two a row, so four stores fit at once. */
+.login__card .login-demo {
+  margin: var(--space-5) 0 0;
+  padding: var(--space-4) 0 0;
+  border: 0;
+  border-top: 1px dashed var(--color-border);
+  border-radius: 0;
+}
+.login-demo__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.login-demo__head h2 {
+  margin: 0;
+  font-size: var(--text-base, 1rem);
+}
+.login-demo > p {
+  margin: var(--space-1) 0 var(--space-3);
+}
+.login-demo__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.login-demo__grid--one {
+  grid-template-columns: minmax(0, 1fr);
+}
+.login-demo__grid li {
+  display: flex;
+  animation: lg-rise 400ms var(--ease-out) both;
+}
+.login-demo__tile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 150ms,
+    box-shadow 150ms,
+    translate 150ms var(--ease-out);
+}
+.login-demo__tile:hover:not(:disabled) {
+  background: var(--color-surface);
+  border-color: color-mix(in srgb, var(--color-primary) 50%, var(--color-border));
+  box-shadow: var(--shadow-sm);
+  translate: 0 -1px;
+}
+.login-demo__tile.is-picked,
+.login-demo__tile.is-picked:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+.login-demo__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.login-demo__tile.is-picked .login-demo__mark {
+  background: var(--color-primary);
+  color: var(--color-surface);
+}
+.login-demo__text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.login-demo__text strong {
+  font-size: 0.8125rem;
+  line-height: 1.3;
+}
+.login-demo__hint {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+/* ---------------------------------------------------------------- motion */
+@keyframes lg-rise {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+@keyframes lg-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes lg-ping {
+  from {
+    width: 18px;
+    height: 18px;
+    opacity: 0.9;
+  }
+  to {
+    width: 320px;
+    height: 320px;
+    opacity: 0;
+  }
+}
+@keyframes lg-nudge {
+  0%,
+  100% {
+    scale: 1;
+  }
+  50% {
+    scale: 1.06;
+  }
+}
+@keyframes lg-bounce {
+  40% {
+    translate: -50% -112%;
+  }
+}
+@keyframes lg-typing {
+  0%,
+  100% {
+    opacity: 0.3;
+    translate: 0 0;
+  }
+  50% {
+    opacity: 1;
+    translate: 0 -2px;
+  }
+}
+@keyframes lg-progress {
+  from {
+    right: 100%;
+  }
+  to {
+    right: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login *,
+  .login *::before,
+  .login *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------- sizes */
+/* A laptop: exactly one screen. */
+@media (min-width: 1024px) and (min-height: 700px) {
+  .login {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .login__side {
+    overflow-y: auto;
+  }
+}
+/* Short laptop screens: the scene's captions and the card's spacing give way first. */
+@media (min-width: 1024px) and (max-height: 800px) {
+  .ls-steps__text,
+  .login__aside ul {
+    display: none;
+  }
+  .login__side {
+    padding-block: var(--space-3);
+  }
+  .login__card {
+    padding: var(--space-5);
+  }
+  .login__intro {
+    margin-top: var(--space-4);
+  }
+  .login__intro h1 {
+    font-size: var(--text-xl);
+  }
+  .login__form {
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+  .login__form input {
+    min-height: 40px;
+  }
+  .login__form .ui-button {
+    min-height: 42px;
+  }
+  .login__card .login-demo {
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+  }
+  .login-demo > p {
+    display: none;
+  }
+  .login-demo__head {
+    margin-bottom: var(--space-2);
+  }
+  .login-demo__hint {
+    -webkit-line-clamp: 1;
+  }
+}
+/* Tablets and phones: the card alone, the logo in the top bar. */
+@media (max-width: 1023px) {
+  .login {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .login__story {
+    display: none;
+  }
+  .login__home--compact {
+    display: inline-flex;
+  }
+}
+@media (max-width: 480px) {
+  .login__side {
+    padding: var(--space-3) var(--space-4) var(--space-6);
+  }
+  .login__card {
+    margin-top: var(--space-4);
+    padding: var(--space-5);
+  }
+  .login-demo__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .login__segment {
+    padding-inline: 2px;
+    font-size: 0.8125rem;
+  }
+}
