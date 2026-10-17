@@ -25,6 +25,7 @@ export function ChatThread({
     end.current?.scrollIntoView?.({ block: 'end' });
   }, [messages.length]);
   const lastOutbound = [...messages].reverse().find((m) => m.direction === 'OUTBOUND')?.message_id;
+  const lastMessage = messages.at(-1)?.message_id;
   return (
     <div className="wa-thread" role="log" aria-live="polite" aria-label="Messages">
       {messages.length === 0 && <p className="wa-empty">{empty ?? 'No messages yet.'}</p>}
@@ -34,6 +35,7 @@ export function ChatThread({
           message={m}
           mode={mode}
           onChoose={onChoose}
+          last={m.message_id === lastMessage}
           choicesEnabled={mode === 'customer' && !busy && m.message_id === lastOutbound}
         />
       ))}

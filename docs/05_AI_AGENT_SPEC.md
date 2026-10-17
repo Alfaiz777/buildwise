@@ -500,7 +500,7 @@ The run also found one ungrounded claim. Asked "is it original?", Gemini once an
 **Where it appears in the Brand Console.**
 - **The drawer, on all six pages:** the header's **Ask Qwikspot** button. Its suggested questions follow the page, e.g. Overview "How did we do this week?" and Network "Which store needs attention?".
 - **Overview brief:** "This week in brief" at the top of Overview. It covers what happened, the biggest win and the biggest problem, with one next-action button to the page that fixes it.
-- **Conversation summary:** above each conversation, two lines on what the shopper wanted and what happened. A handed-off chat adds a **handoff brief** for the person taking over.
+- **Conversation summary:** above each conversation, two lines on what the shopper wanted and what happened. A handed-off chat adds a **handoff brief** for the person taking over, shown in the Handoff inbox (§19.1).
 - **Ask about this:** a button on each Insights suggestion and each Network store, which opens the drawer with that question asked.
 
 Settings gets no AI content: settings stay in the brand's own hands.
@@ -649,3 +649,26 @@ Fixes from live testing of the brand agent.
 - **Empty is an answer:** the agent never says the data "doesn't track" something the pack has a field for; a 0, null or empty list is described in words. "The data doesn't cover this" is only for what neither the pack nor a tool has.
 - **Percentages** are written with %, "100% fill rate", "conversion 0%". The number checker reads the number before the % as usual, so they pass when the data has them; an invented percentage is still rejected.
 - **Conversion** is the Overview tile's: purchases (store pickups, online and alternative orders — Outcomes `OFFLINE`, `ONLINE`, `ALTERNATIVE`) ÷ finished journeys (purchases + journeys that closed without a purchase, `NONE`), for Outcomes recorded in the period. A collected pickup is a purchase: completing a hold records an `OFFLINE` Outcome for its journey (`OutcomeService.recordFromReservation`). It is not counted when its journey already had its Outcome — one per journey, the first wins (docs/04 "M6 rules"), for example a journey that closed as `NONE` after the attribution window (10 minutes on the demo brand) — or when its Outcome falls outside the period. The pack carries `pickups_not_in_conversion` (pickups − store and alternative purchases, at least 0), and the answer explains such a pickup in words.
+
+# 19. Shopper polish (L9)
+
+Two small additions on the shopper side, without a new agent.
+
+## 19.1 The handoff brief in the Handoff inbox
+
+- **Where:** under each "needs a person" item in the Conversations list (the Handoff inbox), and at the top of the "Needs a person" panel of an open handed-off conversation. The conversation summary above does not repeat it there.
+- **What:** the conversation summary's `handoff_brief` (§18), with its "AI summary" or "Quick summary" label: what the shopper wants and what was already tried.
+- **Loading:** after the list, never blocking it; at most 2 at a time. The list item and the open conversation share one request. The backend keeps an AI summary until a new message arrives (the existing cache). If the brief fails, the item stays as it was.
+- **No shopper identity:** the AI brief is checked for phone numbers, emails and redaction markers like any AI answer. The rules brief no longer quotes the shopper: it says "Wants <product>; asked for a person after N messages." and "Already tried: nearby stores shown (store); a hold at <store>, <status>…".
+
+## 19.2 Suggested replies after an answer
+
+- **When:** after the agent answers a product question (EDUCATE, COMPARE, ALTERNATIVE_PRODUCT) about a product, or after a store search found no store with stock. 2–3 choices, or none.
+- **Never:** after a closing turn ("thanks", "ok", "later", "bye", a compliment), a hold confirmation, a handoff or in a conversation a person owns; on a turn that already has its own buttons or link (store card, other stores, hold, buy online); when the store search is only asking where the shopper is; outside WhatsApp's 24-hour window.
+- **The choices, by rules from the conversation state (`domain/quickReplies.ts`), never free model text:**
+  - product answer: "Show stores near me", "Compare with <word>" (a verified alternative, same concern; not after a comparison), else "Buy online"; then "Talk to a person" when handoff is on;
+  - store search with nothing in stock: "Check another area", "Buy online", "Talk to a person".
+  - Hinglish (or Hindi) conversations get "Paas ke store dikhao", "<word> se compare", "Online lena hai", "Doosra area dekho", "Kisi se baat karao".
+- **A tap is the shopper's message.** The option id (`qr:<kind>:<lang>[:<product title>]`) carries the text a tap sends, naming the product in full so the agent knows which one: "Show stores near me for Mineral Sunscreen SPF 50", "Compare with Ultra-Light Gel Sunscreen SPF 50", "Mineral Sunscreen SPF 50 paas mein kahan milega?". The pipeline turns the tap into that TEXT message before any stage runs, on every channel; the inbound message stored is that text.
+- **WhatsApp:** reply buttons — at most 3, title ≤ 20 characters (checked by `validateMessage`, like every button), only in a session reply (inside the 24-hour window). As an interactive message it carries the "Powered by Qwikspot" footer under the existing rule.
+- **Web chat:** chips under the last message, tappable only while it is the last message; the Brand Console transcript shows them read-only.

@@ -14,6 +14,7 @@ import type { Reply } from '../../domain/agentReplies.js';
 import type { JsonValue } from '../../ports/conversationRepositories.js';
 import type { GuardrailOutcome } from '../agent/replyComposer.js';
 import type { AgentToolExecutor } from '../agent/toolExecutor.js';
+import { asTypedQuickReply } from '../../domain/quickReplies.js';
 
 /**
  * The ONE conversation pipeline for every customer channel
@@ -145,7 +146,9 @@ export class ConversationPipeline {
     return result;
   }
 
-  private async run(inbound: InboundMessage): Promise<PipelineResult> {
+  private async run(received: InboundMessage): Promise<PipelineResult> {
+    // L9: a tapped suggested reply is the shopper's message — its text, as if typed.
+    const inbound = asTypedQuickReply(received);
     const context: PipelineContext = {
       inbound,
       customerId: null,

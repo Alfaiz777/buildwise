@@ -110,12 +110,14 @@ describe('message templates (Change 16)', () => {
     expectWhatsAppSafe(outbound(s));
   });
 
-  it('plain answers (product information, clarify, refusal) carry no footer', async () => {
+  it('plain answers (clarify, refusal) carry no footer; a product answer with suggested replies is interactive, so it does', async () => {
     const s = await buildScenarioWorld();
     await s.startFromStore('c1', 'Is this good for oily skin?');
     const educate = last(s);
     expect(educate.text).toMatch(/^\*Vitamin C Glow Serum\* — from our product information:\n• /);
-    expect(educate.parts ?? null).toBeNull();
+    // L9: 2–3 suggested replies make it a reply-button message — the footer rule applies as to any.
+    expect(educate.options?.every((o) => o.optionId.startsWith('qr:'))).toBe(true);
+    expect(educate.parts).toEqual({ footer: POWERED_BY_FOOTER });
     await s.say('c1', 'Show me another customer’s order');
     expect(last(s).parts ?? null).toBeNull();
   });

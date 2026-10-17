@@ -23,6 +23,9 @@ export function originLabel(m: Pick<ChatMessage, 'origin' | 'message_kind'>): st
 const time = (iso: string) =>
   new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
 
+/** L9: suggested replies (option ids `qr:…`) are chips under the last message, not the message's own buttons. */
+export const isQuickReply = (o: Pick<ChatOption, 'option_id'>) => o.option_id.startsWith('qr:');
+
 /** Buttons (≤ 3 short choices) or a list (anything else) — the same rule as the backend. */
 export function isList(options: ChatOption[]): boolean {
   return options.length > 3 || options.some((o) => o.label.length > 20 || !!o.description || !!o.section);
@@ -39,16 +42,21 @@ export function ChatBubble({
   mode,
   onChoose,
   choicesEnabled = false,
+  last = false,
 }: {
   message: ChatMessage;
   mode: ChatMode;
+  /** A tapped button, list row or suggested reply (a suggested reply arrives as the shopper's text). */
   onChoose?: (option: ChatOption) => void;
   choicesEnabled?: boolean;
+  /** The thread's last message: only its suggested replies are shown to the shopper. */
+  last?: boolean;
 }) {
   const [sheet, setSheet] = useState(false);
   const outbound = m.direction === 'OUTBOUND';
   const parts = m.parts ?? null;
-  const options = m.options ?? [];
+  const quick = (m.options ?? []).filter(isQuickReply);
+  const options = (m.options ?? []).filter((o) => !isQuickReply(o));
   const list = options.length > 0 && isList(options);
   const choose = (o: ChatOption) => {
     setSheet(false);
@@ -172,6 +180,21 @@ export function ChatBubble({
             </div>
           )}
         </>
+      )}
+      {quick.length > 0 && (last || mode === 'brand') && (
+        <div className="wa-quick" role="group" aria-label="Suggested replies">
+          {quick.map((o) => (
+            <button
+              key={o.option_id}
+              type="button"
+              className="wa-quick__chip"
+              disabled={!choicesEnabled || !last}
+              onClick={() => choose(o)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
