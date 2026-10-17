@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Link, useLocation } from 'react-router-dom';
 import { useApi } from '../../api/apiContext';
 import { errorMessage } from '../../components/ConsoleShell';
-import { Badge, Button, Drawer } from '../../components/ui';
+import { AiMark, Badge, Button, Drawer } from '../../components/ui';
 import './askQwikspot.css';
 
 /**
@@ -282,7 +282,7 @@ function AskQwikspotDrawer({
 
   const busy = status === 'reading' || status === 'writing';
   return (
-    <Drawer open={open} title="Ask Qwikspot" onClose={onClose}>
+    <Drawer open={open} title="Ask Qwikspot" icon={<AiMark size={24} />} onClose={onClose}>
       <p className="muted small">
         Answers come only from {config.dataOf} Qwikspot data. Qwikspot can explain and suggest; it never changes
         anything.

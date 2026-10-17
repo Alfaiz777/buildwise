@@ -1,10 +1,10 @@
-import { MessageCircleQuestion, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../../api/apiContext';
 import type { ApiClient } from '../../api/client';
 import { errorMessage } from '../../components/ConsoleShell';
-import { Button, Card, Skeleton } from '../../components/ui';
+import { AiButton, Button, Card, Skeleton } from '../../components/ui';
 import { AiLabel, DataUsed, isAnswer, useAskQwikspot, type AskScopeValue, type AssistantAnswer } from './askQwikspot';
 
 /**
@@ -52,14 +52,9 @@ export function AiBriefCard({ url, title, days, includeHistory }: AskScopeValue 
                 {brief.next_action.label} →
               </Link>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<MessageCircleQuestion size={16} aria-hidden="true" />}
-              onClick={() => ask()}
-            >
+            <AiButton size="sm" quiet onClick={() => ask()}>
               Ask a follow-up
-            </Button>
+            </AiButton>
             <Button
               variant="ghost"
               size="sm"
@@ -182,8 +177,8 @@ export function ConversationSummary({
 export function AskAboutThis({ question, label }: { question: string; label: string }) {
   const { ask } = useAskQwikspot();
   return (
-    <button type="button" className="secondary small ask-about" aria-label={label} onClick={() => ask(question)}>
+    <AiButton size="sm" quiet className="ask-about" aria-label={label} onClick={() => ask(question)}>
       Ask about this
-    </button>
+    </AiButton>
   );
 }

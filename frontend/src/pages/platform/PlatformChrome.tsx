@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Badge, Segmented, Tip } from '../../components/ui';
+import { AiButton, Badge, Segmented, Tip } from '../../components/ui';
+import { useAskQwikspot } from '../brand/askQwikspot';
 import './platform.css';
 
 /**
@@ -62,6 +63,16 @@ export function PeriodControls(props: {
       )}
     </div>
   );
+}
+
+/**
+ * A page's AI action ("Ask about this network", "What changed today?"): opens Ask Qwikspot, with
+ * the question asked when there is one. A component of its own so it renders inside the console
+ * shell, where the drawer lives — a hook called by the page itself would sit outside it.
+ */
+export function AskAction({ label, question }: { label: string; question?: string }) {
+  const { ask } = useAskQwikspot();
+  return <AiButton onClick={() => ask(question)}>{label}</AiButton>;
 }
 
 /** "2h ago", "6 days ago" (the full date goes in a tooltip). */

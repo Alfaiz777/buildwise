@@ -105,11 +105,14 @@ export function ConfirmDialog({
 export function Drawer({
   open,
   title,
+  icon,
   children,
   onClose,
 }: {
   open: boolean;
   title: string;
+  /** UI-P1: a mark before the title (e.g. the Ask Qwikspot logo). */
+  icon?: ReactNode;
   children: ReactNode;
   onClose: () => void;
 }) {
@@ -128,7 +131,10 @@ export function Drawer({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="ui-drawer__header">
-          <h2 id={`${id}-title`}>{title}</h2>
+          <h2 id={`${id}-title`} className="ui-drawer__title">
+            {icon}
+            {title}
+          </h2>
           <button type="button" className="ui-icon-button" aria-label="Close" onClick={onClose}>
             <X size={18} aria-hidden="true" />
           </button>

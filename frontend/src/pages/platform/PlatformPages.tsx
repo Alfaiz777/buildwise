@@ -12,8 +12,8 @@ import {
   RefreshCw,
   ScrollText,
   ShoppingBag,
-  Sparkles,
   UserPlus,
+  X,
   Activity,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -30,12 +30,13 @@ import {
   Tabs,
   Timeline,
   Tip,
+  useToast,
   type TimelineItem,
 } from '../../components/ui';
 import { label } from '../../lib/labels';
 import { formatDateTime } from '../brand/types';
-import { AskScope, useAskQwikspot } from '../brand/askQwikspot';
-import { ago, PageHeader, PeriodControls, plural } from './PlatformChrome';
+import { AskScope } from '../brand/askQwikspot';
+import { ago, AskAction, PageHeader, PeriodControls, plural } from './PlatformChrome';
 import {
   ACTION_TEXT,
   FLAG_TEXT,
@@ -182,30 +183,61 @@ function StoreTable({ stores }: { stores: StoreRow[] }) {
 
 /** "What do the flags mean?" — a small popover; Escape closes it. */
 function FlagsHelp() {
-  const ref = useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  // Closes with its ✕, on Escape, or on a click anywhere outside it.
+  useEffect(() => {
+    if (!open) return;
+    const close = (focusBack: boolean) => {
+      setOpen(false);
+      if (focusBack) trigger.current?.focus();
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close(true);
+    const onDown = (e: MouseEvent) => !root.current?.contains(e.target as Node) && close(false);
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [open]);
   return (
-    <details
-      ref={ref}
-      className="pf-popover"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape' && ref.current?.open) {
-          ref.current.open = false;
-          ref.current.querySelector('summary')?.focus();
-        }
-      }}
-    >
-      <summary>
+    <div className="pf-popover" ref={root}>
+      <button
+        ref={trigger}
+        type="button"
+        className="pf-popover__trigger"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
         <HelpCircle size={14} aria-hidden="true" /> What do the flags mean?
-      </summary>
-      <dl className="pf-popover__body">
-        {FLAGS.map((f) => (
-          <div key={f}>
-            <dt>{FLAG_TEXT[f].label}</dt>
-            <dd>{FLAG_TEXT[f].explain}</dd>
+      </button>
+      {open && (
+        <div className="pf-popover__panel" role="dialog" aria-label="What the flags mean">
+          <div className="pf-popover__head">
+            <strong>What the flags mean</strong>
+            <button
+              type="button"
+              className="ui-icon-button"
+              aria-label="Close"
+              onClick={() => setOpen(false)}
+              autoFocus
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
           </div>
-        ))}
-      </dl>
-    </details>
+          <dl className="pf-popover__list">
+            {FLAGS.map((f) => (
+              <div key={f}>
+                <dt>{FLAG_TEXT[f].label}</dt>
+                <dd>{FLAG_TEXT[f].explain}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -216,7 +248,6 @@ function FlagsHelp() {
  */
 export function PlatformNetwork() {
   const api = useApi();
-  const { ask } = useAskQwikspot();
   const [params, setParams] = useSearchParams();
   const [days, setDays] = useState<7 | 28>(7);
   const [includeHistory, setIncludeHistory] = useState(true);
@@ -262,11 +293,7 @@ export function PlatformNetwork() {
       <PageHeader
         title="Retail network"
         purpose="Each brand's retailers and stores — counts, rates and health only, never customers or stock lines."
-        action={
-          <Button icon={<Sparkles size={16} aria-hidden="true" />} onClick={() => ask()}>
-            Ask about this network
-          </Button>
-        }
+        action={<AskAction label="Ask about this network" question="Which stores need attention, and why?" />}
       />
       <PeriodControls days={days} onDays={setDays} includeHistory={includeHistory} onHistory={setIncludeHistory}>
         {brandList.length > 0 && brandList.length <= 4 ? (
@@ -348,7 +375,6 @@ const AUDIT_EXPLAINED =
 /** Platform Console → Audit: a timeline of platform actions — what, to which brand, by which role, why, the result. */
 export function PlatformAudit() {
   const api = useApi();
-  const { ask } = useAskQwikspot();
   const audit = useLoad(useCallback(() => api.get<{ events: AuditEvent[] }>('/api/platform/audit?limit=200'), [api]));
   const [brand, setBrand] = useState('');
   const [result, setResult] = useState('');
@@ -398,14 +424,7 @@ export function PlatformAudit() {
       <PageHeader
         title="Audit"
         purpose="Every platform action: what was done, to which brand, by which role, why, and the result."
-        action={
-          <Button
-            icon={<Sparkles size={16} aria-hidden="true" />}
-            onClick={() => ask('What changed in the audit log today?')}
-          >
-            What changed today?
-          </Button>
-        }
+        action={<AskAction label="What changed today?" question="What changed in the audit log today?" />}
       />
       <div className="pf-filters">
         <select value={brand} onChange={(e) => setBrand(e.target.value)} aria-label="Filter by brand">
@@ -477,16 +496,29 @@ function StatusTile({
 
 /** Platform Console → System: how Qwikspot runs right now, from GET /api/health. */
 export function PlatformSystem() {
+  const toast = useToast();
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const load = useCallback(() => {
-    setError(null);
-    fetch('/api/health')
-      .then((r) => (r.ok ? (r.json() as Promise<Health>) : Promise.reject(new Error(String(r.status)))))
-      .then(setHealth)
-      .catch(() => setError('The backend health check did not answer.'));
-  }, []);
-  useEffect(load, [load]);
+  const [checking, setChecking] = useState(false);
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
+  // `announce`: a Refresh press says it checked again (the first load does not).
+  const load = useCallback(
+    (announce = false) => {
+      setError(null);
+      setChecking(true);
+      fetch('/api/health')
+        .then((r) => (r.ok ? (r.json() as Promise<Health>) : Promise.reject(new Error(String(r.status)))))
+        .then((h) => {
+          setHealth(h);
+          setCheckedAt(new Date());
+          if (announce) toast.show('Health check refreshed.');
+        })
+        .catch(() => setError('The backend health check did not answer.'))
+        .finally(() => setChecking(false));
+    },
+    [toast],
+  );
+  useEffect(() => load(), [load]);
   const a = health?.adapters;
   const whatsapp = a?.channels.includes('WHATSAPP');
   const gemini = a?.agent_runtime === 'GEMINI';
@@ -498,15 +530,25 @@ export function PlatformSystem() {
         title="System"
         purpose="How Qwikspot runs right now, read from the backend's health check. No secrets are shown."
         action={
-          <Button variant="secondary" icon={<RefreshCw size={16} aria-hidden="true" />} onClick={load}>
+          <Button
+            variant="secondary"
+            icon={<RefreshCw size={16} aria-hidden="true" />}
+            loading={checking}
+            onClick={() => load(true)}
+          >
             Refresh
           </Button>
         }
       />
-      {error && <ErrorState message={error} onRetry={load} />}
+      {checkedAt && (
+        <p className="muted small pf-checked" role="status">
+          {checking ? 'Checking…' : `Checked at ${checkedAt.toLocaleTimeString('en-GB')}`}
+        </p>
+      )}
+      {error && <ErrorState message={error} onRetry={() => load(true)} />}
       {!health && !error && <Skeleton lines={4} />}
       {health && (
-        <section className="pf-status-grid" aria-label="How Qwikspot runs">
+        <section className={`pf-status-grid${checking ? ' is-checking' : ''}`} aria-label="How Qwikspot runs">
           <StatusTile
             icon={<Activity size={18} />}
             name="Status"

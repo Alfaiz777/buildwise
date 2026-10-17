@@ -1,4 +1,4 @@
-import { ExternalLink, HelpCircle, LogOut, Menu as MenuIcon, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { ExternalLink, HelpCircle, LogOut, Menu as MenuIcon, ShieldCheck, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useMe } from '../../account/meContext';
@@ -9,7 +9,7 @@ import { label } from '../../lib/labels';
 import { Wordmark } from './Wordmark';
 import { CONSOLE_NAME, NAV } from './nav';
 import { RoleBanner, useRoleBanner } from './RoleBanner';
-import { Tip } from '../ui';
+import { AiButton, Tip } from '../ui';
 import { storeLabel } from '../../lib/storeLabel';
 import { AskQwikspotProvider, BRAND_ASK } from '../../pages/brand/askQwikspot';
 import { storeAsk } from '../../pages/retailer/storeAsk';
@@ -140,15 +140,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <div className="shell-top__user">
           {openAsk && (
-            <button
-              type="button"
-              className={`ui-button ui-button--${platform ? 'primary' : 'secondary'} ui-button--sm shell-ask`}
+            <AiButton
+              size="sm"
+              className="shell-ask"
               onClick={openAsk}
               aria-label={`Ask Qwikspot about ${ASK_DATA_OF[me.scope]} data`}
             >
-              <Sparkles size={16} aria-hidden="true" />
               Ask Qwikspot
-            </button>
+            </AiButton>
           )}
           {platform && !banner.open && (
             <button
