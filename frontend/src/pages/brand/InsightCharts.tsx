@@ -66,7 +66,7 @@ export function FunnelChart({ steps }: { steps: FunnelStep[] }) {
   );
 }
 
-function FunnelTable({ steps }: { steps: FunnelStep[] }) {
+export function FunnelTable({ steps }: { steps: FunnelStep[] }) {
   return (
     <table aria-label="Journey funnel">
       <thead>

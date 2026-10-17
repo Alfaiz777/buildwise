@@ -1,0 +1,218 @@
+/* Brand Console → Insights (UI-P3): the in-page nav, ranked bars, action cards, fill-rate rings. */
+
+.in-nav {
+  position: sticky;
+  top: calc(var(--shell-top-height, 56px) + var(--space-2));
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  justify-self: start;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: var(--shadow-sm);
+}
+.in-nav a {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+.in-nav a:hover {
+  background: var(--color-surface-2);
+}
+[id='funnel'],
+[id='demand'],
+[id='actions'],
+[id='stores'] {
+  scroll-margin-top: 120px;
+}
+.in-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.in-outcomes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.in-outcomes li {
+  padding: 2px var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+}
+.in-toggle {
+  justify-self: start;
+}
+.in-positive {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--success);
+  font-weight: 600;
+}
+
+/* A horizontal bar */
+.in-bar {
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-sunken);
+}
+.in-bar__fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  animation: in-grow var(--duration-base) var(--ease-out);
+  transform-origin: left;
+}
+@keyframes in-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .in-bar__fill {
+    animation: none;
+  }
+}
+.in-bar__fill--missed {
+  background: var(--chart-missed);
+}
+.in-bar__fill--success {
+  background: var(--success);
+}
+.in-bar__fill--warning {
+  background: var(--warning);
+}
+.in-bar__fill--danger {
+  background: var(--danger);
+}
+.in-bar__fill--neutral {
+  background: var(--color-border-strong);
+}
+
+/* Ranked unmet demand */
+.in-rank,
+.in-fill,
+.in-bars,
+.in-actions {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+.in-rank li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+}
+.in-rank li.is-top {
+  background: color-mix(in srgb, var(--chart-missed) 10%, var(--color-surface));
+  box-shadow: inset 3px 0 0 var(--chart-missed);
+}
+.in-rank__body,
+.in-fill__body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.in-rank__count,
+.in-fill__pct,
+.in-bars__value {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Conversion by action */
+.in-bars li {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1.2fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.in-bars__value {
+  font-size: var(--text-md);
+}
+
+/* Suggested next actions */
+.in-action {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+.in-action__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+.in-action__body p {
+  margin: 0 0 var(--space-2);
+}
+.in-action .suggestion-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Fill rate by store */
+.in-fill li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+.in-fill--success .in-fill__pct {
+  color: var(--success);
+}
+.in-fill--warning .in-fill__pct {
+  color: var(--warning);
+}
+.in-fill--danger .in-fill__pct {
+  color: var(--danger);
+}
+
+@media (max-width: 768px) {
+  .in-nav {
+    position: static;
+  }
+  .in-bars li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .in-bars li .in-bar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}

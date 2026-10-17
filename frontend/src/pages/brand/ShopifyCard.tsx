@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useApi } from '../../api/apiContext';
 import { errorMessage, useLoad } from '../../components/ConsoleShell';
 import { Badge, Button, Card, ConfirmDialog, useToast } from '../../components/ui';
+import { StatusDot } from './StatusDot';
 import { formatDateTime, type Connection } from './types';
 
 /** The callback's `reason` codes in plain words (L2-Shopify; docs/06 §9). */
@@ -102,6 +103,20 @@ export function ShopifyCard({
   return (
     <Card
       title="Shopify"
+      actions={
+        <StatusDot
+          state={
+            provider === 'MOCK'
+              ? 'simulator'
+              : live && connected
+                ? c?.status === 'ERROR'
+                  ? 'attention'
+                  : 'connected'
+                : 'off'
+          }
+          text={provider === 'MOCK' ? 'Mock catalogue' : undefined}
+        />
+      }
       description={
         provider === 'MOCK'
           ? 'This server uses the local mock catalogue (COMMERCE_PROVIDER=mock).'

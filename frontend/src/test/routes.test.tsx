@@ -362,9 +362,12 @@ describe('scope routing — each of the three roles lands in its own console are
   });
 
   it('BRAND_ADMIN → Brand Console Network shows Retailer → Stores → Retail Admin, with no brand-admin or store-ID UI', async () => {
-    renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin));
+    renderAt('/brand/network#retailers', signedIn, apiFor(ME.brandAdmin));
     expect(await screen.findByText('Brand Console')).toBeInTheDocument();
+    // UI-P3: retailers are a tab; "+ Add retailer" opens the form in a drawer.
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add retailer' }));
     expect(screen.getByRole('button', { name: 'Create retailer' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(await screen.findByText('Wellness Mart')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Ahmedabad Retail Partners' })).toBeInTheDocument();
     expect(screen.getByText('HealthPlus Chemist')).toBeInTheDocument();
@@ -479,7 +482,10 @@ describe('Brand Console — M3 catalog & store truth', () => {
 
   it('Network on an empty brand: no products, no imports, and a sample CSV to start from', async () => {
     renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin, EMPTY));
+    // UI-P3: Network is four tabs.
+    fireEvent.click(await screen.findByRole('tab', { name: 'Catalogue' }));
     expect(await screen.findByText('No products yet. Sync the catalog from your commerce store.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Stock import' }));
     expect(await screen.findByText('No imports yet.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Download sample CSV' })).toHaveAttribute(
       'href',
@@ -513,9 +519,10 @@ describe('Brand Console — M3 catalog & store truth', () => {
   });
 
   it('catalog & mapping: variants with SKU, price and mapping status; unmapped retail SKUs stay visible', async () => {
-    renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin));
-    const row = (await screen.findByText('Vitamin C Glow Serum')).closest('tr')!;
-    expect(within(row).getByText('DBC-VCSERUM-30')).toBeInTheDocument();
+    renderAt('/brand/network#catalog', signedIn, apiFor(ME.brandAdmin));
+    // UI-P3: products as cards (a link to #catalog opens the Catalogue tab).
+    const product = await screen.findByRole('article', { name: 'Vitamin C Glow Serum' });
+    const row = within(product).getByText('DBC-VCSERUM-30').closest('tr')!;
     expect(within(row).getByText('₹795')).toBeInTheDocument();
     expect(within(row).getByText('Matched')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Retail SKUs needing attention' })).toBeInTheDocument();
@@ -527,8 +534,14 @@ describe('Brand Console — M3 catalog & store truth', () => {
 
   it('retail import: create → upload the file → process → report with row errors', async () => {
     const api = apiFor(ME.brandAdmin);
-    renderAt('/brand/network', signedIn, api);
+    renderAt('/brand/network#retail-import', signedIn, api);
     const input = await screen.findByLabelText('Retail CSV file');
+    const steps = screen.getByRole('list', { name: 'Import steps' });
+    expect(
+      within(steps)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['1Upload', '2Check', '3Import']);
     const file = new File(['store_id\n'], 'demo-retail.csv', { type: 'text/csv' });
     fireEvent.change(input, { target: { files: [file] } });
     fireEvent.submit(input.closest('form')!);
@@ -542,15 +555,42 @@ describe('Brand Console — M3 catalog & store truth', () => {
     );
     expect(api.post).toHaveBeenCalledWith('/api/brand/retail-imports/imp_0123456789abcdef/process', {});
     expect(within(report).getByText(/33 of 36 rows imported · 3 rows rejected/)).toBeInTheDocument();
+    expect(
+      within(steps)
+        .getAllByRole('listitem')
+        .every((li) => li.classList.contains('is-done')),
+    ).toBe(true);
     expect(within(report).getByText('INVALID_QUANTITY')).toBeInTheDocument();
     expect(within(report).getByText('UNKNOWN_SKU')).toBeInTheDocument();
   });
 
   it('import history opens a past report; stores show SKU count and last stock update', async () => {
-    renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin));
+    renderAt('/brand/network#retail-import', signedIn, apiFor(ME.brandAdmin));
     fireEvent.click(await screen.findByRole('button', { name: 'View report' }));
     expect(await screen.findByLabelText('Import report')).toBeInTheDocument();
-    const wellness = screen.getByText('Wellness Mart').closest('tr')!;
+    fireEvent.click(screen.getByRole('tab', { name: /Stores/ }));
+    const wellness = (await screen.findByText('Wellness Mart')).closest('tr')!;
     expect(within(wellness).getByText('10')).toBeInTheDocument();
+  });
+});
+
+describe('UI-P3 — Network tabs and store health', () => {
+  it('four tabs; health chips filter the stores; needs-attention stores come first', async () => {
+    renderAt('/brand/network', signedIn, apiFor(ME.brandAdmin));
+    const tabs = await screen.findByRole('tablist', { name: 'Network' });
+    expect(
+      within(tabs)
+        .getAllByRole('tab')
+        .map((t) => t.textContent?.replace(/\d+$/, '')),
+    ).toEqual(['Stores', 'Catalogue', 'Stock import', 'Retailers']);
+    const chips = await screen.findByRole('group', { name: 'Filter stores by health' });
+    // HealthPlus Chemist has no Store Admin: flagged, and sorted first.
+    const rows = () => screen.getAllByRole('row').slice(1);
+    await waitFor(() => expect(rows()[0]).toHaveTextContent('HealthPlus Chemist'));
+    expect(within(rows()[0]!).getByText('No Store Admin')).toBeInTheDocument();
+    fireEvent.click(within(chips).getByRole('button', { name: /No Store Admin/ }));
+    expect(rows().map((r) => r.textContent)).toEqual([expect.stringContaining('HealthPlus Chemist')]);
+    fireEvent.click(within(chips).getByRole('button', { name: /No Store Admin/ }));
+    expect(rows().length).toBeGreaterThan(1);
   });
 });
