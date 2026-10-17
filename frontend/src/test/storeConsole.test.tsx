@@ -542,3 +542,69 @@ describe('UI-P2 — Demand', () => {
     expect(screen.getByText('You had stock 5 of 5 times')).toBeInTheDocument();
   });
 });
+
+describe('UI-P2 fixes — less scrolling, the AI brief', () => {
+  it('history shows 15 holds, then "Show more"', async () => {
+    const rows = Array.from({ length: 20 }, (_, i) =>
+      hold({ reservation_id: `h${i}`, status: 'COMPLETED', allowed_actions: [], created_at: inMin(-10 - i) }),
+    );
+    renderAt(
+      '/store/history',
+      storeApi((p) => (p.startsWith('/api/reservations') ? { reservations: rows } : undefined)),
+    );
+    expect(await screen.findByText('Showing 15 of 20')).toBeInTheDocument();
+    expect(screen.getAllByText('Picked up', { selector: '.ui-pill' })).toHaveLength(15);
+    fireEvent.click(screen.getByRole('button', { name: 'Show 5 more' }));
+    expect(screen.getAllByText('Picked up', { selector: '.ui-pill' })).toHaveLength(20);
+    expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument();
+  });
+
+  it('missed demand is one row per product, with its weekdays', async () => {
+    const miss = (weekday: string) => ({
+      sku: 'DBC-VCSERUM-50',
+      label: 'Vitamin C Glow Serum 50 ml',
+      weekday,
+      reason: 'OUT_OF_STOCK',
+      count: 1,
+    });
+    renderAt(
+      '/store/demand',
+      storeApi((p) =>
+        p.startsWith('/api/retail/stores/st_north_2/insights')
+          ? { ...INSIGHTS, missed: [miss('tuesday'), miss('monday'), miss('sunday')], suggestions: [] }
+          : undefined,
+      ),
+    );
+    const list = await screen.findByRole('list', { name: 'Missed demand' });
+    const items = within(list).getAllByRole('listitem');
+    expect(items).toHaveLength(1);
+    expect(items[0]).toHaveTextContent('Mon, Tue, Sun · out of stock');
+    expect(items[0]).toHaveTextContent('3 times');
+    // The empty suggestions say what makes the brand suggest something.
+    expect(screen.getByText(/the same product missed often on one weekday/)).toBeInTheDocument();
+  });
+
+  it('a Quick summary brief asks for the AI brief once more and swaps it in', async () => {
+    const brief = (source: 'AI' | 'QUICK_SUMMARY', answer: string) => ({
+      answer,
+      handoff_brief: null,
+      next_action: null,
+      used: [],
+      source,
+      generated_at: new Date().toISOString(),
+      latency_ms: 10,
+    });
+    const api = storeApi((p) => {
+      if (p.startsWith('/api/retail/stores/st_north_2/assistant/brief'))
+        return p.includes('refresh=true') ? brief('AI', 'The AI brief.') : brief('QUICK_SUMMARY', 'The rules brief.');
+      if (p.startsWith('/api/reservations')) return { reservations: [] };
+      if (p.endsWith('/summary')) return SUMMARY;
+      return undefined;
+    });
+    renderAt('/store', api);
+    expect(await screen.findByText('The AI brief.')).toBeInTheDocument();
+    expect(screen.getByText('AI summary')).toBeInTheDocument();
+    const briefCalls = (api.get as ReturnType<typeof vi.fn>).mock.calls.filter((c) => String(c[0]).includes('/brief'));
+    expect(briefCalls).toHaveLength(2); // the first load and one retry — never a loop
+  });
+});

@@ -116,7 +116,24 @@ export function StoreDemand() {
   const pct = nearest === 0 ? null : Math.round((had / nearest) * 100);
   const missedShoppers = d?.missed.reduce((n, m) => n + m.count, 0) ?? 0;
   const busiest = [...chartDays].sort((a, b) => b.lookups - a.lookups)[0];
-  const missed = [...(d?.missed ?? [])].sort((a, b) => b.count - a.count);
+  // One row per product (UI-P2 fix): its misses added up, with the weekdays and reasons.
+  const bySku = new Map<string, { sku: string; label: string; count: number; weekdays: string[]; reasons: string[] }>();
+  for (const m of d?.missed ?? []) {
+    const g = bySku.get(m.sku) ?? { sku: m.sku, label: m.label, count: 0, weekdays: [], reasons: [] };
+    g.count += m.count;
+    if (!g.weekdays.includes(m.weekday)) g.weekdays.push(m.weekday);
+    if (!g.reasons.includes(m.reason)) g.reasons.push(m.reason);
+    bySku.set(m.sku, g);
+  }
+  const missed = [...bySku.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  const reasonText = (r: string) => REASON[r] ?? r.toLowerCase().replace(/_/g, ' ');
+  const daysText = (days: string[]) =>
+    days.length === 1
+      ? cap(days[0]!)
+      : [...days]
+          .sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b))
+          .map((x) => cap(x).slice(0, 3))
+          .join(', ');
   const maxMissed = Math.max(1, ...missed.map((m) => m.count));
 
   return (
@@ -207,12 +224,12 @@ export function StoreDemand() {
               ) : (
                 <ol className="st-missed" aria-label="Missed demand">
                   {missed.map((m) => (
-                    <li key={`${m.sku}-${m.weekday}-${m.reason}`}>
+                    <li key={m.sku}>
                       <ProductThumb src={null} name={m.label} size={36} />
                       <div className="st-missed__body">
                         <strong>{m.label}</strong>
                         <span className="muted small">
-                          {cap(m.weekday)} · {REASON[m.reason] ?? m.reason.toLowerCase().replace(/_/g, ' ')}
+                          {daysText(m.weekdays)} · {m.reasons.map(reasonText).join(', ')}
                         </span>
                         <span className="st-bars__track" aria-hidden="true">
                           <span
@@ -259,6 +276,10 @@ export function StoreDemand() {
               <EmptyState icon={<Lightbulb size={22} />}>
                 No suggestions from {me.brand_name} this period. They appear here when the brand sees something for your
                 store.
+                <span className="st-suggest-rule small">
+                  For example: the same product missed often on one weekday, or holds refused as "not actually in stock"
+                  more than once.
+                </span>
               </EmptyState>
             ) : (
               <ul className="st-suggestions">

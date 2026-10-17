@@ -395,7 +395,9 @@ export function RetailerQueue({
       {view === 'history' && list.data && rows.length === 0 && (
         <p className="muted">No completed or cancelled reservations here yet.</p>
       )}
-      {view === 'history' && rows.length > 0 && <HistoryList rows={rows} brandName={brandName} now={now} />}
+      {view === 'history' && rows.length > 0 && (
+        <HistoryList key={filter} rows={rows} brandName={brandName} now={now} />
+      )}
 
       <ConfirmDialog
         open={refusing !== null}
@@ -549,9 +551,15 @@ function HoldCard(props: {
 }
 
 /** History grouped by day (store time): one row per hold, "why" folded into the row. */
+/** How many history rows show at first, and how many more each "Show more" adds. */
+const HISTORY_PAGE = 15;
+
 function HistoryList({ rows, brandName, now }: { rows: QueueReservation[]; brandName: string; now: number }) {
+  const [limit, setLimit] = useState(HISTORY_PAGE);
+  const sorted = [...rows].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  const hidden = Math.max(0, sorted.length - limit);
   const groups: { day: string; rows: QueueReservation[] }[] = [];
-  for (const r of [...rows].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))) {
+  for (const r of sorted.slice(0, limit)) {
     const day = dayLabel(r.created_at, r.store_timezone, now);
     const g = groups.at(-1);
     if (g && g.day === day) g.rows.push(r);
@@ -570,7 +578,7 @@ function HistoryList({ rows, brandName, now }: { rows: QueueReservation[]; brand
                 <li key={r.reservation_id}>
                   <details className="st-row">
                     <summary aria-label={`${itemLabel(r)} — ${pill.text}`}>
-                      <ProductThumb src={r.image_url ?? null} name={r.product_title ?? r.sku} size={36} />
+                      <ProductThumb src={r.image_url ?? null} name={r.product_title ?? r.sku} size={28} />
                       <span className="st-row__item">
                         <strong>{itemLabel(r)}</strong>
                         <span className="muted small">{r.customer_display}</span>
@@ -604,6 +612,16 @@ function HistoryList({ rows, brandName, now }: { rows: QueueReservation[]; brand
           </ul>
         </section>
       ))}
+      {hidden > 0 && (
+        <div className="st-history__more">
+          <Button variant="secondary" onClick={() => setLimit((n) => n + HISTORY_PAGE)}>
+            Show {Math.min(hidden, HISTORY_PAGE)} more
+          </Button>
+          <span className="small muted">
+            Showing {limit} of {sorted.length}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
