@@ -733,3 +733,43 @@ describe('UI-P1 follow-ups: AI actions, the flags popover, Refresh, the logo', (
     expect(await screen.findByText(/^Checked at /)).toBeInTheDocument();
   });
 });
+
+describe('UI-P1: Ask Qwikspot is a conversation', () => {
+  it('each question and answer stays in a scrolling list; the box is pinned below and clears; New chat starts over', async () => {
+    let n = 0;
+    const post = vi.fn(async () => brief({ answer: `Answer ${++n}.`, source: 'AI' }));
+    renderAt('/platform/brands', platformApi({}, post as unknown as ApiClient['post']));
+    fireEvent.click(await screen.findByRole('button', { name: "Ask Qwikspot about the platform's data" }));
+    let drawer = await screen.findByRole('dialog', { name: 'Ask Qwikspot' });
+    const box = within(drawer).getByLabelText('Your question');
+    fireEvent.change(box, { target: { value: 'Which brand grew the most?' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(await within(drawer).findByText('Answer 1.')).toBeInTheDocument();
+    expect(box).toHaveValue('');
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Which brands need attention?' }));
+    expect(await within(drawer).findByText('Answer 2.')).toBeInTheDocument();
+    const turns = within(within(drawer).getByRole('list', { name: 'Conversation' })).getAllByRole('listitem');
+    expect(turns.map((t) => t.querySelector('.ask-question')?.textContent)).toEqual([
+      'Which brand grew the most?',
+      'Which brands need attention?',
+    ]);
+    expect(within(turns[0]!).getByText('Answer 1.')).toBeInTheDocument();
+    // The composer sits outside the scrolling log.
+    expect(drawer.querySelector('.ask-chat__log')?.contains(box)).toBe(false);
+    // Closing and opening again keeps the conversation.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: "Ask Qwikspot about the platform's data" }));
+    drawer = await screen.findByRole('dialog', { name: 'Ask Qwikspot' });
+    expect(within(drawer).getByText('Answer 2.')).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: 'New chat' }));
+    expect(within(drawer).queryByRole('list', { name: 'Conversation' })).not.toBeInTheDocument();
+  });
+
+  it('the main page actions share the Ask Qwikspot look', async () => {
+    renderAt('/platform/brands');
+    expect(await screen.findByRole('button', { name: 'New brand' })).toHaveClass('ui-button--brand');
+    cleanup();
+    renderAt('/platform');
+    expect(await screen.findByRole('link', { name: 'Manage brands' })).toHaveClass('ui-button--brand');
+  });
+});

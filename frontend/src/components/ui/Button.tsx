@@ -1,7 +1,8 @@
 import { Loader2 } from 'lucide-react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent';
+/** `brand`: the Ask Qwikspot teal gradient, for a page's main actions (UI-P1). */
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent' | 'brand';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;

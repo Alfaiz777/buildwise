@@ -106,11 +106,14 @@ export function Drawer({
   open,
   title,
   icon,
+  flush = false,
   children,
   onClose,
 }: {
   open: boolean;
   title: string;
+  /** UI-P1: the body fills the drawer without padding or its own scroll (a chat lays itself out). */
+  flush?: boolean;
   /** UI-P1: a mark before the title (e.g. the Ask Qwikspot logo). */
   icon?: ReactNode;
   children: ReactNode;
@@ -139,7 +142,7 @@ export function Drawer({
             <X size={18} aria-hidden="true" />
           </button>
         </header>
-        <div className="ui-drawer__body">{children}</div>
+        <div className={`ui-drawer__body${flush ? ' ui-drawer__body--flush' : ''}`}>{children}</div>
       </div>
     </div>
   );

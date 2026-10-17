@@ -131,3 +131,78 @@
   margin: var(--space-1) 0 0;
   padding: var(--space-1) var(--space-2);
 }
+
+/* UI-P1: the drawer as a conversation — a scrolling log, the question box pinned below. */
+.ask-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.ask-chat__log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-5);
+  scroll-behavior: smooth;
+}
+.ask-chat__intro .ask-suggestions {
+  margin-bottom: var(--space-2);
+}
+.ask-turns {
+  display: grid;
+  gap: var(--space-5);
+  margin: var(--space-4) 0 0;
+  padding: var(--space-4) 0 0;
+  border-top: 1px solid var(--color-border);
+  list-style: none;
+}
+.ask-turn {
+  display: grid;
+  gap: var(--space-2);
+}
+/* The question, as the person's own message on the right. */
+.ask-turn .ask-question {
+  justify-self: end;
+  max-width: 85%;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
+  background: var(--color-primary-soft);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+}
+.ask-pending {
+  margin: 0;
+  animation: ui-fade var(--duration-base) var(--ease-out);
+}
+.ask-chat__composer {
+  flex: none;
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: 0 -6px 16px rgb(16 24 40 / 0.06);
+}
+.ask-chat__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.ask-new {
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-primary);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+.ask-new:hover:not(:disabled) {
+  flex-basis: auto;
+  background: var(--color-primary-soft);
+}
