@@ -14,6 +14,7 @@ import {
   type QuickReplyState,
 } from '../src/domain/quickReplies.js';
 import { WHATSAPP_LIMITS, validateMessage } from '../src/domain/whatsappLimits.js';
+import { productNoun } from '../src/application/agent/tools.js';
 import type { InboundMessage } from '../src/ports/messaging.js';
 import { ahmedabadWorld } from './ahmedabadWorld.js';
 
@@ -178,5 +179,61 @@ describe('in the conversation (simulator: what WhatsApp and the web chat get)', 
       'Mineral Sunscreen SPF 50 paas mein kahan milega?',
     );
     expect(lastOutbound(s).text).toMatch(/Mineral Sunscreen SPF 50/);
+  });
+});
+
+describe('L9 fixes from the live WhatsApp test (a catalogue without a "concern" attribute, like AquaSkin)', () => {
+  const liveWorld = async () => {
+    const s = await ahmedabadWorld();
+    for (const p of s.world.products.products) delete (p.attributes as Record<string, unknown>).concern;
+    const last = () => s.world.conversations.messages.filter((m) => m.direction === 'OUTBOUND').at(-1)!;
+    const lastInbound = () => s.world.conversations.messages.filter((m) => m.direction === 'INBOUND').at(-1)!;
+    return { ...s, last, lastInbound, labels: () => (last().options ?? []).map((o) => o.label) };
+  };
+
+  it('alternatives without a concern: same category, else the same kind of product by its noun', () => {
+    expect(productNoun('Mineral Sunscreen SPF 50')).toBe('sunscreen');
+    expect(productNoun('Oil-Free Gel Moisturiser')).toBe('moisturiser');
+    expect(productNoun('Vitamin C Glow Serum')).toBe('serum');
+  });
+
+  it('a skin-type question gets a plain answer from the verified skin types, and the compare choice', async () => {
+    const s = await liveWorld();
+    await s.say('q1', 'I need Vitamin C Glow Serum 30 ml today near Satellite'); // the Shopify product first
+    await s.say('q1', 'Is mineral screen SPF 50 good for oily skin ?');
+    expect(s.last().text).toMatch(/^\*Mineral Sunscreen SPF 50\* — from our product information:/);
+    expect(s.last().text).toMatch(/Yes, it's listed for all skin types, so oily skin too\.$/);
+    expect(s.labels()).toEqual(['Show stores near me', 'Compare with Gel', 'Talk to a person']);
+  });
+
+  it('"Compare with gel" compares the product being discussed with the gel sunscreen — not the two gel products', async () => {
+    const s = await liveWorld();
+    await s.say('q1', 'I need Vitamin C Glow Serum 30 ml today near Satellite');
+    await s.say('q1', 'Is mineral screen SPF 50 good for oily skin ?');
+    await s.say('q1', 'Compare with gel');
+    expect(s.last().text).toMatch(/\*Mineral Sunscreen SPF 50\*/);
+    expect(s.last().text).toMatch(/\*Ultra-Light Gel Sunscreen SPF 50\*/);
+    expect(s.last().text).not.toMatch(/Oil-Free Gel Moisturiser|Vitamin C Glow Serum/);
+    // After a comparison: a store button for each product compared — never the older Shopify product.
+    expect(s.labels()).toEqual(['Stores for Mineral', 'Stores for Gel', 'Talk to a person']);
+  });
+
+  it('"Stores for Gel" searches stores for the gel sunscreen (not Vitamin C Glow Serum)', async () => {
+    const s = await liveWorld();
+    await s.say('q1', 'I need Vitamin C Glow Serum 30 ml today near Satellite');
+    await s.say('q1', 'Is mineral screen SPF 50 good for oily skin ?');
+    await s.say('q1', 'Compare with gel');
+    await s.tap('q1', s.last().options!.find((o) => o.label === 'Stores for Gel')!.optionId);
+    expect(s.lastInbound().text).toBe('Show stores near me for Ultra-Light Gel Sunscreen SPF 50');
+    expect(s.last().text).toMatch(/^\*Ultra-Light Gel Sunscreen SPF 50 50 g\*.*\n.*In stock at \d stores in Satellite/);
+    expect(s.last().text).not.toMatch(/Vitamin C Glow Serum/);
+  });
+
+  it('the compare button sends the full product name, and its answer offers both store buttons', async () => {
+    const s = await liveWorld();
+    await s.say('q1', 'Is mineral screen SPF 50 good for oily skin ?');
+    await s.tap('q1', s.last().options!.find((o) => o.label === 'Compare with Gel')!.optionId);
+    expect(s.lastInbound().text).toBe('Compare with Ultra-Light Gel Sunscreen SPF 50');
+    expect(s.labels()).toEqual(expect.arrayContaining(['Stores for Mineral', 'Stores for Gel']));
   });
 });

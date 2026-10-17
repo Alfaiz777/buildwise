@@ -23,14 +23,14 @@ import type { InboundMessage } from '../../ports/messaging.js';
 import type { GeminiClient, GeminiResponse, GeminiTurn } from './geminiClient.js';
 
 /**
- * The real Qwikspot AI (docs/05_AI_AGENT_SPEC.md §9.2): Gemini on Vertex AI behind the same
+ * The real Qwikspot AI (docs/05_AI_AGENT_SPEC.md Â§9.2): Gemini on Vertex AI behind the same
  * AgentRuntime port as MockAgentRuntime. It reads the context package, looks things up with
  * the READ tools through the backend ToolExecutor, and returns an AgentDecision. It never
  * writes: a write is proposed in next_best_action / required_tools and executed by the
  * pipeline after the guardrail.
  *
  * Built on the Google Gen AI SDK with a small function-calling loop rather than the ADK
- * package (docs/05 §16 says why); the class keeps the name the architecture uses.
+ * package (docs/05 Â§16 says why); the class keeps the name the architecture uses.
  *
  * What the model decides: intent type, action, target ids, the reason and the reply text.
  * What the backend decides here, from what actually happened: the runtime label, tool_calls
@@ -48,26 +48,34 @@ export interface GeminiRuntimeOptions {
   requestTimeoutMs?: number;
   /** A retry starts only if at least this much of the deadline is left. */
   minAttemptMs?: number;
+  /** Tests only: GEMINI_HEDGE_AFTER_MS. */
+  hedgeAfterMs?: number;
   temperature?: number;
 }
 
 export const GEMINI_MAX_TOOL_CALLS = 5;
 /**
- * Measured on the global endpoint (docs/05 §16): a request usually takes 2–7 s and about one
- * in ten stalls for 10–30 s; a whole Gemini turn has a median of 5.1 s (2026-10-16). A request
+ * Measured on the global endpoint (docs/05 Â§16): a request usually takes 2â€“7 s and about one
+ * in ten stalls for 10â€“30 s; a whole Gemini turn has a median of 5.1 s (2026-10-16). A request
  * that has not answered in 7 s has usually stalled, so each request is cut off at 7 s, and the
- * whole decision stops at 9 s — which leaves the backup runtime (the mock) its 2 s inside the
+ * whole decision stops at 9 s â€” which leaves the backup runtime (the mock) its 2 s inside the
  * pipeline's 12 s ceiling (AI_DECISION_BUDGET_MS).
  *
  * A failed request (a timeout, 429, 5xx) is tried once more only while the deadline still
  * leaves GEMINI_MIN_ATTEMPT_MS for it: a model request has never answered faster than about
- * 2.5 s, so a retry with less time could only time out again — the backup answers sooner.
+ * 2.5 s, so a retry with less time could only time out again â€” the backup answers sooner.
  */
 export const GEMINI_DEADLINE_MS = 9_000;
 export const GEMINI_REQUEST_TIMEOUT_MS = 7_000;
 export const GEMINI_REQUEST_ATTEMPTS = 2;
 export const GEMINI_MIN_ATTEMPT_MS = 2_500;
 export const GEMINI_TEMPERATURE = 0.2;
+/**
+ * L9: a request still unanswered after this long is sent once more and the first answer wins
+ * (the other is cancelled) â€” a stalled request no longer costs the whole decision. Only while
+ * the deadline still leaves GEMINI_MIN_ATTEMPT_MS for the second one.
+ */
+export const GEMINI_HEDGE_AFTER_MS = 4_500;
 
 /** Intent types the conversation may refine a bound intent to (the type only, never the stage). */
 const REFINABLE: readonly IntentType[] = ['PRODUCT_QUESTION', 'COMPARISON', 'URGENT_PURCHASE'];
@@ -109,6 +117,7 @@ export class AdkGeminiAgentRuntime implements AgentRuntime {
     const usage = { promptTokens: 0, outputTokens: 0 };
     let requests = 0;
     let retries = 0;
+    const hedges = { count: 0 };
     let outcome = 'ERROR';
 
     try {
@@ -125,6 +134,7 @@ export class AdkGeminiAgentRuntime implements AgentRuntime {
           },
           deadline,
           () => (retries += 1),
+          hedges,
         );
         requests += 1;
         usage.promptTokens += response.usage.promptTokens;
@@ -163,7 +173,7 @@ export class AdkGeminiAgentRuntime implements AgentRuntime {
     } catch (err) {
       if (err instanceof GeminiOutputError) {
         // Not a decision: returned as is so the pipeline's contract check rejects it and makes
-        // its one repair attempt, then the deterministic fallback (docs/05 §8).
+        // its one repair attempt, then the deterministic fallback (docs/05 Â§8).
         outcome = 'INVALID_OUTPUT';
         this.rejected.set(input.message, err.message);
         return { runtime: this.runtime, invalid_output: true } as unknown as AgentDecision;
@@ -178,6 +188,7 @@ export class AdkGeminiAgentRuntime implements AgentRuntime {
         latency_ms: Math.round(performance.now() - started),
         requests,
         retries,
+        hedges: hedges.count,
         tools: calls.map((c) => c.tool),
         prompt_tokens: usage.promptTokens,
         output_tokens: usage.outputTokens,
@@ -190,12 +201,13 @@ export class AdkGeminiAgentRuntime implements AgentRuntime {
   /**
    * One model request, cancelled at its own timeout or at the decision deadline, whichever is
    * first. A timeout or a transient Vertex error (429, 5xx, network) is tried once more while
-   * the deadline allows; anything else is thrown to the pipeline (→ deterministic fallback).
+   * the deadline allows; anything else is thrown to the pipeline (â†’ deterministic fallback).
    */
   private async request(
     request: Parameters<GeminiClient['generate']>[0],
     deadline: number,
     onRetry: () => void,
+    hedges: { count: number } = { count: 0 },
   ): Promise<GeminiResponse> {
     for (let attempt = 1; ; attempt++) {
       const remaining = deadline - performance.now();
@@ -203,15 +215,34 @@ export class AdkGeminiAgentRuntime implements AgentRuntime {
       const controller = new AbortController();
       const limit = Math.min(remaining, this.options.requestTimeoutMs ?? GEMINI_REQUEST_TIMEOUT_MS);
       let timer: NodeJS.Timeout | undefined;
+      let expire: () => void = () => undefined;
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
+        expire = () => {
           // Reject first: the abort makes the request itself fail, and that must not win the race.
           reject(new GeminiTimeout());
           controller.abort();
-        }, limit);
+        };
+        timer = setTimeout(expire, limit);
       });
+      // A hedged request gets the rest of the deadline, not the rest of the first one's limit.
+      const onHedge = () => {
+        clearTimeout(timer);
+        timer = setTimeout(expire, Math.max(0, deadline - performance.now()));
+      };
       try {
-        return await Promise.race([this.options.client.generate(request, controller.signal), timeout]);
+        return await Promise.race([
+          hedgedSend(
+            this.options.client,
+            request,
+            controller,
+            deadline,
+            this.options.hedgeAfterMs ?? GEMINI_HEDGE_AFTER_MS,
+            this.options.minAttemptMs ?? GEMINI_MIN_ATTEMPT_MS,
+            hedges,
+            onHedge,
+          ),
+          timeout,
+        ]);
       } catch (err) {
         if (attempt >= GEMINI_REQUEST_ATTEMPTS || !isTransient(err)) throw err;
         // No time left for a real second attempt: give up now, so the backup answers sooner.
@@ -222,6 +253,52 @@ export class AdkGeminiAgentRuntime implements AgentRuntime {
       }
     }
   }
+}
+
+/**
+ * One request, hedged (L9): if it has not answered after GEMINI_HEDGE_AFTER_MS and the deadline
+ * still leaves a second attempt its time, the same request is sent again; the first answer wins
+ * and the other is cancelled. Fails only when every request sent has failed.
+ */
+function hedgedSend(
+  client: GeminiClient,
+  request: Parameters<GeminiClient['generate']>[0],
+  controller: AbortController,
+  deadline: number,
+  hedgeAfterMs: number,
+  minAttemptMs: number,
+  hedges: { count: number },
+  onHedge: () => void = () => undefined,
+): Promise<GeminiResponse> {
+  return new Promise((resolve, reject) => {
+    const second = new AbortController();
+    controller.signal.addEventListener('abort', () => second.abort(), { once: true });
+    let pending = 1;
+    let done = false;
+    const win = (r: GeminiResponse) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      // Cancel the slower one (harmless for the one that answered, or a second never sent).
+      controller.abort();
+      second.abort();
+      resolve(r);
+    };
+    const lose = (err: unknown) => {
+      if (done || --pending > 0) return;
+      done = true;
+      clearTimeout(timer);
+      reject(err);
+    };
+    client.generate(request, controller.signal).then(win, lose);
+    const timer = setTimeout(() => {
+      if (done || controller.signal.aborted || deadline - performance.now() < minAttemptMs) return;
+      hedges.count += 1;
+      pending += 1;
+      onHedge();
+      client.generate(request, second.signal).then(win, lose);
+    }, hedgeAfterMs);
+  });
 }
 
 class GeminiTimeout extends AgentTimeoutError {}
@@ -276,7 +353,7 @@ function parseProposal(text: string | null): ModelProposal {
   return parsed.data;
 }
 
-/** The last successful find_nearby_stores of this run — for `variantId` when given and searched. */
+/** The last successful find_nearby_stores of this run â€” for `variantId` when given and searched. */
 function lastStoreSearch(calls: ToolResult[], variantId: string | undefined): NearbyStoresOutput | null {
   const finds = calls
     .filter((c) => c.tool === 'find_nearby_stores' && c.status === 'EXECUTED' && c.output)
@@ -331,9 +408,9 @@ function knownIds(input: DecisionInput, calls: ToolResult[]) {
 }
 
 /**
- * The model's proposal → the AgentDecision contract. Ids the backend never showed the model
+ * The model's proposal â†’ the AgentDecision contract. Ids the backend never showed the model
  * are dropped (an invented store or reservation cannot reach the guardrail as a target), and
- * the write tools follow from the action — the model never names one.
+ * the write tools follow from the action â€” the model never names one.
  */
 export function toDecision(proposal: ModelProposal, input: DecisionInput, calls: ToolResult[]): AgentDecision {
   const ctx = input.context;
@@ -356,7 +433,7 @@ export function toDecision(proposal: ModelProposal, input: DecisionInput, calls:
       : undefined;
   if (proposal.action === 'STORE_RESERVATION' && ctx.pending_proposal) {
     // Confirming the offer on the table: the store is the one the customer tapped (else the
-    // offered one) and the variant is the offered one — taken from the tap and the pending
+    // offered one) and the variant is the offered one â€” taken from the tap and the pending
     // proposal, not from the model. The guardrail still re-checks everything against fresh data.
     const content = input.message.content;
     const tapped = content.type === 'INTERACTIVE_REPLY' ? parseOption(content.optionId) : null;

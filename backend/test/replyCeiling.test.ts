@@ -89,8 +89,9 @@ describe('the 12 s reply ceiling', () => {
     expect(res.body.outbound_messages[0].text).toContain('In stock at 3 stores in Satellite');
     expect(ms).toBeGreaterThanOrEqual(GEMINI_REQUEST_TIMEOUT_MS);
     expect(ms).toBeLessThan(12_000);
-    // The first request was cut at 7 s; 2 s were left — not enough for a retry, so none was sent.
-    expect(gemini.requests).toHaveLength(1);
+    // L9: unanswered at 4.5 s, the request was sent once more (hedged); both stalled until the 9 s
+    // deadline — no time for a retry — and the backup answered inside the 12 s ceiling.
+    expect(gemini.requests).toHaveLength(2);
   });
 
   it('Gemini answers at 6 s → Gemini’s reply is used', async () => {

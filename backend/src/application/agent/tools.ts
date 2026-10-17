@@ -115,13 +115,30 @@ export function sheetOf(
   };
 }
 
-/** Same `concern` attribute, other active products (docs: one verified alternative per hero product). */
+/** The noun a product title ends with ("Mineral Sunscreen SPF 50" → "sunscreen"): its kind. */
+export function productNoun(title: string): string | null {
+  const words = title
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter((w) => w.length >= 4 && w !== 'spf');
+  return words.at(-1) ?? null;
+}
+
+/**
+ * Other active products for the same need (docs: one verified alternative per hero product):
+ * the same `concern` attribute; for a catalogue without one (a real Shopify store, L9), the same
+ * category, else the same kind of product by its title's noun (sunscreen, serum, cleanser).
+ */
 export function alternativesOf(product: ProductRecord, products: ProductRecord[]): ProductRecord[] {
+  const others = products.filter((p) => p.productId !== product.productId && p.status === 'ACTIVE');
   const concern = product.attributes.concern;
-  if (!concern) return [];
-  return products.filter(
-    (p) => p.productId !== product.productId && p.status === 'ACTIVE' && p.attributes.concern === concern,
-  );
+  if (concern) return others.filter((p) => p.attributes.concern === concern);
+  if (product.category) {
+    const sameCategory = others.filter((p) => p.category === product.category);
+    if (sameCategory.length) return sameCategory;
+  }
+  const noun = productNoun(product.title);
+  return noun ? others.filter((p) => productNoun(p.title) === noun) : [];
 }
 
 /**
