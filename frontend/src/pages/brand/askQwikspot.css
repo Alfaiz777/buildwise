@@ -1,13 +1,18 @@
 /* L5 Ask Qwikspot: the drawer, the AI cards on the pages ("AI summary" / "Quick summary"). */
 .ask-suggestions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
   margin: var(--space-4) 0;
 }
 .ask-chip {
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
+  line-height: 1.35;
+  min-height: 40px;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
   background: var(--color-surface-2);
   color: var(--color-text);
   font: inherit;
@@ -17,6 +22,8 @@
   text-align: left;
 }
 .ask-chip:hover:not(:disabled) {
+  flex-basis: auto;
+  background: var(--color-surface-2);
   border-color: var(--color-primary);
   color: var(--color-primary);
 }
@@ -26,11 +33,28 @@
 }
 .ask-form {
   display: flex;
+  align-items: flex-end;
   gap: var(--space-2);
 }
-.ask-form input {
+.ask-form textarea {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: inherit;
   flex: 1;
   min-width: 0;
+  min-height: 40px;
+  resize: none;
+  overflow-y: auto;
+  font: inherit;
+  line-height: 1.4;
+}
+.ask-hint {
+  margin: var(--space-1) 0 0;
+}
+.ask-empty {
+  margin: 0;
 }
 .ask-result {
   margin-top: var(--space-4);
@@ -38,6 +62,20 @@
 .ask-question {
   color: var(--color-text-muted);
   margin: 0 0 var(--space-2);
+}
+/* UI-P1: an answer is a card with its label and its link buttons. */
+.ask-answer {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  animation: ui-fade var(--duration-base) var(--ease-out);
+}
+@media (max-width: 420px) {
+  .ask-suggestions {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .ask-answer,
 .ai-card__body {

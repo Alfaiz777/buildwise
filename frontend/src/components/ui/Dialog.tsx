@@ -51,6 +51,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   tone = 'primary',
   busy = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: {
@@ -61,6 +62,8 @@ export function ConfirmDialog({
   cancelLabel?: string;
   tone?: 'primary' | 'danger';
   busy?: boolean;
+  /** UI-P1: e.g. until a required reason is filled in. */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -89,7 +92,7 @@ export function ConfirmDialog({
           <Button variant="secondary" onClick={onCancel} disabled={busy}>
             {cancelLabel}
           </Button>
-          <Button variant={tone} onClick={onConfirm} loading={busy}>
+          <Button variant={tone} onClick={onConfirm} loading={busy} disabled={confirmDisabled}>
             {confirmLabel}
           </Button>
         </div>

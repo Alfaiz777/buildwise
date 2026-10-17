@@ -1,5 +1,5 @@
-import { ExternalLink, LogOut, Sparkles } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { ExternalLink, HelpCircle, LogOut, Menu as MenuIcon, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useMe } from '../../account/meContext';
 import { useApi } from '../../api/apiContext';
@@ -8,7 +8,8 @@ import { useLoad } from '../ConsoleShell';
 import { label } from '../../lib/labels';
 import { Wordmark } from './Wordmark';
 import { CONSOLE_NAME, NAV } from './nav';
-import { RoleBanner } from './RoleBanner';
+import { RoleBanner, useRoleBanner } from './RoleBanner';
+import { Tip } from '../ui';
 import { storeLabel } from '../../lib/storeLabel';
 import { AskQwikspotProvider, BRAND_ASK } from '../../pages/brand/askQwikspot';
 import { storeAsk } from '../../pages/retailer/storeAsk';
@@ -35,7 +36,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       ? `${storeLabel(me.store)} · for ${me.brand_name} via ${me.retailer_name}`
       : me.scope === 'BRAND'
         ? me.brand_name
-        : 'Qwikspot platform';
+        : null; // UI-P1: the Platform header names the role instead (no "Qwikspot platform" subtitle)
+  const platform = me.scope === 'PLATFORM';
+  const banner = useRoleBanner(me.scope);
+  // UI-P1: on a phone the Platform sidebar collapses into a menu.
+  const [navOpen, setNavOpen] = useState(false);
   const nav = NAV[me.scope];
   // One config per store (a new object each render would re-run every page's <AskScope>).
   const storeId = me.scope === 'RETAIL' ? me.store.store_id : null;
@@ -100,23 +105,60 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [reloadWaiting]);
 
   const shell = (openAsk: (() => void) | null) => (
-    <div className={`shell shell--${me.scope.toLowerCase()}`}>
+    <div className={`shell shell--${me.scope.toLowerCase()}${navOpen ? ' shell--nav-open' : ''}`}>
       <header className="shell-top">
         <div className="shell-top__brand">
+          {platform && (
+            <button
+              type="button"
+              className="ui-icon-button shell-top__menu"
+              aria-label={navOpen ? 'Close menu' : 'Menu'}
+              aria-expanded={navOpen}
+              onClick={() => setNavOpen((v) => !v)}
+            >
+              {navOpen ? <X size={18} aria-hidden="true" /> : <MenuIcon size={18} aria-hidden="true" />}
+            </button>
+          )}
           <Wordmark />
           <span className="shell-top__console">{CONSOLE_NAME[me.scope]}</span>
-          <span className="shell-top__context">{context}</span>
+          {context && <span className="shell-top__context">{context}</span>}
+          {platform && (
+            <span className="shell-top__chip">
+              <span className="shell-role">{label(me.role)}</span>
+              <span className="shell-top__team">{' · Qwikspot team'}</span>
+            </span>
+          )}
+          {platform && (
+            <Tip
+              className="shell-top__privacy"
+              text="The platform never sees shoppers, phones, messages or stock lines"
+            >
+              <ShieldCheck size={14} aria-hidden="true" />
+              <span>Totals only · no customer data</span>
+            </Tip>
+          )}
         </div>
         <div className="shell-top__user">
           {openAsk && (
             <button
               type="button"
-              className="ui-button ui-button--secondary ui-button--sm"
+              className={`ui-button ui-button--${platform ? 'primary' : 'secondary'} ui-button--sm shell-ask`}
               onClick={openAsk}
               aria-label={`Ask Qwikspot about ${ASK_DATA_OF[me.scope]} data`}
             >
               <Sparkles size={16} aria-hidden="true" />
               Ask Qwikspot
+            </button>
+          )}
+          {platform && !banner.open && (
+            <button
+              type="button"
+              className="ui-icon-button"
+              aria-label="Show the welcome note"
+              title="Show the welcome note"
+              onClick={banner.show}
+            >
+              <HelpCircle size={18} aria-hidden="true" />
             </button>
           )}
           {shopperDemo && me.scope === 'BRAND' && (
@@ -131,7 +173,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </a>
           )}
           <span className="shell-top__email">{me.user.email ?? me.user.user_id}</span>
-          <span className="ui-pill ui-pill--primary shell-role">{label(me.role)}</span>
+          {!platform && <span className="ui-pill ui-pill--primary shell-role">{label(me.role)}</span>}
           <button type="button" className="ui-button ui-button--ghost ui-button--sm" onClick={() => void signOut()}>
             <LogOut size={16} aria-hidden="true" />
             Sign out
@@ -142,7 +184,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <ul>
           {nav.map(({ to, label: text, icon: Icon, end, badge }) => (
             <li key={to}>
-              <NavLink to={to} end={end} className="shell-nav__link">
+              <NavLink to={to} end={end} className="shell-nav__link" onClick={() => setNavOpen(false)}>
                 <Icon size={18} aria-hidden="true" />
                 <span>{text}</span>
                 {badge === 'handoffs' && handoffs > 0 && (
@@ -161,7 +203,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </ul>
       </nav>
       <div className="shell-body">
-        <RoleBanner me={me} />
+        <RoleBanner me={me} open={banner.open} onDismiss={banner.dismiss} />
         <main className="shell-main">{children}</main>
       </div>
     </div>

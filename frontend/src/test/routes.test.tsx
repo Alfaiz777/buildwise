@@ -311,35 +311,43 @@ describe('authentication gate', () => {
 });
 
 describe('scope routing — each of the three roles lands in its own console area', () => {
-  it('PLATFORM_ADMIN → Platform Admin; Brand Admin provisioning offers only brands without one', async () => {
+  it('PLATFORM_ADMIN → Platform Admin; Brand Admin provisioning is offered only in the cards of brands without one', async () => {
     renderAt('/platform/brands', signedIn, apiFor(ME.platform));
     expect(await screen.findByText('Platform Console')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Brands' })).toBeInTheDocument();
     expect(screen.getByText('Platform Admin', { selector: '.shell-role' })).toBeInTheDocument();
-    expect(await screen.findByRole('option', { name: 'Needs Admin' })).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: 'Has Admin' })).not.toBeInTheDocument();
+    const needs = await screen.findByRole('article', { name: 'Needs Admin' });
+    expect(within(needs).getByRole('button', { name: 'Provision Brand Admin' })).toBeInTheDocument();
+    const has = screen.getByRole('article', { name: 'Has Admin' });
+    expect(within(has).queryByRole('button', { name: 'Provision Brand Admin' })).not.toBeInTheDocument();
   });
 
   it('PLATFORM_ADMIN sees each brand’s onboarding checklist and last activity, never customer data', async () => {
     renderAt('/platform/brands', signedIn, apiFor(ME.platform));
-    const row = (await screen.findByText('Has Admin')).closest('tr')!;
-    expect(within(row).getByText('Active')).toBeInTheDocument();
-    expect(within(row).getByText('10 products')).toBeInTheDocument();
-    expect(within(row).getByText('4 of 5 with stock')).toBeInTheDocument();
-    expect(within(row).getByText('18 matched, 1 need attention')).toBeInTheDocument();
-    expect(within(row).getByText('2 of 4 stores')).toBeInTheDocument();
-    expect(within(row).getByText('WhatsApp number set, simulator')).toBeInTheDocument();
-    expect(within(row).queryByText('none yet')).not.toBeInTheDocument();
+    const card = await screen.findByRole('article', { name: 'Has Admin' });
+    expect(within(card).getByText('Active')).toBeInTheDocument();
+    // UI-P1: the onboarding stepper — each step's count, its detail on hover/focus.
+    expect(within(card).getByText('10 products')).toBeInTheDocument();
+    expect(within(card).getByText('4 of 5')).toBeInTheDocument();
+    expect(within(card).getByText('1 to fix')).toBeInTheDocument();
+    expect(within(card).getByText('18 matched, 1 need attention.')).toBeInTheDocument();
+    expect(within(card).getByText('2 of 4')).toBeInTheDocument();
+    expect(within(card).getByText('WhatsApp number set, simulator')).toBeInTheDocument();
+    expect(within(card).queryByText('No activity yet')).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/brd_1|brd_2/); // no internal brand id
     expect(document.body.textContent).not.toMatch(/cus_|sim:|\+91|\b\d{10}\b/);
   });
 
   it('PLATFORM_ADMIN suspends with a reason (explained first) and can reactivate', async () => {
     const api = apiFor(ME.platform);
     renderAt('/platform/brands', signedIn, api);
-    const row = (await screen.findByText('Has Admin')).closest('tr')!;
-    fireEvent.click(within(row).getByRole('button', { name: 'Suspend' }));
-    const dialog = screen.getByRole('form', { name: 'Suspend Has Admin' });
+    const card = await screen.findByRole('article', { name: 'Has Admin' });
+    // UI-P1: Suspend lives in the card's "⋯" menu and opens a confirm dialog.
+    fireEvent.click(within(card).getByRole('button', { name: 'More actions for Has Admin' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Suspend' }));
+    const dialog = screen.getByRole('alertdialog', { name: 'Suspend Has Admin?' });
     expect(dialog).toHaveTextContent('Your brand is suspended. Contact Qwikspot support.');
+    expect(within(dialog).getByRole('button', { name: 'Suspend brand' })).toBeDisabled(); // a reason is required
     expect(api.patch).not.toHaveBeenCalled();
     fireEvent.change(within(dialog).getByLabelText('Reason (kept in the audit log)'), {
       target: { value: 'Unpaid invoice' },
