@@ -110,12 +110,11 @@ describe('Retailer Console — reservation queue (M6)', () => {
     render_('/retailer', api);
     const card = await screen.findByRole('article', { name: '1 × Vitamin C Glow Serum 30 ml' });
     const strip = await screen.findByRole('region', { name: 'Last 7 days' });
-    expect(within(strip).getByText('Holds').parentElement).toHaveTextContent('3');
-    expect(within(strip).getByText('Picked up').parentElement).toHaveTextContent('1');
+    expect(within(strip).getByText('Holds → Picked up').parentElement).toHaveTextContent('3 → 1');
     // The most urgent hold is the "Next up" card.
     expect(within(screen.getByRole('region', { name: 'Next up' })).getByRole('article')).toBe(card);
     expect(within(card).getByText(/Customer •••• 4821/)).toBeInTheDocument();
-    expect(within(card).getByText(/expires in (39|40) min/)).toBeInTheDocument();
+    expect(within(card).getByText(/Held for (39|40) more min/)).toBeInTheDocument();
     expect(card.textContent).not.toMatch(/@|\+91|phone/);
     fireEvent.click(within(card).getByRole('button', { name: 'Confirm' }));
     expect(
@@ -142,10 +141,16 @@ describe('Retailer Console — reservation queue (M6)', () => {
     fireEvent.change(screen.getByLabelText(/Pickup code for/), { target: { value: '00a4271' } });
     expect(screen.getByLabelText(/Pickup code for/)).toHaveValue('004271');
     expect(complete).toBeEnabled();
-    const refuse = screen.getByRole('button', { name: 'Refuse' });
+    // UI-P2: Refuse lives in the hold's "⋯" menu and opens a dialog; the reason is required.
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for 1 × Niacinamide Serum 30 ml' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Refuse…' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Refuse 1 × Niacinamide Serum 30 ml?' });
+    const refuse = within(dialog).getByRole('button', { name: 'Refuse hold' });
     expect(refuse).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/Refusal reason for 1 × Niacinamide/), { target: { value: 'OTHER' } });
-    expect(screen.getByLabelText('Internal note (not shown to the customer)')).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText(/Refusal reason for 1 × Niacinamide/), {
+      target: { value: 'OTHER' },
+    });
+    expect(within(dialog).getByLabelText('Internal note (not shown to the customer)')).toBeInTheDocument();
     expect(refuse).toBeEnabled();
   });
 

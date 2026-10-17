@@ -10,7 +10,6 @@ import { Wordmark } from './Wordmark';
 import { CONSOLE_NAME, NAV } from './nav';
 import { RoleBanner, useRoleBanner } from './RoleBanner';
 import { AiButton, Tip } from '../ui';
-import { storeLabel } from '../../lib/storeLabel';
 import { AskQwikspotProvider, BRAND_ASK } from '../../pages/brand/askQwikspot';
 import { storeAsk } from '../../pages/retailer/storeAsk';
 import { PLATFORM_ASK } from '../../pages/platform/platformAsk';
@@ -31,13 +30,19 @@ const ASK_DATA_OF = { BRAND: "your brand's", RETAIL: "your store's", PLATFORM: "
 export function AppShell({ children }: { children: ReactNode }) {
   const me = useMe();
   const { signOut } = useAuth();
-  const context =
+  // UI-P2: the Store header leads with the store ("Wellness Mart · Satellite"); the brand and
+  // retailer are a small second line. UI-P1: the Platform header names the role instead.
+  const context = me.scope === 'BRAND' ? me.brand_name : null;
+  const store =
     me.scope === 'RETAIL'
-      ? `${storeLabel(me.store)} · for ${me.brand_name} via ${me.retailer_name}`
-      : me.scope === 'BRAND'
-        ? me.brand_name
-        : null; // UI-P1: the Platform header names the role instead (no "Qwikspot platform" subtitle)
+      ? {
+          name: me.store.area ? `${me.store.store_name} · ${me.store.area}` : me.store.store_name,
+          via: `${me.brand_name} · ${me.retailer_name}`,
+        }
+      : null;
   const platform = me.scope === 'PLATFORM';
+  // The role chip (in the role colour) and "?" to reopen the welcome note: Platform and Store.
+  const roleChip = me.scope !== 'BRAND';
   const banner = useRoleBanner(me.scope);
   // UI-P1: on a phone the Platform sidebar collapses into a menu.
   const [navOpen, setNavOpen] = useState(false);
@@ -122,10 +127,16 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Wordmark />
           <span className="shell-top__console">{CONSOLE_NAME[me.scope]}</span>
           {context && <span className="shell-top__context">{context}</span>}
-          {platform && (
+          {store && (
+            <span className="shell-top__store">
+              <strong className="shell-top__store-name">{store.name}</strong>
+              <span className="shell-top__store-via">{store.via}</span>
+            </span>
+          )}
+          {roleChip && (
             <span className="shell-top__chip">
               <span className="shell-role">{label(me.role)}</span>
-              <span className="shell-top__team">{' · Qwikspot team'}</span>
+              {platform && <span className="shell-top__team">{' · Qwikspot team'}</span>}
             </span>
           )}
           {platform && (
@@ -149,7 +160,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               Ask Qwikspot
             </AiButton>
           )}
-          {platform && !banner.open && (
+          {roleChip && !banner.open && (
             <button
               type="button"
               className="ui-icon-button"
@@ -172,7 +183,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </a>
           )}
           <span className="shell-top__email">{me.user.email ?? me.user.user_id}</span>
-          {!platform && <span className="ui-pill ui-pill--primary shell-role">{label(me.role)}</span>}
+          {!roleChip && <span className="ui-pill ui-pill--primary shell-role">{label(me.role)}</span>}
           <button type="button" className="ui-button ui-button--ghost ui-button--sm" onClick={() => void signOut()}>
             <LogOut size={16} aria-hidden="true" />
             Sign out

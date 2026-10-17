@@ -335,3 +335,34 @@
     text-align: left;
   }
 }
+
+/* ---------------------------------------------------------------- UI-P2: Store header */
+.shell--retail .shell-top__console {
+  color: var(--color-text);
+}
+.shell--retail .shell-top__brand {
+  align-items: center;
+}
+.shell-top__store {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+.shell-top__store-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+.shell-top__store-via {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+@media (max-width: 768px) {
+  .shell--retail .shell-top__console {
+    display: none;
+  }
+}

@@ -179,9 +179,10 @@ describe('console shell', () => {
   it('Store and Platform shells name their console and context', async () => {
     shell(STORE);
     expect(await screen.findByText('Store Console')).toBeInTheDocument();
-    expect(
-      screen.getByText('HealthPlus Chemist · for Demo Beauty Co via Ahmedabad Retail Partners'),
-    ).toBeInTheDocument();
+    // UI-P2: the store leads; the brand and retailer are a small second line; the role is a chip.
+    expect(screen.getByText('HealthPlus Chemist', { selector: '.shell-top__store-name' })).toBeInTheDocument();
+    expect(screen.getByText('Demo Beauty Co · Ahmedabad Retail Partners')).toBeInTheDocument();
+    expect(screen.getByText('Retail Admin', { selector: '.shell-role' })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Store Console' })).toBeInTheDocument();
   });
 

@@ -5,6 +5,12 @@ import { Button } from './Button';
 /** Keeps Tab inside `root`, closes on Escape and returns focus to where it was. */
 function useModal(open: boolean, onClose: () => void) {
   const root = useRef<HTMLDivElement>(null);
+  // The latest onClose, so a new callback each render does not re-run the effect (which would
+  // move focus back to the first field while the user types).
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
   useEffect(() => {
     if (!open) return;
     const before = document.activeElement as HTMLElement | null;
@@ -18,7 +24,7 @@ function useModal(open: boolean, onClose: () => void) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose();
+        close.current();
       } else if (e.key === 'Tab') {
         const list = focusables();
         if (list.length === 0) return;
@@ -38,7 +44,7 @@ function useModal(open: boolean, onClose: () => void) {
       document.removeEventListener('keydown', onKey);
       before?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
   return root;
 }
 

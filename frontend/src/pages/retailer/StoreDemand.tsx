@@ -1,12 +1,15 @@
+import { CheckCircle2, Info, Lightbulb } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useMe } from '../../account/meContext';
 import { useApi } from '../../api/apiContext';
 import { ConsoleShell, useLoad } from '../../components/ConsoleShell';
-import { Card, EmptyState, ErrorState, Skeleton } from '../../components/ui';
+import { AiButton, Card, EmptyState, ErrorState, ProductThumb, RingGauge, Skeleton, Tip } from '../../components/ui';
 import { WeekdayChart } from '../brand/InsightCharts';
+import { AskScope, useAskQwikspot } from '../brand/askQwikspot';
+import { AskAction, PageHeader, PeriodControls } from '../platform/PlatformChrome';
 import { REFUSAL_LABEL } from './RetailerQueue';
-import { AskScope } from '../brand/askQwikspot';
+import './store.css';
 
 export interface StoreInsights {
   store_id: string;
@@ -34,11 +37,47 @@ const REASON: Record<string, string> = {
 };
 const ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
+/** "Ask Qwikspot why →" on a missed product (a component, so it renders inside the shell). */
+function AskWhy({ product }: { product: string }) {
+  const { ask } = useAskQwikspot();
+  return (
+    <AiButton size="sm" quiet onClick={() => ask(`Why did shoppers near me miss ${product}?`)}>
+      Ask Qwikspot why
+    </AiButton>
+  );
+}
+
+/** A horizontal bar list: one row per item, the bar its share of the largest. */
+function BarList({
+  rows,
+  tone,
+  label,
+}: {
+  rows: { key: string; text: string; count: number }[];
+  tone: string;
+  label: string;
+}) {
+  const max = Math.max(1, ...rows.map((r) => r.count));
+  return (
+    <ul className="st-bars" aria-label={label}>
+      {rows.map((r) => (
+        <li key={r.key}>
+          <span className="st-bars__text">{r.text}</span>
+          <span className="st-bars__track" aria-hidden="true">
+            <span className={`st-bars__fill st-bars__fill--${tone}`} style={{ width: `${(r.count / max) * 100}%` }} />
+          </span>
+          <span className="st-bars__count">{r.count}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
- * Store Console → Demand near you (docs/11 §5; Change 16, UI-4; audit P1-3): this store's
- * own slice of the brand's insights — where it was the nearest store but could not
- * serve, its fill rate by weekday, its refusals and the brand's suggestions for it.
- * Counts only; never a customer, and never another store's numbers.
+ * Store Console → Demand near you (docs/11 §5; Change 16, UI-4; audit P1-3; UI-P2 layout): this
+ * store's own slice of the brand's insights — where it was the nearest store but could not
+ * serve, its fill rate by weekday, its refusals and the brand's suggestions for it. Counts
+ * only; never a customer, and never another store's numbers.
  */
 export function StoreDemand() {
   const me = useMe();
@@ -72,76 +111,72 @@ export function StoreDemand() {
     };
   });
   const worst = [...chartDays].filter((x) => x.no_store > 0).sort((a, b) => b.no_store - a.no_store)[0];
+  const nearest = chartDays.reduce((n, x) => n + x.lookups, 0);
+  const had = nearest - chartDays.reduce((n, x) => n + x.no_store, 0);
+  const pct = nearest === 0 ? null : Math.round((had / nearest) * 100);
+  const missedShoppers = d?.missed.reduce((n, m) => n + m.count, 0) ?? 0;
+  const busiest = [...chartDays].sort((a, b) => b.lookups - a.lookups)[0];
+  const missed = [...(d?.missed ?? [])].sort((a, b) => b.count - a.count);
+  const maxMissed = Math.max(1, ...missed.map((m) => m.count));
 
   return (
     <ConsoleShell>
       <AskScope days={days} includeHistory={includeHistory} />
-      <Card
+      <PageHeader
         title="Demand near you"
-        description={`What shoppers asked ${me.brand_name} for near ${me.store.store_name}, from the brand's records. Counts only — never a customer.`}
-      >
-        <div className="overview-head">
-          <div className="filters" role="group" aria-label="Period">
-            {([7, 28] as const).map((n) => (
-              <button
-                key={n}
-                type="button"
-                className={days === n ? '' : 'secondary'}
-                aria-pressed={days === n}
-                onClick={() => setDays(n)}
-              >
-                Last {n} days
-              </button>
-            ))}
-          </div>
-          <label className="small">
-            <input type="checkbox" checked={includeHistory} onChange={(e) => setIncludeHistory(e.target.checked)} />{' '}
-            Include synthetic history
-          </label>
-          {d && <span className="muted small">Weekdays in store time ({d.period.timezone}).</span>}
-        </div>
-        {data.error && <ErrorState message={data.error} onRetry={data.reload} />}
-        {!d && !data.error && <Skeleton lines={3} />}
-        {nothing && (
+        purpose={`What shoppers asked ${me.brand_name} for near ${me.store.store_name}. Counts only — never a customer.`}
+        action={
+          <AskAction
+            label="What are shoppers asking for?"
+            question="What are shoppers near me asking for that I don't have?"
+          />
+        }
+      />
+      <PeriodControls days={days} onDays={setDays} includeHistory={includeHistory} onHistory={setIncludeHistory}>
+        {d && (
+          <Tip text={`Weekdays in store time (${d.period.timezone}).`}>
+            <Info size={16} aria-label={`Weekdays in store time (${d.period.timezone}).`} />
+          </Tip>
+        )}
+      </PeriodControls>
+      {data.error && <ErrorState message={data.error} onRetry={data.reload} />}
+      {!d && !data.error && <Skeleton lines={3} />}
+      {nothing && (
+        <Card>
           <EmptyState>
             Nothing to show yet. Demand appears here as shoppers ask {me.brand_name} for products near your store.
           </EmptyState>
-        )}
-      </Card>
+        </Card>
+      )}
 
       {d && !nothing && (
         <>
-          <Card title="Missed demand" description="You were the nearest store, but couldn't serve these shoppers.">
-            {d.missed.length === 0 ? (
-              <p className="muted">
-                No missed demand near you in the last {d.period.days} days. When shoppers ask for something you don't
-                have, it shows here.
-              </p>
-            ) : (
-              <div className="ui-table-wrap">
-                <table aria-label="Missed demand">
-                  <thead>
-                    <tr>
-                      <th>Product</th>
-                      <th>Day</th>
-                      <th>Times</th>
-                      <th>Why</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {d.missed.map((m) => (
-                      <tr key={`${m.sku}-${m.weekday}-${m.reason}`}>
-                        <td>{m.label}</td>
-                        <td>{cap(m.weekday)}</td>
-                        <td>{m.count}</td>
-                        <td>{REASON[m.reason] ?? m.reason.toLowerCase().replace(/_/g, ' ')}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <section className="st-demand-summary" aria-label="Demand summary">
+            <div className="pf-tile pf-tile--lg pf-tile--ring">
+              <RingGauge pct={pct} size={56} />
+              <div>
+                <span className="pf-tile__label">When you were the nearest store</span>
+                <span className="pf-tile__value pf-tile__value--sm">{pct === null ? '—' : `${pct}%`}</span>
+                <span className="pf-tile__sub">
+                  {nearest === 0 ? 'Not the nearest store yet' : `You had stock ${had} of ${nearest} times`}
+                </span>
               </div>
-            )}
-          </Card>
+            </div>
+            <div className="pf-tile pf-tile--lg">
+              <span className="pf-tile__label">Missed shoppers</span>
+              <span className="pf-tile__value pf-tile__value--sm">{missedShoppers}</span>
+              <span className="pf-tile__sub">you were nearest but couldn't serve</span>
+            </div>
+            <div className="pf-tile pf-tile--lg">
+              <span className="pf-tile__label">Busiest day</span>
+              <span className="pf-tile__value pf-tile__value--sm">
+                {busiest && busiest.lookups > 0 ? cap(busiest.weekday).slice(0, 3) : '—'}
+              </span>
+              <span className="pf-tile__sub">
+                {busiest && busiest.lookups > 0 ? `nearest ${busiest.lookups} times` : 'no lookups yet'}
+              </span>
+            </div>
+          </section>
 
           <Card
             title="When you were the nearest store"
@@ -155,26 +190,83 @@ export function StoreDemand() {
                 problemDay={worst?.weekday ?? null}
                 caption=""
                 keys={['Times you were the nearest store', 'times you had none']}
+                legend={['You had it', "You couldn't serve"]}
+                tooltip={(x) =>
+                  `${cap(x.weekday).slice(0, 3)} · nearest ${x.lookups} times · had it ${x.lookups - x.no_store} · missed ${x.no_store}`
+                }
               />
             )}
-            {refusals.length > 0 && (
-              <p className="small">
-                Holds you refused:{' '}
-                {refusals.map(([reason, n]) => `${REFUSAL_LABEL[reason] ?? reason} ${n}`).join(' · ')}
-              </p>
-            )}
           </Card>
+
+          <div className="st-demand-grid">
+            <Card title="Missed demand" description="You were the nearest store, but couldn't serve these shoppers.">
+              {missed.length === 0 ? (
+                <p className="st-positive">
+                  <CheckCircle2 size={18} aria-hidden="true" /> You had what shoppers asked for in this period.
+                </p>
+              ) : (
+                <ol className="st-missed" aria-label="Missed demand">
+                  {missed.map((m) => (
+                    <li key={`${m.sku}-${m.weekday}-${m.reason}`}>
+                      <ProductThumb src={null} name={m.label} size={36} />
+                      <div className="st-missed__body">
+                        <strong>{m.label}</strong>
+                        <span className="muted small">
+                          {cap(m.weekday)} · {REASON[m.reason] ?? m.reason.toLowerCase().replace(/_/g, ' ')}
+                        </span>
+                        <span className="st-bars__track" aria-hidden="true">
+                          <span
+                            className="st-bars__fill st-bars__fill--missed"
+                            style={{ width: `${(m.count / maxMissed) * 100}%` }}
+                          />
+                        </span>
+                      </div>
+                      <span className="st-missed__count">
+                        {m.count}
+                        <span className="sr-only"> times</span>
+                      </span>
+                      <AskWhy product={m.label} />
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </Card>
+
+            <Card title="Holds you refused">
+              {refusals.length === 0 ? (
+                <p className="st-positive">
+                  <CheckCircle2 size={18} aria-hidden="true" /> You didn't refuse any hold in this period.
+                </p>
+              ) : (
+                <BarList
+                  label="Holds you refused"
+                  tone="missed"
+                  rows={refusals.map(([reason, n]) => ({
+                    key: reason,
+                    text: REFUSAL_LABEL[reason] ?? reason,
+                    count: n,
+                  }))}
+                />
+              )}
+            </Card>
+          </div>
 
           <Card
             title={`From ${me.brand_name}`}
             description="Suggestions about your store. Shown here only — nothing is sent."
           >
             {d.suggestions.length === 0 ? (
-              <p className="muted">No suggestions for your store in this period.</p>
+              <EmptyState icon={<Lightbulb size={22} />}>
+                No suggestions from {me.brand_name} this period. They appear here when the brand sees something for your
+                store.
+              </EmptyState>
             ) : (
-              <ul className="suggestions">
+              <ul className="st-suggestions">
                 {d.suggestions.map((s) => (
-                  <li key={s.text}>{s.text}</li>
+                  <li key={s.text}>
+                    <Lightbulb size={18} aria-hidden="true" />
+                    <span>{s.text}</span>
+                  </li>
                 ))}
               </ul>
             )}

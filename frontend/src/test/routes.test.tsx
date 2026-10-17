@@ -409,17 +409,21 @@ describe('scope routing — each of the three roles lands in its own console are
   it('RETAIL_ADMIN → Store Console with exactly its one store and no store picker', async () => {
     renderAt('/store/stock', signedIn, apiFor(ME.retailAdmin));
     expect(await screen.findByText('Your store')).toBeInTheDocument();
-    expect(screen.getByText('Wellness Mart · for Brand A via Ahmedabad Retail Partners')).toBeInTheDocument();
+    expect(screen.getByText('Wellness Mart', { selector: '.shell-top__store-name' })).toBeInTheDocument();
+    expect(screen.getByText('Brand A · Ahmedabad Retail Partners')).toBeInTheDocument();
     expect(screen.getByRole('note')).toHaveTextContent(
       'You run Wellness Mart for Brand A via Ahmedabad Retail Partners.',
     );
-    expect(screen.getByText('Wellness Mart', { selector: 'dd' })).toBeInTheDocument();
+    const card = screen.getByRole('region', { name: 'Your store' });
+    expect(within(card).getByText('Wellness Mart')).toBeInTheDocument();
     // L5: the internal store id is not shown next to the name.
     expect(screen.queryByText(/^st_1$/)).not.toBeInTheDocument();
-    expect(screen.getByText('Ahmedabad Retail Partners', { selector: 'dd' })).toBeInTheDocument();
-    expect(screen.getByText('Satellite Road, Satellite')).toBeInTheDocument();
-    expect(screen.getByText('mon 10:00-21:00 (Asia/Kolkata)')).toBeInTheDocument();
-    expect(screen.getByText(/Reserved = units held for customers at this store/)).toBeInTheDocument();
+    expect(within(card).getByText('Ahmedabad Retail Partners')).toBeInTheDocument();
+    expect(within(card).getByText(/Satellite Road, Satellite/)).toBeInTheDocument();
+    // Hours in plain words, the time zone in a tooltip; Reserved explained on its column header.
+    expect(within(card).getByText('Mon 10:00–21:00 · Tue–Sun closed')).toBeInTheDocument();
+    expect(screen.getByText('Store time: Asia/Kolkata')).toBeInTheDocument();
+    expect(await screen.findByText(/Units held for customers at this store/)).toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     expect(screen.queryByText('HealthPlus Chemist')).not.toBeInTheDocument();
   });
@@ -436,7 +440,7 @@ describe('scope routing — each of the three roles lands in its own console are
     const paths = (api.get as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
     expect(paths.filter((p: string) => p.includes('/inventory'))).toEqual(['/api/retail/stores/st_1/inventory']);
     expect(screen.queryByRole('button', { name: /sync|import|upload/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/Your brand updates this from its retail file/)).toBeInTheDocument();
+    expect(screen.getByText(/from Brand A's retail file · You can't edit stock here/)).toBeInTheDocument();
   });
 
   it('RETAIL_ADMIN → Store stock empty state', async () => {
