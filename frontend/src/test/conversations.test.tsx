@@ -387,7 +387,7 @@ describe('Brand Console — M5 decision trace and reservations', () => {
     expect(screen.getByText('Mock AI (backup after Gemini error)')).toBeInTheDocument();
   });
 
-  it('"Why Qwikspot did this": a plain sentence per decision, safety check in words, technical details collapsed', async () => {
+  it('"Why Qwikspot did this": a plain sentence per decision, safety check in words, no technical trace', async () => {
     renderAt('/brand/conversations', api5());
     fireEvent.click(await screen.findByRole('button', { name: /sim:shopper_3002/ }));
     expect(await screen.findByText('Why Qwikspot did this')).toBeInTheDocument();
@@ -403,23 +403,13 @@ describe('Brand Console — M5 decision trace and reservations', () => {
     ).toBeInTheDocument();
     expect(within(hold).getByText('Safety check passed')).toBeInTheDocument();
     expect(screen.getAllByText('Mock AI · deterministic')).toHaveLength(2);
-    // Jargon stays under Technical details: the visible header and sentence are plain words.
+    // Plain words only: no jargon in the header or sentence, and no technical trace or tool calls.
     for (const card of [offer, hold]) {
       expect(card.querySelector('.trace-card__head')!.textContent).not.toMatch(/guardrail|tool/i);
       expect(card.querySelector('.why-sentence')!.textContent).not.toMatch(/guardrail|tool/i);
     }
-
-    fireEvent.click(within(hold).getByText('Technical details'));
-    expect(within(hold).getByText(/Allowed after re-checking create reservation on fresh data/)).toBeInTheDocument();
-    expect(within(hold).getByText(/HealthPlus Chemist · pending · pickup code/)).toBeInTheDocument();
-    fireEvent.click(within(offer).getByText('Technical details'));
-    expect(await screen.findByText('excluded: out of stock')).toBeInTheDocument();
-    expect(screen.getByText('excluded: too far')).toBeInTheDocument();
-    expect(screen.getByText('Tool calls (1)')).toBeInTheDocument();
-
-    const link = screen.getByRole('link', { name: /google\.com\/maps/ });
-    expect(link).toHaveAttribute('href', 'https://www.google.com/maps/search/?api=1&query=23.034,72.5595');
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(screen.queryByText('Technical details')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tool calls/)).not.toBeInTheDocument();
   });
 
   it('the Reservations page lists status, store, product, masked customer and outcome; a row opens its conversation', async () => {

@@ -61,7 +61,7 @@ async function timed(send: () => Promise<SimulatorResponse>): Promise<{ res: Sim
   return { res: await pending, ms };
 }
 
-describe('the 12 s reply ceiling', () => {
+describe('the 25 s reply ceiling (Gemini-first)', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
   });
@@ -69,16 +69,17 @@ describe('the 12 s reply ceiling', () => {
     vi.useRealTimers();
   });
 
-  it('the limits: Gemini 9 s (7 s per request), backup 2 s, ceiling 12 s', () => {
-    expect(GEMINI_DEADLINE_MS).toBe(9_000);
-    expect(GEMINI_REQUEST_TIMEOUT_MS).toBe(7_000);
+  it('the limits: Gemini 22 s (10 s per request), backup 2 s, ceiling 25 s', () => {
+    expect(GEMINI_DEADLINE_MS).toBe(22_000);
+    expect(GEMINI_REQUEST_TIMEOUT_MS).toBe(10_000);
     expect(AI_BACKUP_BUDGET_MS).toBe(2_000);
-    expect(AI_DECISION_BUDGET_MS).toBe(12_000);
+    expect(AI_DECISION_BUDGET_MS).toBe(25_000);
     expect(GEMINI_DEADLINE_MS + AI_BACKUP_BUDGET_MS).toBeLessThanOrEqual(AI_DECISION_BUDGET_MS);
-    expect(GEMINI_REQUEST_TIMEOUT_MS + GEMINI_MIN_ATTEMPT_MS).toBeGreaterThan(GEMINI_DEADLINE_MS);
+    // A request that stalls to its 10 s cut-off still leaves time for one real retry.
+    expect(GEMINI_REQUEST_TIMEOUT_MS + GEMINI_MIN_ATTEMPT_MS).toBeLessThan(GEMINI_DEADLINE_MS);
   });
 
-  it('Gemini stalls for 30 s → the backup answers, and the reply arrives in under 12 s', async () => {
+  it('Gemini stalls for 30 s → the backup answers, and the reply arrives in under 25 s', async () => {
     const gemini = delayedGemini(30_000);
     const s = await ahmedabadWorld({
       agent: new AdkGeminiAgentRuntime({ client: gemini.client, model: 'gemini-test' }),
@@ -87,10 +88,10 @@ describe('the 12 s reply ceiling', () => {
     const { res, ms } = await timed(() => s.say('c1', 'I need Vitamin C Glow Serum 30 ml today near Satellite'));
     expect(res.body.decision).toMatchObject({ decision_source: 'AGENT_BACKUP', action: 'STORE_DISCOVERY' });
     expect(res.body.outbound_messages[0].text).toContain('In stock at 3 stores in Satellite');
-    expect(ms).toBeGreaterThanOrEqual(GEMINI_REQUEST_TIMEOUT_MS);
-    expect(ms).toBeLessThan(12_000);
-    // L9: unanswered at 4.5 s, the request was sent once more (hedged); both stalled until the 9 s
-    // deadline — no time for a retry — and the backup answered inside the 12 s ceiling.
+    expect(ms).toBeGreaterThanOrEqual(GEMINI_DEADLINE_MS);
+    expect(ms).toBeLessThan(25_000);
+    // Unanswered at 4.5 s, the request was sent once more (hedged) and the pair was given the
+    // whole 22 s deadline; both stalled, so only then did the backup answer inside the 25 s ceiling.
     expect(gemini.requests).toHaveLength(2);
   });
 
@@ -125,7 +126,7 @@ describe('the 12 s reply ceiling', () => {
     expect(res.body.decision).toMatchObject({ decision_source: 'AGENT' });
   });
 
-  it('a late start (a slow context build) shortens Gemini’s turn, never the backup’s: still under 12 s', async () => {
+  it('a late start (a slow context build) shortens Gemini’s turn, never the backup’s: still under 25 s', async () => {
     const gemini = delayedGemini(30_000);
     const s = await ahmedabadWorld({
       agent: new AdkGeminiAgentRuntime({ client: gemini.client, model: 'gemini-test' }),
@@ -140,9 +141,9 @@ describe('the 12 s reply ceiling', () => {
     };
     const { res, ms } = await timed(() => s.say('c1', 'hello'));
     expect(res.body.decision).toMatchObject({ decision_source: 'AGENT_BACKUP' });
-    // Gemini got 12 − 2 − 4 = 6 s instead of 9 s; the backup still had its 2 s.
-    expect(ms).toBeGreaterThanOrEqual(10_000 - 100);
-    expect(ms).toBeLessThan(12_000);
+    // Gemini got 25 − 2 − 4 = 19 s instead of 22 s; the backup still had its 2 s.
+    expect(ms).toBeGreaterThanOrEqual(23_000 - 100);
+    expect(ms).toBeLessThan(25_000);
     expect(res.body.outbound_messages[0].text.length).toBeGreaterThan(0);
   });
 });

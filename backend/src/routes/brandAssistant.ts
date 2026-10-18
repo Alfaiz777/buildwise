@@ -12,7 +12,7 @@ import { assistantLimiter, parseAsk, parseBriefQuery } from './assistantRequest.
  *   POST /api/brand/assistant/ask                      a question from the drawer (POST: the question is a body, never a URL)
  *   GET  /api/brand/assistant/brief                    the Overview brief (cached 10 min)
  *   GET  /api/brand/conversations/:id/summary          a conversation's summary and handoff brief
- * Every answer arrives within 20 s: Gemini's, or the rules "Quick summary".
+ * Every answer arrives within 30 s: Gemini's, or the rules "Quick summary".
  */
 export function brandAssistantRouter(assistant: BrandAssistantService): Router {
   const router = Router();

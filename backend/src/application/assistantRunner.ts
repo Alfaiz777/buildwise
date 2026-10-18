@@ -12,9 +12,12 @@ import type { AssistantModel, AssistantTask, AssistantToolDeclaration, Assistant
 import type { EventInput } from './eventRecorder.js';
 import type { z } from 'zod';
 
-/** The whole answer, Gemini included, ends within 20 s; Gemini stops at 17 s and the rules answer. */
-export const ASSISTANT_CEILING_MS = 20_000;
-export const GEMINI_ASSISTANT_DEADLINE_MS = 17_000;
+/**
+ * The whole answer, Gemini included, ends within 30 s; Gemini stops at 26 s and only then do the
+ * rules answer (Gemini-first, 2026-10-18: a slow Gemini answer is preferred to a quick summary).
+ */
+export const ASSISTANT_CEILING_MS = 30_000;
+export const GEMINI_ASSISTANT_DEADLINE_MS = 26_000;
 
 /**
  * What the person is looking at: the page's period and whether synthetic demo history counts —

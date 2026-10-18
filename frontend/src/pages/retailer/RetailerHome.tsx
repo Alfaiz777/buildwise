@@ -1,5 +1,5 @@
-import { Bell, BellOff, MapPin, Search, Store as StoreIcon, Tag } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { Bell, BellOff, MapPin, RefreshCw, Search, Store as StoreIcon, Tag } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useMe } from '../../account/meContext';
 import { useApi, type Store } from '../../api/apiContext';
@@ -299,6 +299,29 @@ export function StoreStock({ autoPoll = false }: { autoPoll?: boolean }) {
   const [filter, setFilter] = useState<StockFilter>(null);
   const [query, setQuery] = useState('');
   const [historyOf, setHistoryOf] = useState<StockItem | null>(null);
+  // A Refresh press: the button spins for at least half a second, then a toast says what came back.
+  const toast = useToast();
+  const [refreshing, setRefreshing] = useState(false);
+  const pressedAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (pressedAt.current === null || (!stock.data && !stock.error)) return;
+    const wait = Math.max(0, 500 - (Date.now() - pressedAt.current));
+    pressedAt.current = null;
+    const n = stock.data?.items.length ?? 0;
+    const failed = !!stock.error;
+    const id = setTimeout(() => {
+      setRefreshing(false);
+      if (!failed) toast.show(`Stock refreshed — ${n === 1 ? '1 product' : `${n} products`}.`);
+    }, wait);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stock.data, stock.error]);
+  const refresh = () => {
+    if (refreshing) return;
+    pressedAt.current = Date.now();
+    setRefreshing(true);
+    stock.reload();
+  };
   const items = useMemo(() => stock.data?.items ?? [], [stock.data]);
   const latest = items
     .map((i) => i.last_updated_at)
@@ -329,8 +352,13 @@ export function StoreStock({ autoPoll = false }: { autoPoll?: boolean }) {
         title="Stock"
         purpose={purpose}
         action={
-          <Button variant="brand" onClick={stock.reload}>
-            Refresh
+          <Button
+            variant="brand"
+            onClick={refresh}
+            loading={refreshing}
+            icon={<RefreshCw size={16} aria-hidden="true" />}
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh'}
           </Button>
         }
       />

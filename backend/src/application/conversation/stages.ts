@@ -404,7 +404,7 @@ export function buildConversationPipeline(deps: ConversationDeps): ConversationP
     name: 'AGENT',
     async run(context) {
       if (context.data.policy?.reply !== 'AUTOMATED') return CONTINUE;
-      // The 12 s decision ceiling counts from here: building the context uses the model's time.
+      // The 25 s decision ceiling counts from here: building the context uses the model's time.
       const stageStarted = performance.now();
       const brand = need(context.data.brand, 'brand');
       const customer = need(context.data.customer, 'customer');

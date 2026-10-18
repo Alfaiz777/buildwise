@@ -578,11 +578,13 @@ These rules cover the MVP. The numbers are prototype defaults and may be tuned.
 ## 16.1 Agent runtime timeout
 
 ```text
-per Gemini request timeout       7 s (one retry, only if ≥ 2.5 s of the deadline is left)
-Gemini decision deadline         9 s
+per Gemini request timeout       10 s (hedged at 4.5 s; one retry, only if ≥ 2.5 s of the deadline is left)
+Gemini decision deadline         22 s
 backup runtime slot              2 s
-total AI decision budget         12 s per inbound message (any channel), from the start of the agent stage
+total AI decision budget         25 s per inbound message (any channel), from the start of the agent stage
 ```
+
+Gemini-first (2026-10-18): raised from 7 s / 9 s / 2 s / 12 s so the shopper's answer comes from Gemini, not the rule-based backup, except in a real outage. With the 9 s deadline about one typed message in ten was answered by the backup after a Gemini stall. The WhatsApp webhook is acknowledged before the pipeline runs, so a slower reply never makes Meta resend the message; the Cloud Run request timeout (60 s) stays far above the worst case.
 
 L5 (2026-10-16): lowered from 8 s / 15 s / 3 s / 20 s so no typed message waits more than about 12 s. Measured before the change: Gemini's median turn 5.1 s, and one typed message in six waited the full 15 s for the backup. A slow context build is taken from the model's time, never from the backup's.
 
@@ -592,7 +594,7 @@ If the budget is exhausted, the request stops calling the runtime and uses the d
 
 | Dependency | Retry | On final failure |
 |---|---|---|
-| Gemini (timeout, 429, 5xx) | 1 retry per request (7 s each), only while the runtime's own 9 s deadline leaves 2.5 s for it | Backup runtime, then the deterministic fallback |
+| Gemini (timeout, 429, 5xx) | 1 retry per request (10 s each), only while the runtime's own 22 s deadline leaves 2.5 s for it | Backup runtime, then the deterministic fallback |
 | Gemini (invalid structured output) | 1 repair attempt with the validation error | Backup runtime, then the deterministic fallback |
 | WhatsApp send (429, 5xx, network) | up to 2 retries with exponential backoff (250 ms, 1 s), same outbound request ID — implemented in M7 for every channel | Message marked `FAILED`; shown as "Not delivered" in the Brand Console |
 | Firestore unavailable (gRPC UNAVAILABLE / DEADLINE_EXCEEDED) | the SDK's own retries | `503 SERVICE_UNAVAILABLE`, retryable, "Qwikspot can't reach its database right now. Please try again in a minute." (M7) |
@@ -600,7 +602,7 @@ If the budget is exhausted, the request stops calling the runtime and uses the d
 | Firestore transaction contention | handled by the Firestore SDK transaction retry | Reservation request fails with a retryable error |
 | 4xx validation / auth errors | never retried | Normalized error (`06_INTEGRATION_CONTRACTS.md` §16) |
 
-**Backup runtime (L3-Gemini):** when the configured runtime is Gemini and its decision fails (`TIMEOUT`, `RUNTIME_ERROR`, or `INVALID_OUTPUT` after the repair), `MockAgentRuntime` decides the same message with the same context and tools, within 2 s kept inside the 12 s budget. Its decision goes through the guardrail like any other and is recorded with `runtime = MOCK`, `decision_source = AGENT_BACKUP` and the trace's `fallback_reason` (why Gemini failed); it is never presented as Gemini. Only the composition root wires it; with `AGENT_RUNTIME=mock` there is no backup layer. If the backup fails too, the deterministic fallback below is used — and after a `TIMEOUT` it asks the customer to try again (`NO_ACTION`) instead of handing off, so a slow model never stops automated replies.
+**Backup runtime (L3-Gemini):** when the configured runtime is Gemini and its decision fails (`TIMEOUT`, `RUNTIME_ERROR`, or `INVALID_OUTPUT` after the repair), `MockAgentRuntime` decides the same message with the same context and tools, within 2 s kept inside the 25 s budget. Its decision goes through the guardrail like any other and is recorded with `runtime = MOCK`, `decision_source = AGENT_BACKUP` and the trace's `fallback_reason` (why Gemini failed); it is never presented as Gemini. Only the composition root wires it; with `AGENT_RUNTIME=mock` there is no backup layer. If the backup fails too, the deterministic fallback below is used — and after a `TIMEOUT` it asks the customer to try again (`NO_ACTION`) instead of handing off, so a slow model never stops automated replies.
 
 **Button taps (L3-Gemini):** with Gemini configured, an inbound button tap whose option id is a known command — hold, cancel, other stores, buy online, talk to a person — is decided by `MockAgentRuntime` directly and Gemini is not called (`decision_source = RULES_TAP`, `runtime = MOCK`). A tap is unambiguous, so the answer is immediate and the same every time; the guardrail runs unchanged. Typed text, shared locations and any other option id go to Gemini.
 
@@ -663,7 +665,7 @@ The MVP is sized for a judged demo and the first brands; nothing in the core has
 | API | Cloud Run, stateless, min 0 / max 5 instances (`deploy-backend.sh`), `asia-south1` | Raise max instances; min 1 for warm starts; one service per region |
 | Database | Firestore Native; every brand under `brands/{brand_id}`; reservations in transactions | Same model; hot documents (a busy store's stock row) stay safe through transactions; composite indexes are checked by `indexCompleteness.test.ts` |
 | HTTP rate limits | in-memory per instance (docs/07 §17 allows it) | Cloud Armor or a shared limiter (Memorystore) once there are many instances |
-| AI cost | per-conversation limit in Firestore; 12 s budget; deterministic fallback | Per-brand monthly budget, model routing (small model first) |
+| AI cost | per-conversation limit in Firestore; 25 s budget; deterministic fallback | Per-brand monthly budget, model routing (small model first) |
 | Webhooks | idempotent receipts (§16.3), replay waits for the first run | Pub/Sub between the webhook and the pipeline for bursts |
 | Analytics | Firestore + `EventSink` → BigQuery (`gcp`) | BigQuery + Looker dashboards; the Outcomes screen stays the operational view |
 | Files | Cloud Storage, signed uploads | Lifecycle rules; virus scan before import |
