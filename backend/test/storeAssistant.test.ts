@@ -174,8 +174,8 @@ describe('no personal data reaches Gemini; the answer is checked', () => {
     });
   });
 
-  it('a stalled Gemini still answers within the ceiling (17 s deadline, 20 s ceiling)', async () => {
-    expect([GEMINI_ASSISTANT_DEADLINE_MS, ASSISTANT_CEILING_MS]).toEqual([17_000, 20_000]);
+  it('a stalled Gemini still answers within the ceiling (26 s deadline, 30 s ceiling)', async () => {
+    expect([GEMINI_ASSISTANT_DEADLINE_MS, ASSISTANT_CEILING_MS]).toEqual([26_000, 30_000]);
     const log = answerLogs('store_assistant.answer');
     const stalled = new FakeAssistantModel(() => new Promise<ModelAnswer>(() => undefined));
     const s = await storeWorld({ assistantModel: stalled, assistantDeadlineMs: 50, logger: log.logger });

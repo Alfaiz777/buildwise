@@ -399,10 +399,6 @@ export function InsightsPage() {
                             question={`About this suggestion: "${s.text}" Why is this happening, and what should I do first?`}
                           />
                         </div>
-                        <details className="small">
-                          <summary>Technical details</summary>
-                          <span className="mono">{s.evidence.ids.join(', ')}</span>
-                        </details>
                       </div>
                     </li>
                   );

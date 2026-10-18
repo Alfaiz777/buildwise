@@ -42,7 +42,7 @@ export interface GeminiRuntimeOptions {
   logger?: Logger;
   /** Tool calls allowed per decision. */
   maxToolCalls?: number;
-  /** Time for the whole decide, kept under the pipeline's 12 s budget so the backup runtime still has its 2 s. */
+  /** Time for the whole decide, kept under the pipeline's 25 s budget so the backup runtime still has its 2 s. */
   deadlineMs?: number;
   /** Time for one model request. */
   requestTimeoutMs?: number;
@@ -55,18 +55,22 @@ export interface GeminiRuntimeOptions {
 
 export const GEMINI_MAX_TOOL_CALLS = 5;
 /**
- * Measured on the global endpoint (docs/05 Â§16): a request usually takes 2â€“7 s and about one
- * in ten stalls for 10â€“30 s; a whole Gemini turn has a median of 5.1 s (2026-10-16). A request
- * that has not answered in 7 s has usually stalled, so each request is cut off at 7 s, and the
- * whole decision stops at 9 s â€” which leaves the backup runtime (the mock) its 2 s inside the
- * pipeline's 12 s ceiling (AI_DECISION_BUDGET_MS).
+ * Measured on the global endpoint (docs/05 §16): a request usually takes 2–7 s and about one
+ * in ten stalls for 10–30 s; a whole Gemini turn has a median of 5.1 s (2026-10-16).
+ * Gemini-first (2026-10-18): the shopper's answers should come from Gemini, not the backup, so
+ * a whole decision may take up to 22 s. The WhatsApp webhook is acknowledged before the
+ * pipeline runs, so a slower reply never makes Meta retry. A request still unanswered at
+ * 4.5 s is hedged (sent once more, the first answer wins), each request is cut off at 10 s and
+ * retried while the deadline allows a real attempt, and only after 22 s does the backup
+ * runtime (the mock) answer in its 2 s, inside the pipeline's 25 s ceiling
+ * (AI_DECISION_BUDGET_MS).
  *
  * A failed request (a timeout, 429, 5xx) is tried once more only while the deadline still
  * leaves GEMINI_MIN_ATTEMPT_MS for it: a model request has never answered faster than about
- * 2.5 s, so a retry with less time could only time out again â€” the backup answers sooner.
+ * 2.5 s, so a retry with less time could only time out again — the backup answers sooner.
  */
-export const GEMINI_DEADLINE_MS = 9_000;
-export const GEMINI_REQUEST_TIMEOUT_MS = 7_000;
+export const GEMINI_DEADLINE_MS = 22_000;
+export const GEMINI_REQUEST_TIMEOUT_MS = 10_000;
 export const GEMINI_REQUEST_ATTEMPTS = 2;
 export const GEMINI_MIN_ATTEMPT_MS = 2_500;
 export const GEMINI_TEMPERATURE = 0.2;

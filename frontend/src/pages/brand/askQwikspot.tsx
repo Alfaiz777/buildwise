@@ -12,7 +12,7 @@ import './askQwikspot.css';
  * in). A console supplies its AskConfig: where to ask, which page a path is, the suggested
  * questions per page and where each part of the data is shown. Answers are Gemini's (labelled
  * "AI summary") or, when Gemini is slow or fails, the rules "Quick summary" from the same
- * data — within 20 s either way.
+ * data — within 30 s either way.
  */
 
 export type ConsolePage = 'OVERVIEW' | 'CONVERSATIONS' | 'RESERVATIONS' | 'SALES' | 'INSIGHTS' | 'NETWORK' | 'SETTINGS';

@@ -268,7 +268,7 @@ The agent is reached only through the `ConversationPipeline` (`03_TECH_ARCHITECT
   - **Tools.** Only the READ tools are declared to the model, whatever the pipeline declares. Every call goes through the `ToolExecutor`; a name that is not an offered read tool is answered with an error and never executed. At most **5** tool calls per decision.
   - **Output.** The model fills a small *proposal* under a response schema (JSON mode): `intent_type`, `confidence`, `action`, `reason`, `variant_id`, `store_id`, `quantity`, `cancel_reservation_id`, `reply_text`, `quick_replies`. The runtime turns it into the `AgentDecision`: `runtime` and `tool_calls` come from what actually ran; the **write tools follow from the action** (`STORE_RESERVATION` → `create_reservation`, `HUMAN_HANDOFF` → `request_human_handoff`, a cancel id → `cancel_reservation`, the `record_customer_intent` rules of the mock) — the model never names one; ids the backend did not show the model in this turn are dropped; a store search reports the searched variant and its nearest eligible store from the tool result.
   - **Replies.** Unchanged forward dispatch (`replyComposer.ts`): store cards, holds, cancellations and online purchase are rebuilt from verified tool results. Gemini's own text reaches the customer for clarifications, `EDUCATE` and `COMPARE` only, in the customer's language (English, Hindi or Hinglish).
-  - **Limits.** Temperature 0.2, the lowest thinking level the model allows. Each request is cut off at 7 s; a timeout or a transient error (429, 5xx) is tried once more only while the 9 s decision deadline still leaves 2.5 s for it (a request has never answered faster). L9: a request unanswered after 4.5 s is sent again (hedged) when the deadline still leaves 2.5 s; the first answer wins, the other is cancelled, and the hedged request may use the rest of the 9 s deadline. The decision log counts `hedges`. The whole decision stops at 9 s, which leaves the backup runtime its 2 s inside the 12 s ceiling (L5; before: 8 s / 15 s / 20 s). Invalid output is returned as invalid, so the pipeline makes its single repair attempt (the model is told its own validation error) and then uses the deterministic fallback.
+  - **Limits.** Temperature 0.2, the lowest thinking level the model allows. Each request is cut off at 7 s; a timeout or a transient error (429, 5xx) is tried once more only while the 9 s decision deadline still leaves 2.5 s for it (a request has never answered faster). L9: a request unanswered after 4.5 s is sent again (hedged) when the deadline still leaves 2.5 s; the first answer wins, the other is cancelled, and the hedged request may use the rest of the 9 s deadline. The decision log counts `hedges`. The whole decision stops at 9 s, which leaves the backup runtime its 2 s inside the 12 s ceiling (L5; before: 8 s / 15 s / 20 s). **Gemini-first (2026-10-18):** each request is now cut off at 10 s and the decision at 22 s (backup 2 s, ceiling 25 s), so a stalled request is hedged and, when needed, retried before the backup ever answers. Invalid output is returned as invalid, so the pipeline makes its single repair attempt (the model is told its own validation error) and then uses the deterministic fallback.
   - **Logging.** One line per decision, `agent.gemini_decision`: runtime, model, prompt version, latency, requests, retries, tool names, token counts, action. Never message text, replies or customer references.
   - **Backup.** A Gemini turn that is too slow, fails, or is still invalid after the repair is decided by `MockAgentRuntime` instead (`decision_source = AGENT_BACKUP`, `runtime = MOCK`, `03` §16.2), so the customer still gets a useful automatic answer and the conversation is not handed to a person. The console labels it "Mock AI (backup after Gemini timeout)".
   - **Button taps.** A tapped hold, cancel, "Other stores", "Buy online" or "Talk to a person" never reaches Gemini: the rules decide it (`decision_source = RULES_TAP`, `03` §16.2; the console shows "Rules (button tap)"). Gemini decides typed text, shared locations and unknown option ids.
@@ -453,7 +453,7 @@ For a reader new to Qwikspot: what Gemini can and cannot do, and what happens wh
 - **It cannot invent a price, stock level or store.** A store card, a hold confirmation, a comparison or an order link is rebuilt by `replyComposer` from this turn's tool results, never from the model's words. Gemini's own text appears only on NO_ACTION turns (thanks, later, a greeting, a complaint, a clarifying question). There, a validator rejects any price, stock count, store name, distance, delivery time, discount or promise, and the deterministic reply is sent instead (§16).
 - **The backend decides every action.** Gemini proposes; it is offered read tools only. A hold, a cancellation, a handoff and an order link are executed by the backend after the guardrail re-checks fresh data: the store was offered, it is open, it has the stock, the quantity is within policy. Ids the model was never shown are dropped.
 - **Button taps never call the model.** A tap ("Pick up: Wellness", "Other stores", an area, Cancel) and a typed store name from the card just shown are decided by the rules (`RULES_TAP`): the same answer every time, in milliseconds.
-- **A slow or failing model never leaves the customer waiting.** Gemini gets at most 9 s per message (7 s per request, a retry only if time is left for one); then the rule-based backup answers the same message with the same tools, in its own 2 s slot. The whole decision ends within 12 s of the agent stage starting — a slow context build shortens Gemini's turn, never the backup's. Only if that fails too does a fixed "please try again" reply go out.
+- **A slow or failing model never leaves the customer waiting.** Gemini gets at most 22 s per message (Gemini-first, 2026-10-18; before: 9 s): 10 s per request, hedged at 4.5 s, a retry only if time is left for one. Then the rule-based backup answers the same message with the same tools, in its own 2 s slot. The whole decision ends within 25 s of the agent stage starting — a slow context build shortens Gemini's turn, never the backup's. Only if that fails too does a fixed "please try again" reply go out.
 
 **Where reply time goes, and what keeps it low.** One `conversation.reply_timing` log line per inbound message (no PII) records:
 - `total_ms` (the whole pipeline) and `gemini_ms` (the model, tool calls included);
@@ -463,9 +463,9 @@ Almost all of the time is the model. Firestore reads and writes and the guardrai
 - **Taps skip the model:** most of a purchase is taps.
 - **Fewer tool calls:** the product sheet travels in the context, so product questions need none; at most 5 per decision.
 - **Short output:** a short conversational reply.
-- **Hard deadlines:** 7 s per request, 9 s for Gemini, 2 s for the backup, 12 s in all.
+- **Hard deadlines:** 10 s per request, 22 s for Gemini, 2 s for the backup, 25 s in all (Gemini-first, 2026-10-18; before: 7 / 9 / 2 / 12 s).
 
-The Cloud Run request timeout (60 s) is far above the worst case: the 12 s decision plus the guardrail, tools and the send. An emulator test checks that the backup's store search, typed store name and closing each decide in under 1 s against Firestore (`reply-timing.emulator.test.ts`).
+The Cloud Run request timeout (60 s) is far above the worst case: the 25 s decision plus the guardrail, tools and the send. An emulator test checks that the backup's store search, typed store name and closing each decide in under 1 s against Firestore (`reply-timing.emulator.test.ts`).
 
 **Measured (live eval, 2026-10-16, `gemini-3.8-flash` on `global`, `EVAL_RUNS=2`, from a laptop in India).** The conversation test set passed 86 of 86 messages.
 
@@ -520,7 +520,7 @@ Settings gets no AI content: settings stay in the brand's own hands.
 - **Every number in an AI answer must appear in the data** (the pack, a tool result or the question). Dates and ids don't count as a source. An answer with any other number is not shown.
 - **No phone number, email or pickup code may appear in an answer.**
 - **Read-only:** the tools only read this brand's records, and the agent can only explain and suggest.
-- **Deadline:** Gemini stops at 17 s (`GEMINI_BRAND_DEADLINE_MS`), within a 20 s ceiling.
+- **Deadline:** Gemini stops at 26 s (`GEMINI_ASSISTANT_DEADLINE_MS`), within a 30 s ceiling (Gemini-first, 2026-10-18; before: 17 s / 20 s).
 - **Fallback:** a timeout, an error, an ungrounded number or PII shows the rules **Quick summary** from the same data instead. The UI labels it "Quick summary"; Gemini's answers are labelled "AI summary". Each shows links to the console pages its data came from.
 - **Logging:** one `brand_assistant.answer` line per answer: surface, page, source, failure reason, `latency_ms`, `gemini_ms`, tools. Never the question or the text.
 - **Without Gemini** (`AGENT_RUNTIME=mock`, local): every answer is a Quick summary.
@@ -568,7 +568,7 @@ The same agent pattern, for a Retail Admin in the Store Console. The code is sha
 - **One Gemini call:** no tools are needed, because the pack covers the store's questions.
 
 **Rules.**
-- **Same as the brand agent:** the number checker, no phone, email, pickup code or typed name, Gemini 17 s inside a 20 s ceiling, the "Quick summary" fallback, 20 questions a minute, and the `ASSISTANT_QUESTION` event without the text.
+- **Same as the brand agent:** the number checker, no phone, email, pickup code or typed name, Gemini 26 s inside a 30 s ceiling, the "Quick summary" fallback, 20 questions a minute, and the `ASSISTANT_QUESTION` event without the text.
 - **Language:** English, or Hinglish when the question is in Hinglish (both agents).
 - **Read-only:** asked to "confirm all my holds", it changes nothing and says to use Confirm on Today.
 
@@ -598,7 +598,7 @@ The same agent pattern for the Qwikspot team (PLATFORM_ADMIN) in the Platform Co
 - **Fail closed:** before anything is sent, the pack is walked for private field names (customer, conversation, message, phone, email, pickup code, SKU, quantity, price, user or actor ids, location) and values (an email, a phone number, a 6+ digit run, a masked customer label). If anything is found, the question fails and nothing reaches Gemini.
 
 **Rules.**
-- **Same as the other agents:** the number checker, Gemini 17 s inside a 20 s ceiling, the "Quick summary" fallback, 20 questions a minute, English or Hinglish.
+- **Same as the other agents:** the number checker, Gemini 26 s inside a 30 s ceiling, the "Quick summary" fallback, 20 questions a minute, English or Hinglish.
 - **Event:** an `ASSISTANT_QUESTION` event with `console: PLATFORM` and `role: PLATFORM`, recorded under the platform scope (not a brand), without the question text.
 - **Read-only:** it never creates a brand, provisions an admin or changes a status. Asked to "create a new brand", it changes nothing and points to "New brand" on the Brands page ("Provision Brand Admin" and "Suspend" / "Reactivate" on a brand's row).
 - **No customer-level data:** asked for any brand's customers, chats, phone numbers or pickup codes, it says the Platform Console sees totals and flags only. The pack has none to give.
