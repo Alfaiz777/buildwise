@@ -6,9 +6,55 @@ Qwikspot is an omnichannel commerce layer for D2C brands. It watches storefront 
 
 Every AI action is re-checked by a guardrail on fresh data before anything is written; the agent can never invent stock, choose a closed store or touch another customer's data.
 
-## Try it in 10 minutes (local, synthetic data)
+## Try the live demo (judges start here)
 
-Requires **Node.js 24** and **Java 21+** (Firebase emulators). No Google Cloud account and no `.env` files.
+**Live app:** <https://qwikspot.web.app> · **API on Cloud Run:** <https://qwikspot-api-4rscricz3q-el.a.run.app/api/health>
+
+Everything below runs on Google Cloud with the real integrations: **Gemini on Vertex AI** answers shoppers and the console analysts, the shopper chats on a real **WhatsApp Business** number, and the products come from the brand's real **Shopify** store (AquaSkin). No install, no account: the login page has one-click demo logins.
+
+| You need | |
+|---|---|
+| A computer with a browser | for the three consoles |
+| A phone with WhatsApp | for the shopper side (scan a QR) |
+| The AquaSkin store password | **`aquaskin`** (it is a Shopify development store, so Shopify asks for it once) |
+
+**Demo logins** (on <https://qwikspot.web.app/login>, under **Try the demo**: click a tile, then **Sign in**):
+
+| Tile | Console | Use it for |
+|---|---|---|
+| **Brand Admin — AquaSkin** | Brand Console | Start here |
+| **Wellness Mart, Satellite** | Store Console | The store the demo hold goes to |
+| **Platform Admin** | Platform Console | The Qwikspot team's view |
+
+Each browser tab keeps its own sign-in, so you can open the three consoles in three tabs (or windows) side by side.
+
+### The live demo, step by step (about 10 minutes)
+
+| # | Where | Do | You should see |
+|---|---|---|---|
+| 0 | **Brand Console → Overview** | *(Optional)* **Demo guide → Reset demo**. It asks first, and resets the shared demo for every judge. | A clean demo with four weeks of flagged synthetic history. The **Try the live demo** checklist (bottom right) ticks each step below as you do it. |
+| 1 | Brand Console header | **Open AquaSkin store** (or scan its QR with your phone). Enter the store password. | The brand's real Shopify store. |
+| 2 | The store | Open **Vitamin C Glow Serum** → pick **30 ml** → **Need it today? Ask on WhatsApp**. On a computer, **scan the QR** under the button with your phone. | WhatsApp opens on your phone with the message ready. Send it. |
+| 3 | WhatsApp | When asked where you are, reply **Satellite** (or **Navrangpura**). | Gemini lists the stores that have it **in stock now**, nearest first, next to home delivery. |
+| 4 | WhatsApp | Tap **Pick up: Wellness**. | **On hold for you**: the store, its location and a **6-digit pickup code**. |
+| 5 | New tab: **Store login → Wellness Mart, Satellite** | **Today**: the new hold arrives. **Confirm → Mark ready → Customer arrived → Complete** (type the pickup code from WhatsApp). | Each step arrives in your WhatsApp; Complete sends one thank-you. The store never sees your phone number. |
+| 6 | **Brand Console → Conversations** | Open your conversation. | The **journey** (website → chat → hold → pickup), and **Why Qwikspot did this**: a plain reason and a safety check for each AI step, labelled **Gemini (Vertex AI)**. |
+| 7 | **Ask Qwikspot** (top of any console) | Ask *"How did we do this week?"* | An **AI summary** from the brand's own data, with links to where each part comes from. |
+| 8 | Brand → **Insights** and **Sales** | — | The funnel, the weekday demand-vs-stock reading and restock suggestions; walk-in sales beside Qwikspot pickups. |
+| 9 | Store → **Sales**, then **Stock** | Record a walk-in sale (add a product → Cash → **Record sale**). | A receipt; on Stock the product's row says *Last change: In-store sale*. The AI now offers one unit fewer. |
+| 10 | New tab: **Platform login** | Overview → Brands → Retail network → Audit → System | Every brand's health and onboarding as totals, the audit log, and the live system: Cloud Run + Firestore, Gemini, WhatsApp, Shopify. **It never shows a customer.** |
+
+**The automatic follow-up (optional, about 5 minutes).** In the **same browser** where you tapped *Need it today?* in step 2 (that is how Qwikspot knows you, with your consent), open the store in a **new tab**, add a product to the cart and close the tab without messaging. About 2–7 minutes later one WhatsApp follow-up arrives; in **Brand → Conversations** you can press **Process due work now** after about 2 minutes to send it at once. **Conversations → Intents** shows every website session and, for any that was not followed up, the reason (for example *already in a conversation* or *one follow-up per customer per day*).
+
+**Good to know**
+- The AI is **Gemini**: most replies take 3–7 seconds, and now and then up to about 20 seconds. If Gemini ever fails, a rule-based backup answers, and the decision card says so.
+- **Reset demo** is shared: it clears every judge's chats and holds. Use it at the start, not in the middle of someone else's test.
+- Only the stores in **Satellite** and **Navrangpura** (Ahmedabad) are in the demo network.
+- The longer manual test, with privacy and refusal stories, is in [docs/JUDGE_TEST_PLAN.md](docs/JUDGE_TEST_PLAN.md).
+
+## Run it locally (synthetic data, no Google Cloud)
+
+Requires **Node.js 24** and **Java 21+** (Firebase emulators). No Google Cloud account is needed: locally the AI is a deterministic mock, WhatsApp is a simulator and the catalogue is mocked.
 
 ```bash
 npm install
@@ -19,45 +65,7 @@ npm run dev:backend          # terminal 2: API on :8080
 npm run dev:frontend         # terminal 3: http://localhost:5173
 ```
 
-Open <http://localhost:5173>. Five surfaces, all on synthetic data:
-
-| Surface | Where | Who it is for |
-|---|---|---|
-| **Landing** | `/` | Anyone: what Qwikspot does, Brand / Store login |
-| **Shopper** | the brand's real Shopify store (with the Qwikspot theme snippet) and WhatsApp — opened from **Open AquaSkin store** in the Brand Console, or by scanning its QR | A shopper — no login. On a computer, the QR under "Need it today?" continues on the phone's WhatsApp |
-| **Brand Console** | `/brand` | The brand: results, conversations with their journey and "why", reservations, insights, network, settings |
-| **Store Console** | `/store` | One store: today's holds (Next up), why each hold came, history, stock, demand near the store |
-| **Platform Console** | `/platform` | The Qwikspot team: brands, the retail network and the audit — aggregates only, never a customer |
-
-The login page lists every demo account under **Try the demo** (DEMO_MODE; it never widens what a role may do). Each browser tab keeps its own sign-in, so one window can hold every role.
-
-| Account | Email | Opens |
-|---|---|---|
-| Brand Admin — Demo Beauty Co | `admin@demo-brand.test` | Brand Console |
-| Retail Admin — Wellness Mart, Satellite | `retail-admin-north-1@qwikspot.test` | Store Console — the demo hold lands here |
-| Retail Admin — HealthPlus Chemist, Navrangpura | `retail-admin-north-2@qwikspot.test` | Store Console (HealthPlus only) |
-| Platform Admin | `platform@qwikspot.test` | Platform Console |
-
-Local demo password: `qwikspot-demo-1` (emulators only; a deployed demo uses its own secret).
-
-### The 10-minute judge script
-
-Start from a clean demo: **Brand Console → Overview → Demo guide → Reset demo** (it asks first; it resets the shared demo for everyone and removes every judge's chats and demo shoppers). Then:
-
-| # | Where | Do | You should see |
-|---|---|---|---|
-| 1 | Landing | **See it as a shopper** | The brand's demo store |
-| 2 | Shopper demo | **Vitamin C Glow Serum** → 30 ml → **Need it today? Check a store near you** → send | The brand's chat (docked on desktop, full screen on a phone) |
-| 3 | Chat | Type **Satellite** (or **📍 → Near Satellite**), then **Pick up: Wellness** | "In stock at 3 stores in Satellite" — Wellness Mart, GlowUp Beauty and CityCare Pharmacy, nearest first, next to home delivery; then the pickup pass, pickup code and the store's location. **Other stores** lists the area; typing **Navrangpura** switches area |
-| 4 | New tab: **Store login** (Wellness Mart) | **Confirm → Mark ready → Customer arrived → Complete** with the code from the chat | Confirm and Mark ready appear in the shopper's chat, Complete sends one thank-you; "Why this hold came to you" on the card |
-| 5 | **Brand login** → Conversations | Open the conversation | The journey from the website to "Picked up at Wellness Mart — in-store purchase", and why Wellness Mart was offered |
-| 6 | Brand → Insights | — | The funnel, the weekday reading (an availability problem, not a demand problem), suggestions linked to the store |
-| 7 | Shopper demo → **Demo controls** | **Sign in as Asha** → add the serum to the bag → leave; ~3 minutes later Brand → Conversations → **Process due work now** | The cart follow-up arrives in Asha's chat, with quick replies. Every "Sign in as Asha" is its own synthetic customer |
-| 8 | **Platform login** | Overview → Retail network → System | Results across brands as counts, store health flags, and how Qwikspot runs today (Mock AI, simulator, mock catalogue) |
-
-[docs/JUDGE_TEST_PLAN.md](docs/JUDGE_TEST_PLAN.md) is the longer hands-on test (stories a–h, privacy and phone checks). The shopper part runs on the brand's real Shopify store and WhatsApp (Change 18), so it is done by hand on a phone; `npm run demo:check` walks the core journey over HTTP and prints ✔ / ✘ per step (`BASE_URL` points it at a deployment), and `node scripts/screenshots.mjs` takes the console screenshots at 1440 px and 390 px.
-
-Emulator data persists between runs in `.emulator-data/` (git-ignored; exported when you stop the emulators with Ctrl+C). Delete the folder to start from nothing.
+Open <http://localhost:5173> and use the **Try the demo** tiles on the login page (local password `qwikspot-demo-1`, emulators only). `npm run demo:check` walks the core journey over HTTP and prints ✔ / ✘ per step (`BASE_URL` points it at a deployment). Emulator data persists between runs in `.emulator-data/` (git-ignored); delete the folder to start from nothing.
 
 ## Connect a real Shopify store (local)
 
@@ -88,7 +96,7 @@ A chat's "Buy online" link opens the store's cart with the product in it and car
 flowchart LR
   C[Customer] -->|WhatsApp / simulator| P
   SF[Storefront snippet] -->|intents| API
-  UI[React: landing · shopper demo · Brand · Store · Platform consoles] -->|Firebase ID token / shopper session| API
+  UI[React: landing · Brand · Store · Platform consoles] -->|Firebase ID token| API
   subgraph API[Qwikspot API — Cloud Run or local Node, same code]
     P[ConversationPipeline] --> A[AgentRuntime<br/>Mock locally · ADK + Gemini live]
     A -->|read tools| G[Guardrail: re-check on fresh data]
@@ -103,7 +111,7 @@ flowchart LR
 - **One stock for the store and the AI (Change 19):** a store records each walk-in sale in the Store Console (Sales); the units leave its stock in the same transaction, so the agent never offers what was just sold, and the stock row says why it changed. The Brand Console's Sales tab shows those sales beside Qwikspot pickups.
 - **Safety:** the agent's writes run only after the guardrail; reservations change stock in one transaction; every mutating route is audited; logs carry IDs, never PII or message text.
 
-Locally everything runs on the Firebase emulators with a mock commerce catalogue, a WhatsApp simulator (it renders only what WhatsApp can) and a deterministic mock agent (labelled "Mock AI · deterministic" — it verifies the pipeline, not AI quality). Shopify can be connected locally (above, L2-Shopify); Gemini and WhatsApp are wired in the live phases (L1–L2).
+The deployed app (qwikspot.web.app) runs the `gcp` profile: Gemini on Vertex AI, the brand's WhatsApp Business number and its Shopify store. Locally everything runs on the Firebase emulators with a mock catalogue, a WhatsApp simulator (it renders only what WhatsApp can) and a deterministic mock agent (labelled "Mock AI · deterministic"), so the same code can be tested without any account.
 
 ## Checks
 
@@ -117,7 +125,7 @@ npm run demo:check                                       # smoke-walk a running 
 ## Repository and docs
 
 ```text
-frontend/        React + TypeScript + Vite — landing, shopper demo (/shop, /chat), Brand · Store · Platform consoles
+frontend/        React + TypeScript + Vite — landing, login, Brand · Store · Platform consoles
 backend/         Node.js 24 + TypeScript + Express — domain / application / ports / adapters
 infrastructure/  Firestore rules and indexes, Cloud Build, deploy scripts
 docs/            The specification (00–11), the deployment runbook (12) and the screenshot set (docs/screenshots)
@@ -129,7 +137,7 @@ docs/            The specification (00–11), the deployment runbook (12) and th
 - Deploying to Google Cloud: [docs/12_DEPLOYMENT_RUNBOOK.md](docs/12_DEPLOYMENT_RUNBOOK.md) and [infrastructure/README.md](infrastructure/README.md)
 - Milestones and what each one taught: [docs/10_EXECUTION_PLAN.md](docs/10_EXECUTION_PLAN.md), [docs/09_LEARNING_LOG.md](docs/09_LEARNING_LOG.md)
 
-Status: M1–M7 and the Interface Refresh (UI-0 – UI-6) complete on the local profile; L1–L3 (Google Cloud, real integrations, live verification) follow.
+Status: live on Google Cloud (Cloud Run + Firestore + Vertex AI) with the real Shopify and WhatsApp integrations; 1,400+ automated tests and the Firestore emulator suite pass.
 
 ## Core loop
 
